@@ -25,6 +25,9 @@ endif
 # User controllable linker command.
 LD := $(TOOLCHAIN_PREFIX)ld
 
+# User controllable objcopy command.
+OBJCOPY := $(TOOLCHAIN_PREFIX)objcopy
+
 # Defaults overrides for variables if using "llvm" as toolchain.
 ifeq ($(TOOLCHAIN),llvm)
     CC := clang
@@ -99,7 +102,8 @@ override SRCFILES := $(shell find -L src -type f 2>/dev/null | LC_ALL=C sort)
 override CFILES := $(filter %.c,$(SRCFILES))
 override ASFILES := $(filter %.S,$(SRCFILES))
 override NASMFILES := $(filter %.asm,$(SRCFILES))
-override OBJ := $(addprefix obj/,$(CFILES:.c=.c.o) $(ASFILES:.S=.S.o) $(NASMFILES:.asm=.asm.o))
+override PSFFILES := $(filter %.psf,$(SRCFILES))
+override OBJ := $(addprefix obj/,$(CFILES:.c=.c.o) $(ASFILES:.S=.S.o) $(NASMFILES:.asm=.asm.o) $(PSFFILES:.psf=.psf.o))
 override HEADER_DEPS := $(addprefix obj/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d))
 
 # Default target. This must come first, before header dependencies.
@@ -128,6 +132,11 @@ obj/%.S.o: %.S GNUmakefile
 obj/%.asm.o: %.asm GNUmakefile
 	mkdir -p "$$(dirname $@)"
 	nasm $(NASMFLAGS) $< -o $@
+
+# Compilation rules for *.psf files.
+obj/%.psf.o: %.psf GNUmakefile
+	mkdir -p "$$(dirname $@)"
+	$(OBJCOPY) -O elf64-x86-64 -B i386 -I binary $< $@
 
 # Remove object files and the final executable.
 .PHONY: clean
