@@ -103,7 +103,7 @@ int memcmp(const void *s1, const void *s2, size_t n) {
 }
 
 // Halt and catch fire function.
-static void hcf(void) {
+void hcf(void) {
     for (;;) {
         asm ("hlt");
     }
@@ -132,7 +132,7 @@ void kmain(void) {
     fb_width = (int)framebuffer->width;
     fb_height = (int)framebuffer->height;
 
-    init_memory_manager(memmap_request.response);
+    init_memory_manager();
 
     // Setup the GDT
     #if ARCH(X86_64)

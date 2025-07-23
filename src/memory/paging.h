@@ -56,10 +56,12 @@ typedef struct pml4 {
     dir_entry_t entries[512]; // Each entry have Physical addresses of PDPTs
 } __attribute__((aligned(PAGE_LEN))) pml4_t;
 
-extern pml4_t *current_pml4;
+extern pml4_t *kernel_pml4;
 
+void alloc_page_frame(page_t *page, int user, int writeable);
 void map_page(void *physaddr, void *virtualaddr, unsigned int flags);
 uint64_t get_cr3_addr();
 void init_paging();
+void flush_tlb_all();
 
 #endif
