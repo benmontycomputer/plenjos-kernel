@@ -1,0 +1,6 @@
+#ifndef _KERNEL_MEMORY_DETECTION_H
+#define _KERNEL_MEMORY_DETECTION_H
+
+
+
+#endif

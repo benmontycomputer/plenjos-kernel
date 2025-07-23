@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "apic.h": "c",
+        "tss.h": "c",
+        "stdint.h": "c",
+        "gdt.h": "c",
+        "paging.h": "c",
+        "memorymanager.h": "c"
+    }
+}
