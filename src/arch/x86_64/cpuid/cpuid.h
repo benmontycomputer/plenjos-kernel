@@ -102,7 +102,8 @@ enum {
 };
 
 bool cpuHasMSR();
-void cpuGetMSR(uint32_t msr, uint32_t *lo, uint32_t *hi);
-void cpuSetMSR(uint32_t msr, uint32_t lo, uint32_t hi);
+
+uint64_t read_msr(uint32_t msr);
+void write_msr(uint32_t msr, uint64_t val);
 
 #endif

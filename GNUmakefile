@@ -142,3 +142,31 @@ obj/%.psf.o: %.psf GNUmakefile
 .PHONY: clean
 clean:
 	rm -rf bin obj
+
+uefi_run:
+	qemu-system-x86_64 \
+		-m 4096 \
+		-smp cores=4,threads=1,sockets=1,maxcpus=4 \
+		-boot d \
+		-cdrom ../image.iso \
+		-d guest_errors,cpu_reset,invalid_mem,unimp,int \
+		-vga std \
+		-smbios type=0,uefi=on \
+		-rtc base=utc,clock=host \
+        -no-reboot
+
+#-device i8042
+
+#qemu-system-x86_64 \
+		-machine q35 \
+		-m 4096 \
+		-smp cores=2,threads=2,sockets=1,maxcpus=4 \
+		-boot d \
+		-hda $(DISK_DIR)/disk.img \
+		-cdrom $(BUILD_DIR)/$(OS_NAME)-$(OS_VERSION)-image.iso \
+		-serial stdio \
+		-d guest_errors,int,cpu_reset \
+		-D $(DEBUG_DIR)/qemu.log \
+		-vga std \
+		-bios /usr/share/OVMF/OVMF_CODE.fd  \
+		-rtc base=utc,clock=host

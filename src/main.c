@@ -1,13 +1,15 @@
 #define LIMINE_API_REVISION 3
 
-#include <stdint.h>
-#include <stddef.h>
-#include <stdbool.h>
 #include <limine.h>
 #include <limits.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
-#include "devices/kconsole.h"
-#include "memory/memorymanager.h"
+#include "lib/stdio.h"
+
+#include "memory/kmalloc.h"
+#include "memory/mm.h"
 
 #include "arch/platform.h"
 
@@ -15,14 +17,20 @@
 #include "arch/x86_64/common.h"
 #endif
 
+#include "cpu/cpu.h"
+
+#include "devices/input/keyboard/keyboard.h"
+
+#include "shell/shell.h"
+
 char *fb;
-int fb_scanline,fb_width,fb_height;
+int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
 
 // Set the base revision to 3, this is recommended as this is the latest
 // base revision described by the Limine boot protocol specification.
 // See specification for further info.
 
-__attribute__((used, section(".limine_requests")))
+__attribute__((used, section(".limine_requests"))) //
 static volatile LIMINE_BASE_REVISION(3);
 
 // The Limine requests can be placed anywhere, but it is important that
@@ -30,19 +38,17 @@ static volatile LIMINE_BASE_REVISION(3);
 // be made volatile or equivalent, _and_ they should be accessed at least
 // once or marked as used with the "used" attribute as done here.
 
-__attribute__((used, section(".limine_requests")))
-static volatile struct limine_framebuffer_request framebuffer_request = {
-    .id = LIMINE_FRAMEBUFFER_REQUEST,
-    .revision = 3
-};
+__attribute__((used, section(".limine_requests"))) //
+static volatile struct limine_framebuffer_request framebuffer_request
+    = { .id = LIMINE_FRAMEBUFFER_REQUEST, .revision = 3 };
 
 // Finally, define the start and end markers for the Limine requests.
 // These can also be moved anywhere, to any .c file, as seen fit.
 
-__attribute__((used, section(".limine_requests_start")))
+__attribute__((used, section(".limine_requests_start"))) //
 static volatile LIMINE_REQUESTS_START_MARKER;
 
-__attribute__((used, section(".limine_requests_end")))
+__attribute__((used, section(".limine_requests_end"))) //
 static volatile LIMINE_REQUESTS_END_MARKER;
 
 // GCC and Clang reserve the right to generate calls to the following
@@ -82,7 +88,7 @@ void *memmove(void *dest, const void *src, size_t n) {
         }
     } else if (src < dest) {
         for (size_t i = n; i > 0; i--) {
-            pdest[i-1] = psrc[i-1];
+            pdest[i - 1] = psrc[i - 1];
         }
     }
 
@@ -94,18 +100,18 @@ int memcmp(const void *s1, const void *s2, size_t n) {
     const uint8_t *p2 = (const uint8_t *)s2;
 
     for (size_t i = 0; i < n; i++) {
-        if (p1[i] != p2[i]) {
-            return p1[i] < p2[i] ? -1 : 1;
-        }
+        if (p1[i] != p2[i]) { return p1[i] < p2[i] ? -1 : 1; }
     }
 
     return 0;
 }
 
 // Halt and catch fire function.
-void hcf(void) {
+__attribute__((noreturn)) //
+void
+hcf(void) {
     for (;;) {
-        asm ("hlt");
+        asm("hlt");
     }
 }
 
@@ -114,15 +120,10 @@ void hcf(void) {
 // linker script accordingly.
 void kmain(void) {
     // Ensure the bootloader actually understands our base revision (see spec).
-    if (LIMINE_BASE_REVISION_SUPPORTED == false) {
-        hcf();
-    }
+    if (LIMINE_BASE_REVISION_SUPPORTED == false) { hcf(); }
 
     // Ensure we got a framebuffer.
-    if (framebuffer_request.response == NULL
-     || framebuffer_request.response->framebuffer_count < 1) {
-        hcf();
-    }
+    if (framebuffer_request.response == NULL || framebuffer_request.response->framebuffer_count < 1) { hcf(); }
 
     // Fetch the first framebuffer.
     struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
@@ -131,15 +132,38 @@ void kmain(void) {
     fb_scanline = (int)framebuffer->pitch;
     fb_width = (int)framebuffer->width;
     fb_height = (int)framebuffer->height;
+    fb_bytes_per_pixel = (int)((framebuffer->bpp + 7) / 8);
+    printf("Framebuffer: %p\n", framebuffer->address);
 
     init_memory_manager();
 
-    // Setup the GDT
-    #if ARCH(X86_64)
-        init_x86_64();
-    #endif
+// Setup the GDT
+#if ARCH(X86_64)
+    init_x86_64();
+#endif
 
-    kputs("Hello World!",0,0);
+    load_smp();
+
+    init_keyboard();
+
+#define helloworld "Hello World!\n"
+
+    char *hwld = (char *)kmalloc(14);
+
+    memcpy(hwld, helloworld, 14);
+
+    printf(hwld);
+
+    // This tests console autoscroll
+    /* for (uint64_t n = 0; n <= 0x3F; n++) {
+        printf("%p\n", (void *)n);
+    } */
+
+    // TODO: free hwld
+
+    
+
+    start_shell();
 
     // We're done, just hang...
     hcf();

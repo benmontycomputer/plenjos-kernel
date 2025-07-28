@@ -14,12 +14,19 @@ bool cpuHasMSR()
    return d & CPUID_FLAG_MSR;
 }
 
-void cpuGetMSR(uint32_t msr, uint32_t *lo, uint32_t *hi)
-{
-   asm volatile("rdmsr" : "=a"(*lo), "=d"(*hi) : "c"(msr));
+uint64_t read_msr(uint32_t msr) {
+   uint32_t lo, hi;
+
+   asm volatile("rdmsr" : "=a"(lo), "=d"(hi) : "c"(msr));
+
+   return ((uint64_t)hi << 32) | lo;
 }
 
-void cpuSetMSR(uint32_t msr, uint32_t lo, uint32_t hi)
-{
+void write_msr(uint32_t msr, uint64_t val) {
+   uint32_t lo, hi;
+
+   lo = val >> 32;
+   hi = (uint64_t)(val & 0xFFFFFFFF);
+
    asm volatile("wrmsr" : : "a"(lo), "d"(hi), "c"(msr));
 }

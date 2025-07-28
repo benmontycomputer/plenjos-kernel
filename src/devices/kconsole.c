@@ -4,10 +4,14 @@
 #include <limine.h>
 #include <limits.h>
 
+#include <stdarg.h>
+
+#include "lib/string.h"
+
 #include "devices/kconsole.h"
 
 extern char *fb;
-extern int fb_scanline,fb_width,fb_height;
+extern int fb_scanline,fb_width,fb_height,fb_bytes_per_pixel;
 
 #define PSF1_FONT_MAGIC 0x0436
 
@@ -103,8 +107,6 @@ void putcharbig(
     }
 }
 
-#define FONT_W 9
-
 // Uses PSF1 format
 void kputchar(
     /* note that this is int, not char as it's a unicode character */
@@ -158,13 +160,6 @@ void kputchar(
     }
 }
 
-size_t strlen(const char *str){
-    size_t len = 0;
-    while (str[len])
-        len++;
-    return len;
-}
-
 void kputs(const char *str, int cx, int cy){
     char *ch = (char *)str;
 
@@ -177,5 +172,19 @@ void kputs(const char *str, int cx, int cy){
         kputchar(*ch,cx,cy,0xffffff,0x000000);
 
         ch+=sizeof(char);
+    }
+}
+
+char indices[] = {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
+
+void kputhex(uint64_t hex, int cx, int cy) {
+    uint64_t adj = hex;
+
+    kputs("0x", cx, cy);
+
+    for(int i = 16; i > 0; i--) {
+        kputchar(indices[adj & 0xf], cx + i + 1, cy, 0xffffff, 0x000000);
+
+        adj = (adj >> 4);
     }
 }

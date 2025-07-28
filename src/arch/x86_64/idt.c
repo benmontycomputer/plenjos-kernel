@@ -2,9 +2,15 @@
 #include <stdbool.h>
 
 #include "arch/x86_64/idt.h"
+#include "arch/x86_64/irq.h"
 #include "arch/x86_64/gdt/gdt.h"
 
-#include "devices/kconsole.h"
+#include "lib/stdio.h"
+
+#include "kernel.h"
+
+#include "memory/kmalloc.h"
+#include "memory/mm.h"
 
 // https://wiki.osdev.org/Interrupts_Tutorial
 
@@ -28,9 +34,57 @@ typedef struct {
 
 static idtr_t idtr;
 
+// The below function will print some debug message for page fault 
+void page_fault_handler(registers_t *regs)
+{
+    // A page fault has occurred.
+    // Retrieve the faulting address from the CR2 register.
+    uint64_t faulting_address;
+    asm volatile("mov %%cr2, %0" : "=r"(faulting_address));
+
+    // Decode the error code to determine the cause of the page fault.
+    int present = !(regs->err_code & 0x1); // Page not present
+    int rw = regs->err_code & 0x2;         // Write operation?
+    int us = regs->err_code & 0x4;         // Processor was in user mode?
+    int reserved = regs->err_code & 0x8;   // Overwritten CPU-reserved bits of page entry?
+    int id = regs->err_code & 0x10;        // Caused by an instruction fetch?
+
+    // Output an error message with details about the page fault.
+    printf("\nPage fault! ( ");
+    if (present) printf("Page not present, ");
+    if (rw) printf("Not writable, ");
+    if (us) printf("User-mode, ");
+    if (reserved) printf("Reserved, ");
+    if (id) printf("Instruction fetch, ");
+    printf(") at address %p\n", faulting_address);
+
+    // printf("%p\n", get_physaddr(faulting_address), 0, 47);
+
+
+    // Additional action to handle the page fault could be added here,
+    // such as invoking a page allocator or terminating a faulty process.
+
+    // Halt the system to prevent further errors (for now).
+    printf("Halting the system due to page fault.\n");
+    hcf();
+}
+
 __attribute__((noreturn))
-void exception_handler() {
-    __asm__ volatile ("cli; hlt"); // Completely hangs the computer
+void exception_handler(registers_t *regs) {
+    // __asm__ volatile ("cli; hlt"); // Completely hangs the computer
+
+    if (regs->int_no == 14) {
+        printf("\nPAGE FAULT\n");
+        page_fault_handler(regs);
+    } else if(regs->int_no == 13) {
+        printf("\nGPF ERROR\n");
+    } else if(regs->int_no < 32) {
+        printf("\nCPU EXCEPTION\n");
+     }else {
+        printf("\nEXCEPTION %p\n", regs->int_no);
+    }
+    
+    hcf();
 }
 
 void idt_set_descriptor(uint8_t vector, void* isr, uint8_t flags) {
@@ -53,13 +107,14 @@ void idt_init() {
     idtr.base = (uintptr_t)&idt[0];
     idtr.limit = (uint16_t)sizeof(idt_entry_t) * IDT_MAX_DESCRIPTORS - 1;
 
-    for (uint8_t vector = 0; vector < 32; vector++) {
+    for (uint8_t vector = 0; vector < IDT_MAX_DESCRIPTORS; vector++) {
         idt_set_descriptor(vector, isr_stub_table[vector], 0x8E);
         vectors[vector] = true;
+        // printf("Registering interrupt %d.\n", vector);
     }
 
     __asm__ volatile ("lidt %0" : : "m"(idtr)); // load the new IDT
     __asm__ volatile ("sti"); // set the interrupt flag
 
-    kputs("Loaded IDT tables.", 0, 4);
+    printf("Loaded IDT tables.\n");
 }

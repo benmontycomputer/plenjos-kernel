@@ -3,7 +3,7 @@
 #include "arch/x86_64/common.h"
 #include "arch/x86_64/pic/pic.h"
 
-#include "devices/kconsole.h"
+#include "lib/stdio.h"
 
 void PIC_sendEOI(uint8_t irq)
 {

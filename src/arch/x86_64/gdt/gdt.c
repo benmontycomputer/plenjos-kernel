@@ -4,7 +4,7 @@
 
 #include "arch/x86_64/gdt/tss.h"
 
-#include <devices/kconsole.h>
+#include <lib/stdio.h>
 
 extern void reload_segments();
 
@@ -60,5 +60,5 @@ void gdt_tss_init() {
 
     reload_segments();
 
-    kputs("Loaded GDT tables.", 0, 3);
+    printf("Loaded GDT tables.\n");
 }

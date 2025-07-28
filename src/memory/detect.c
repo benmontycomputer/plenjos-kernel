@@ -6,10 +6,10 @@
 #include <limine.h>
 #include <limits.h>
 
-#include "memory/detection.h"
-#include "memory/memorymanager.h"
+#include "memory/detect.h"
+#include "memory/mm.h"
 
-#include "devices/kconsole.h"
+#include "lib/stdio.h"
 
 __attribute__((used, section(".limine_requests")))
 static volatile struct limine_paging_mode_request paging_mode_request = {
@@ -56,14 +56,14 @@ static void parse_memmap_limine(struct limine_memmap_response* memmap_response) 
 void detect_memory(struct limine_memmap_response* memmap_response) {
     if (!hhdm_request.response) {
         // Error!
-        kputs("Couldn't get HHDM offset.", 0, 22);
+        printf("Couldn't get HHDM offset.\n");
     } else {
         HHDM_OFFSET = hhdm_request.response->offset;
     }
 
     if (!paging_mode_request.response) {
         // Error!
-        kputs("Couldn't get paging mode.", 0, 23);
+        printf("Couldn't get paging mode.\n");
     } else {
         PAGING_MODE = paging_mode_request.response->mode;
     }

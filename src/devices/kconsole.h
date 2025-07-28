@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 
+#define FONT_W 9
+#define FONT_H 16
+
 // Uses PSF1 format
 void kputchar(
     /* note that this is int, not char as it's a unicode character */
@@ -13,5 +16,6 @@ void kputchar(
     uint32_t fg, uint32_t bg);
 
 void kputs(const char *str, int cx, int cy);
+void kputhex(uint64_t hex, int cx, int cy);
 
 #endif

@@ -3,10 +3,12 @@
 #ifndef _KERNEL_IDT_H
 #define _KERNEL_IDT_H
 
-#define IDT_MAX_DESCRIPTORS 32
+#define IDT_MAX_DESCRIPTORS 52
+
+#include "kernel.h"
 
 void idt_init(void);
 void idt_set_descriptor(uint8_t vector, void* isr, uint8_t flags);
-void exception_handler(void);
+void exception_handler(registers_t *regs);
 
 #endif

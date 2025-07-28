@@ -4,11 +4,12 @@
 
 #include "kernel.h"
 
-#include "devices/kconsole.h"
+#include "lib/stdio.h"
 
 #include "arch/x86_64/gdt/gdt.h"
-
 #include "arch/x86_64/gdt/tss.h"
+
+#include "memory/kmalloc.h"
 
 #define STACK_SIZE 0x1000
 
@@ -43,12 +44,11 @@ void tss_set_entry(int i, uint64_t base, uint32_t limit, uint8_t access, uint8_t
 }
 
 void tss_init() {
-    // uint64_t stack = (uint64_t) kmalloc_a(STACK_SIZE, 1);
-    uint64_t stack = 0;
+    uint64_t stack = (uint64_t) kmalloc_a(STACK_SIZE, 1);
 
     if (!stack) {
         // Memory creation failed! TODO: output error
-        kputs("Stack memory creation failed!", 0, 8);
+        printf("Stack memory creation failed!\n");
         return;
     }
     memset(&tss_obj, 0, sizeof(struct tss));
@@ -60,4 +60,6 @@ void tss_init() {
     uint32_t tss_limit = (uint32_t)(sizeof(struct tss));
 
     tss_set_entry(5, tss_base, tss_limit, 0x89, 0x00);
+
+    printf("TSS initialized.\n");
 }
