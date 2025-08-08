@@ -3,7 +3,7 @@ isr_stub_%+%1:
     cli
                         ; Do not need to push dummy error code 
     push %1             ; Interrupt number
-    
+
     push r15            ; Save general-purpose registers in reverse order (to match RESTORE_REGISTERS)
     push r14
     push r13
@@ -18,6 +18,15 @@ isr_stub_%+%1:
     push rdx
     push rcx
     push rbx
+    push rax
+
+    mov rax, cr4         ; save control registers
+    push rax
+    mov rax, cr3
+    push rax
+    mov rax, cr2
+    push rax
+    mov rax, cr0
     push rax
     
     mov ax, ds           ; Save segment registers
@@ -37,6 +46,16 @@ isr_stub_%+%1:
     mov es, ax
     pop rax
     mov ds, ax
+
+    pop rax             ; restore control registers
+    mov cr0, rax
+    pop rax
+    mov cr2, rax
+    pop rax
+    mov cr3, rax
+    pop rax
+    mov cr4, rax
+
     pop rax             ; Restore general-purpose registers
     pop rbx
     pop rcx
@@ -79,6 +98,16 @@ isr_stub_%+%1:
     push rcx
     push rbx
     push rax
+
+    mov rax, cr4         ; save control registers
+    push rax
+    mov rax, cr3
+    push rax
+    mov rax, cr2
+    push rax
+    mov rax, cr0
+    push rax
+
     mov ax, ds      ; Save segment registers
     push rax
     mov ax, es
@@ -96,6 +125,16 @@ isr_stub_%+%1:
     mov es, ax
     pop rax
     mov ds, ax
+
+    pop rax             ; restore control registers
+    mov cr0, rax
+    pop rax
+    mov cr2, rax
+    pop rax
+    mov cr3, rax
+    pop rax
+    mov cr4, rax
+
     pop rax             ; Restore general-purpose registers
     pop rbx
     pop rcx
@@ -141,6 +180,16 @@ isr_stub_%+%2:
     push rcx
     push rbx
     push rax
+
+    mov rax, cr4         ; save control registers
+    push rax
+    mov rax, cr3
+    push rax
+    mov rax, cr2
+    push rax
+    mov rax, cr0
+    push rax
+
     ; Save segment registers
     mov ax, ds
     push rax
@@ -160,6 +209,16 @@ isr_stub_%+%2:
     mov es, ax
     pop rax
     mov ds, ax
+
+    pop rax             ; restore control registers
+    mov cr0, rax
+    pop rax
+    mov cr2, rax
+    pop rax
+    mov cr3, rax
+    pop rax
+    mov cr4, rax
+
     ; Restore general-purpose registers
     pop rax
     pop rbx
@@ -251,3 +310,4 @@ isr_stub_table:
     dq isr_stub_%+i ; use DQ instead if targeting 64-bit
 %assign i i+1 
 %endrep
+dq isr_stub_%+128

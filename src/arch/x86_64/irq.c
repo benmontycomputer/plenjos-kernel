@@ -14,6 +14,7 @@
 static void (*routines[TOTAL_IRQ])(registers_t *) = { 0 };
 
 void irq_handler(registers_t *regs) {
+    // printf("inter %p\n", regs->int_no);
     void (*handler)(registers_t *r) = routines[regs->int_no - 32];
 
     if (handler) handler(regs);

@@ -19,6 +19,9 @@
 
 #include "memory/detect.h"
 
+#include "timer/hpet.h"
+#include "timer/pit.h"
+
 void init_x86_64() {
     asm volatile("cli");
 
@@ -34,7 +37,9 @@ void init_x86_64() {
 
     is_apic_enabled() ? printf("APIC confirmed enabled.\n") : printf("Couldn't confirm APIC enabled.\n");
 
-    apic_start_timer();
+    // hpet_init();
+    pit_init();
+    // apic_start_timer();
 
     PIC_remap(PIC1, PIC2);
     pic_disable();

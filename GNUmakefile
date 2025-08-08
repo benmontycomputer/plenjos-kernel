@@ -149,7 +149,7 @@ uefi_run:
 		-smp cores=4,threads=1,sockets=1,maxcpus=4 \
 		-boot d \
 		-cdrom ../image.iso \
-		-d guest_errors,cpu_reset,invalid_mem,unimp,int \
+		-d guest_errors,cpu_reset,invalid_mem,unimp \
 		-vga std \
 		-smbios type=0,uefi=on \
 		-rtc base=utc,clock=host \

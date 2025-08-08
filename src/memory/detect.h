@@ -13,6 +13,7 @@
 
 // Virtual address ranges for kernel mode (higher-half)
 #define KERNEL_START_ADDR 0xFFFF800000001000
+#define KERNEL_HEAP_START_ADDR 0xFFFF900000000000
 #define KERNEL_END_ADDR   0xFFFFFFFFFFFFFFFF
 
 extern uint64_t PAGING_MODE;

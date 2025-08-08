@@ -23,6 +23,10 @@
 
 #include "shell/shell.h"
 
+#include "proc/proc.h"
+#include "proc/thread.h"
+#include "proc/scheduler.h"
+
 char *fb;
 int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
 
@@ -136,6 +140,7 @@ void kmain(void) {
     printf("Framebuffer: %p\n", framebuffer->address);
 
     init_memory_manager();
+    init_kernel_heap();
 
 // Setup the GDT
 #if ARCH(X86_64)
@@ -148,7 +153,7 @@ void kmain(void) {
 
 #define helloworld "Hello World!\n"
 
-    char *hwld = (char *)kmalloc(14);
+    char *hwld = (char *)kmalloc_heap(14);
 
     memcpy(hwld, helloworld, 14);
 
@@ -161,9 +166,36 @@ void kmain(void) {
 
     // TODO: free hwld
 
-    
+    char *str;
 
-    start_shell();
+    for (int i = 0; i < 32; i++) {
+        str = (char *)kmalloc_heap(PAGE_LEN);
+
+        #define test_str "[] Testing heap #%d.    "
+
+        memcpy(str, test_str, 25);
+
+        printf(str, i);
+    }
+
+    for (int i = 32; i < 64; i++) {
+        str = (char *)kmalloc_heap(PAGE_LEN);
+
+        #define test_str "[] Testing heap #%d at %p.\n"
+
+        memcpy(str, test_str, 28);
+
+        printf(str, i, str);
+
+        kfree_heap(str);
+    }
+
+    // start_shell();
+    proc_t *shell_proc = create_proc("kshell");
+    thread_t *shell_thread = create_thread(shell_proc, "kshell_t0", start_shell, NULL);
+    thread_ready(shell_thread);
+
+    assign_thread_to_cpu(shell_thread);
 
     // We're done, just hang...
     hcf();

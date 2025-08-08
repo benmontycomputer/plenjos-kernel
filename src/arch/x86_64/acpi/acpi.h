@@ -122,11 +122,25 @@ typedef struct {
     GenericAddressStructure X_PMTimerBlock;
     GenericAddressStructure X_GPE0Block;
     GenericAddressStructure X_GPE1Block;
-} acpi_fadt_header_t;
+} __attribute__((packed)) acpi_fadt_header_t;
 
 typedef struct {
 
 } acpi_dsdt_header_t;
+
+typedef struct {
+    ACPISDTHeader_t h;
+    uint8_t hardware_rev_id;
+    uint8_t comparator_count:5;
+    uint8_t counter_size:1;
+    uint8_t reserved:1;
+    uint8_t legacy_replacement:1;
+    uint16_t pci_vendor_id;
+    GenericAddressStructure address;
+    uint8_t hpet_number;
+    uint16_t minimum_tick;
+    uint8_t page_protection;
+} __attribute__((packed)) acpi_hpet_header_t;
 
 typedef struct {
     uint8_t type;
@@ -169,5 +183,6 @@ void *find_acpi_table(const char *sig);
 extern XSDT_t *xsdt_global;
 extern acpi_madt_header_t *madt_header_global;
 extern acpi_fadt_header_t *fadt_header_global;
+extern acpi_hpet_header_t *hpet_header_global;
 
 #endif

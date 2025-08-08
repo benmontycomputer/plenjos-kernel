@@ -33,6 +33,7 @@ RSDT_t *rsdt_global = NULL;
 XSDT_t *xsdt_global = NULL;
 acpi_madt_header_t *madt_header_global;
 acpi_fadt_header_t *fadt_header_global;
+acpi_hpet_header_t *hpet_header_global;
 RSDP_t *rsdp = NULL;
 RSDP_EXTENDED_t *rsdp_extended = NULL;
 
@@ -144,6 +145,15 @@ void acpi_init() {
     }
 
     fadt_header_global = (acpi_fadt_header_t *)fapc;
+
+    void *hpet = find_acpi_table("HPET");
+
+    if (!hpet) {
+        // Non-fatal error
+        printf("No HPET table.\n");
+    } else {
+        hpet_header_global = (acpi_hpet_header_t *)hpet;
+    }
 
     printf("\n%b\n\n", fadt_header_global->BootArchitectureFlags);
 
