@@ -1,12 +1,14 @@
 #include <stdint.h>
 
+#include "kernel.h"
+
 #include "lib/stdio.h"
 
 #include "memory/detect.h"
 #include "memory/kmalloc.h"
 #include "memory/mm.h"
 
-uint64_t heap_start, heap_end;
+uint64_t kheap_start, kheap_end;
 
 typedef struct heap_segment_info heap_segment_info_t;
 
@@ -19,15 +21,15 @@ struct heap_segment_info {
     bool free;
 };
 
-heap_segment_info_t *last_segment = NULL;
+heap_segment_info_t *kheap_last_segment = NULL;
 
 static inline bool is_page_misaligned(uint64_t ptr) {
     return (bool)(ptr & 0xFFF);
 }
 
 // Set to 16 for debug purposes
-#define HEAP_INIT_PAGES 16
-#define HEAP_INIT_SIZE (PAGE_LEN * HEAP_INIT_PAGES)
+#define KHEAP_INIT_PAGES 160
+#define KHEAP_INIT_SIZE (PAGE_LEN * KHEAP_INIT_PAGES)
 
 #define HEAP_ALLOC_MIN 0x10
 
@@ -48,30 +50,39 @@ void unlock_kheap() {
     kheap_locked = false;
 }
 
+uint64_t *alloc_before_kheap() {
+    uint64_t *frame = (uint64_t *)phys_to_virt(find_next_free_frame());
+
+    memset(frame, 0, PAGE_LEN);
+
+    return frame;
+}
+
+static heap_segment_info_t *kheap_add_segment(size_t len);
+
 void init_kernel_heap() {
-    lock_kheap();
-
-    heap_start = KERNEL_HEAP_START_ADDR;
-    heap_end = KERNEL_HEAP_START_ADDR + HEAP_INIT_SIZE;
-
     uint64_t pos = KERNEL_HEAP_START_ADDR;
 
-    for (size_t i = 0; i < HEAP_INIT_PAGES; i++) {
-        find_page(pos, true, kernel_pml4);
+    for (size_t i = 0; i < 4; i++) {
+        find_page_using_alloc(pos, true, alloc_before_kheap, kernel_pml4);
+        // find_page(pos, true, kernel_pml4);
         pos += PAGE_LEN;
     }
 
-    last_segment = (heap_segment_info_t *)heap_start;
+    kheap_start = KERNEL_HEAP_START_ADDR;
+    kheap_end = KERNEL_HEAP_START_ADDR + PAGE_LEN;
 
-    last_segment->free = true;
-    last_segment->next = NULL;
-    last_segment->prev = NULL;
-    last_segment->size = HEAP_INIT_SIZE - HEAP_HEADER_LEN;
+    kheap_last_segment = (heap_segment_info_t *)kheap_start;
 
-    unlock_kheap();
+    kheap_last_segment->free = true;
+    kheap_last_segment->next = NULL;
+    kheap_last_segment->prev = NULL;
+    kheap_last_segment->size = PAGE_LEN - HEAP_HEADER_LEN;
+
+    kheap_add_segment(KHEAP_INIT_SIZE - (PAGE_LEN * 4));
 }
 
-static heap_segment_info_t *kheap_add_segment(size_t len) {
+static heap_segment_info_t *heap_add_segment(size_t len) {
     if (len < HEAP_ALLOC_MIN) len = HEAP_ALLOC_MIN;
 
     size_t pages = len + HEAP_HEADER_LEN;
@@ -81,27 +92,35 @@ static heap_segment_info_t *kheap_add_segment(size_t len) {
 
     pages = pages / PAGE_LEN;
 
-    uint64_t pg_addr = heap_end & ~(uint64_t)0xFFF;
+    uint64_t pg_addr = kheap_end & ~(uint64_t)0xFFF;
 
     // Map the pages
     for (size_t i = 0; i <= pages; i++) {
         find_page(pg_addr + (i * PAGE_LEN), true, kernel_pml4);
     }
 
-    heap_segment_info_t *new_segment = (heap_segment_info_t *)heap_end;
+    heap_segment_info_t *new_segment = (heap_segment_info_t *)kheap_end;
 
-    last_segment->next = new_segment;
+    kheap_last_segment->next = new_segment;
 
     new_segment->free = true;
-    new_segment->prev = last_segment;
+    new_segment->prev = kheap_last_segment;
     new_segment->next = NULL;
     new_segment->size = len;
 
-    last_segment = new_segment;
+    kheap_last_segment = new_segment;
 
-    heap_end += (len + HEAP_HEADER_LEN);
+    kheap_end += (len + HEAP_HEADER_LEN);
 
     return new_segment;
+}
+
+static heap_segment_info_t *kheap_add_segment(size_t len) {
+    heap_add_segment(len, kheap_start, kheap_end, kheap_last_segment);
+}
+
+static heap_segment_info_t *uheap_add_segment(size_t len) {
+    heap_add_segment(len, uheap_start, uheap_end, uheap_last_segment);
 }
 
 static heap_segment_info_t *kheap_segment_split(heap_segment_info_t *segment, size_t keep_size) {
@@ -122,9 +141,57 @@ static heap_segment_info_t *kheap_segment_split(heap_segment_info_t *segment, si
 
     segment->next = new_segment;
 
-    if (last_segment == segment) last_segment = new_segment;
+    if (kheap_last_segment == segment) kheap_last_segment = new_segment;
 
     return new_segment;
+}
+
+// these can't be freed currently
+void *kmalloc_heap_aligned(uint64_t size) {
+    if (size == 0) return NULL;
+
+    lock_kheap();
+
+    heap_segment_info_t *cur_seg = (heap_segment_info_t *)kheap_start;
+
+    uint64_t addr, needed_size, offset;
+
+    for (;;) {
+        addr = (uint64_t)cur_seg + HEAP_HEADER_LEN;
+        offset = (addr & 0xFFF) ? (PAGE_LEN - (addr & 0xFFF)) : 0;
+        needed_size = size + offset;
+
+        if (cur_seg->free) {
+            if (cur_seg->size > needed_size) {
+                // Split the segment
+                kheap_segment_split(cur_seg, needed_size);
+
+                cur_seg->free = false;
+
+                unlock_kheap();
+                return (void *)((uint64_t)cur_seg + HEAP_HEADER_LEN + offset);
+            } else if (cur_seg->size == needed_size) {
+                cur_seg->free = false;
+
+                unlock_kheap();
+                return (void *)((uint64_t)cur_seg + HEAP_HEADER_LEN + offset);
+            }
+        }
+
+        if (!cur_seg->next) break;
+        cur_seg = cur_seg->next;
+    }
+
+    addr = kheap_end;
+    offset = (addr & 0xFFF) ? (PAGE_LEN - (addr & 0xFFF)) : 0;
+    needed_size = size + offset;
+
+    heap_segment_info_t *seg = kheap_add_segment(needed_size);
+
+    seg->free = false;
+
+    unlock_kheap();
+    return (void *)((uint64_t)seg + HEAP_HEADER_LEN + offset);
 }
 
 void *kmalloc_heap(uint64_t size) {
@@ -132,7 +199,7 @@ void *kmalloc_heap(uint64_t size) {
 
     lock_kheap();
 
-    heap_segment_info_t *cur_seg = (heap_segment_info_t *)heap_start;
+    heap_segment_info_t *cur_seg = (heap_segment_info_t *)kheap_start;
 
     for (;;) {
         if (cur_seg->free) {

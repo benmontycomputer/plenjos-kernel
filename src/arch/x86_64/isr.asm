@@ -265,6 +265,82 @@ IRQ  16,    48      ; APIC Timer Interrupt
 IRQ  17,    49      ; HPET Timer Interrupt
 IRQ  18,    50      ; IPI
 IRQ  19,    51
+IRQ  20,    52
+IRQ  21,    53
+IRQ  22,    54
+IRQ  23,    55
+IRQ  24,    56
+IRQ  25,    57
+IRQ  26,    58
+IRQ  27,    59
+IRQ  28,    60
+IRQ  29,    61
+IRQ  30,    62
+IRQ  31,    63
+IRQ  32,    64
+IRQ  33,    65
+IRQ  34,    66
+IRQ  35,    67
+IRQ  36,    68
+IRQ  37,    69
+IRQ  38,    70
+IRQ  39,    71
+IRQ  40,    72
+IRQ  41,    73
+IRQ  42,    74
+IRQ  43,    75
+IRQ  44,    76
+IRQ  45,    77
+IRQ  46,    78
+IRQ  47,    79
+IRQ  48,    80
+IRQ  49,    81
+IRQ  50,    82
+IRQ  51,    83
+IRQ  52,    84
+IRQ  53,    85
+IRQ  54,    86
+IRQ  55,    87
+IRQ  56,    88
+IRQ  57,    89
+IRQ  58,    90
+IRQ  59,    91
+IRQ  60,    92
+IRQ  61,    93
+IRQ  62,    94
+IRQ  63,    95
+IRQ  64,    96
+IRQ  65,    97
+IRQ  66,    98
+IRQ  67,    99
+IRQ  68,    100
+IRQ  69,    101
+IRQ  70,    102
+IRQ  71,    103
+IRQ  72,    104
+IRQ  73,    105
+IRQ  74,    106
+IRQ  75,    107
+IRQ  76,    108
+IRQ  77,    109
+IRQ  78,    110
+IRQ  79,    111
+IRQ  80,    112
+IRQ  81,    113
+IRQ  82,    114
+IRQ  83,    115
+IRQ  84,    116
+IRQ  85,    117
+IRQ  86,    118
+IRQ  87,    119
+IRQ  88,    120
+IRQ  89,    121
+IRQ  90,    122
+IRQ  91,    123
+IRQ  92,    124
+IRQ  93,    125
+IRQ  94,    126
+IRQ  95,    127
 
 ; Custom System Call
 IRQ  96,    128    ; System Call
@@ -306,8 +382,7 @@ isr_no_err_stub 31
 global isr_stub_table
 isr_stub_table:
 %assign i 0 
-%rep    52
+%rep    129
     dq isr_stub_%+i ; use DQ instead if targeting 64-bit
 %assign i i+1 
 %endrep
-dq isr_stub_%+128

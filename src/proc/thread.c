@@ -9,6 +9,7 @@
 #include "arch/x86_64/gdt/gdt.h"
 
 #include "lib/string.h"
+#include "lib/stdio.h"
 
 uint64_t next_tid = 0;
 
@@ -51,7 +52,10 @@ thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), vo
     thread->regs.iret_rflags = DEFAULT_FLAGS;
 
     // Set the instruction pointer and the function argument
+    // map_virtual_memory_using_alloc(get_physaddr((uint64_t)func), (uint64_t)func, 80000, PAGE_FLAG_PRESENT | PAGE_FLAG_USER, alloc_paging_node, proc->pml4);
+    // map_virtual_memory_using_alloc(get_physaddr((uint64_t)arg), (uint64_t)arg, 80000, PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
     thread->regs.iret_rip = (uint64_t)func;
+    printf("Thread info: func addr %p, func phys addr %p\n", func, get_physaddr((uint64_t)func));
     thread->regs.rdi = (uint64_t)arg;
 
     // Set the page table

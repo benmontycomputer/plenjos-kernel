@@ -9,7 +9,7 @@
 
 #include "lib/stdio.h"
 
-#define TOTAL_IRQ 32
+#define TOTAL_IRQ 96
 
 static void (*routines[TOTAL_IRQ])(registers_t *) = { 0 };
 

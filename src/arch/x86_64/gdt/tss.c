@@ -44,7 +44,7 @@ void tss_set_entry(int i, uint64_t base, uint32_t limit, uint8_t access, uint8_t
 }
 
 void tss_init() {
-    uint64_t stack = (uint64_t) kmalloc_a(STACK_SIZE, 1);
+    uint64_t stack = (uint64_t) kmalloc_heap_aligned(STACK_SIZE);
 
     if (!stack) {
         // Memory creation failed! TODO: output error

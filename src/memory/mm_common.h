@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 
 // Paging memory manager
 #define PAGING_FLAG_PRESENT         0x001

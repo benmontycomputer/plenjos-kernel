@@ -27,6 +27,8 @@
 #include "proc/thread.h"
 #include "proc/scheduler.h"
 
+#include "syscall/syscall.h"
+
 char *fb;
 int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
 
@@ -175,7 +177,7 @@ void kmain(void) {
 
         memcpy(str, test_str, 25);
 
-        printf(str, i);
+        // printf(str, i);
     }
 
     for (int i = 32; i < 64; i++) {
@@ -185,17 +187,19 @@ void kmain(void) {
 
         memcpy(str, test_str, 28);
 
-        printf(str, i, str);
+        // printf(str, i, str);
 
         kfree_heap(str);
     }
 
-    // start_shell();
-    proc_t *shell_proc = create_proc("kshell");
+    syscalls_init();
+
+    start_shell();
+    /* proc_t *shell_proc = create_proc("kshell");
     thread_t *shell_thread = create_thread(shell_proc, "kshell_t0", start_shell, NULL);
     thread_ready(shell_thread);
 
-    assign_thread_to_cpu(shell_thread);
+    assign_thread_to_cpu(shell_thread); */
 
     // We're done, just hang...
     hcf();

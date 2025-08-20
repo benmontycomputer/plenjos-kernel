@@ -69,7 +69,7 @@ void *find_acpi_table(const char *sig) {
 uint64_t acpi_map_table_mem(uint64_t phys, size_t size) {
     uint64_t offset = phys & 0xFFF;
 
-    map_virtual_memory(phys - offset, (uint64_t)size + offset, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE);
+    map_virtual_memory(phys - offset, (uint64_t)size + offset, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, kernel_pml4);
 
     return phys_to_virt(phys);
 }
@@ -134,7 +134,8 @@ void acpi_init() {
     madt_header_global = (acpi_madt_header_t *)apic;
 
     // Map the memory for the local apic (each cpu has one, but the address is the same)
-    map_virtual_memory(madt_header_global->lapic_address, 4096, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE);
+    printf("lapic addr: %p\n\n", madt_header_global->lapic_address);
+    map_virtual_memory(madt_header_global->lapic_address, 4096, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, kernel_pml4);
     LAPIC_BASE = phys_to_virt(madt_header_global->lapic_address);
 
     void *fapc = find_acpi_table("FACP");

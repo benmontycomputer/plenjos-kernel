@@ -31,6 +31,8 @@ void init_memory_manager() {
 
     init_paging();
 
+    parse_memmap_limine(memmap_request.response);
+
     // This will crash if paging isn't properly set up.
     // *((char *)(KERNEL_START_ADDR)) = 0;
 }

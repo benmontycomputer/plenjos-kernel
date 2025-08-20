@@ -1,74 +1,56 @@
 #include <stdint.h>
 
-#include "lib/stdio.h"
 #include "kernel.h"
+#include "lib/stdio.h"
 
-#include "memory/mm.h"
 #include "memory/detect.h"
 #include "memory/kmalloc.h"
+#include "memory/mm.h"
 
-uint64_t *frames; // start of bitset frames
-uint64_t nframes; // Total numbers of frames
+bool phys_mem_lock;
 
-void init_pmm() {
-    nframes = (uint64_t)PHYS_MEM_USEABLE_LENGTH / (uint64_t)FRAME_LEN;         // Total number of frames in the memory
+// PMM doesn't need to be locked
+uint32_t phys_mem_ref_frame(phys_mem_free_frame_t *frame) {
+    uint32_t refcnt = (frame->flags & ~FRAME_FLAG_USABLE);
 
-    frames = (uint64_t*)kmalloc_a(sizeof(uint64_t) * (nframes + 1) / BITMAP_LEN, 1); // Allocate memory for the bitmap array
-    if(frames == NULL){
-        // printf("[Error] PMM: Failed to allocate memory for frames\n");
-        printf("Couldn't alloc memory for frames.\n");
-        return;
+    if (refcnt >> 23) {
+        printf("Somehow the refcnt on frame %p will be too big. Halt!\n", frame);
+        hcf();
     }
-    // clear the memory of frames array
-    memset(frames, 0, sizeof(uint64_t) * (nframes + 1) / BITMAP_LEN);
 
-    // printf(" [-] Successfully initialized PMM!\n");
+    refcnt++;
+
+    frame->flags &= FRAME_FLAG_USABLE;
+    frame->flags |= refcnt;
+
+    return refcnt;
 }
 
-// set the value of frames array by using bit no
-void set_frame(uint64_t bit_no) {
-    if (bit_no < nframes) {
-        return;
-    } // check either bit_no is less than total nframes i.e. 0 to nframes-1
+// PMM doesn't need to be locked
+uint32_t phys_mem_unref_frame(phys_mem_free_frame_t *frame) {
+    uint32_t refcnt = (frame->flags & ~FRAME_FLAG_USABLE);
 
-    uint64_t bitmap_idx = INDEX_FROM_BIT_NO(bit_no);
-    uint64_t bitmap_off = OFFSET_FROM_BIT_NO(bit_no);
+    if (refcnt == 0) { return 0; }
 
-    frames[bitmap_idx] |= (0x1 << bitmap_off);       // Set the bit
+    return --(frame->flags);
 }
 
-// Static function to find the first free frame.
-// The below function will return a valid bit number or invalid bit no -1
-uint64_t next_free_frame_bit()
-{
-    uint64_t free_bit = (uint64_t)-1;
-    bool found = false;
-
-    for (uint64_t bitmap_idx = 0; (bitmap_idx < INDEX_FROM_BIT_NO(nframes)) && !found; bitmap_idx++)
-    {
-        if (frames[bitmap_idx] != 0xFFFFFFFFFFFFFFFF) // if all bits not set, i.e. there has at least one bit is clear
-        {    
-            for (uint64_t bitmap_off = 0; bitmap_off < BITMAP_LEN; bitmap_off++)
-            {
-                uint64_t toTest = (uint64_t) 0x1ULL << bitmap_off; // Ensure the shift is handled as a 64-bit value.ULL means Unsigned Long Long 
-
-                if ( !(frames[bitmap_idx] & toTest) ) // if corresponding bit is zero
-                {
-                    free_bit = CONVERT_BIT_NO(bitmap_idx, bitmap_off); // return corresponding bit number i.e frame index
-                    found = true;
-                    break;
-                }
-                continue; // If the current bit is set, continue to the next bit in the bitmap.
-            }
+void lock_pmm() {
+    for (;;) {
+        if (!phys_mem_lock) {
+            phys_mem_lock = true;
+            return;
         }
-        continue;   // If all bits in the current bitmap are set, continue to the next bitmap index.
-   }
-   return free_bit; // Return an invalid frame index to indicate failure.
+    }
 }
 
-void alloc_page_frame(page_t *page, int user, int writeable) {
+void unlock_pmm() {
+    phys_mem_lock = false;
+}
+
+/* void alloc_page_frame(page_t *page, int user, int writeable) {
     // idx is now the index of the first free frame.
-    uint64_t bit = next_free_frame_bit(); 
+    uint64_t bit = next_free_frame_bit();
 
     if (bit == (uint64_t) -1) {
         printf("No free frames for paging. Halt!\n");
@@ -84,4 +66,73 @@ void alloc_page_frame(page_t *page, int user, int writeable) {
     page->frame = (uint64_t) (PHYS_MEM_HEAD + (bit * FRAME_LEN)) >> 12;     // Store physical base address
 
     PHYS_MEM_HEAD += FRAME_LEN;            // Move the physical memory head to the next frame
+} */
+
+phys_mem_free_frame_t *fm2 = NULL;
+
+uint64_t *alloc() {
+    printf("alloc called in mm_phys");
+    hcf();
+    return NULL;
+}
+
+uint64_t find_next_free_frame() {
+    lock_pmm();
+
+    phys_mem_free_frame_t *frame = phys_mem_frame_map_next_free;
+
+    if ((!frame) || frame >= (phys_mem_frame_map + phys_mem_frame_map_size)) {
+        printf("No free frames! Last one: %p.\n", fm2);
+        return 0;
+        // hcf();
+    }
+    fm2 = frame;
+
+    if (!(frame->flags & FRAME_FLAG_USABLE)) {
+        printf("Unuseable frame (virt address %p) listed in memory map. This is likely due to corruption. Halt!\n",
+               frame);
+        hcf();
+    }
+
+    if (frame->flags & ~FRAME_FLAG_USABLE) {
+        printf("The next free frame is already referenced! Halt!\n");
+        hcf();
+    }
+
+    phys_mem_ref_frame(frame);
+
+    phys_mem_frame_map_next_free = (phys_mem_free_frame_t *)decode_struct_frame_ptr(frame->next_free);
+    if (!frame->next_free) { phys_mem_frame_map_next_free = NULL; }
+
+    // printf("%p -> %p -> %p\n", 0xFFFF800000000000, encode_struct_frame_ptr(0xFFFF800000000000),
+    // decode_struct_frame_ptr(encode_struct_frame_ptr(0xFFFF800000000000)));
+    // printf("frame %p, frame encoded %p, frame next %p, frame next decoded %p\n", frame, encode_struct_frame_ptr((uint64_t)frame), frame->next_free, decode_struct_frame_ptr((uint64_t)frame->next_free));
+    if (phys_mem_frame_map_next_free) phys_mem_frame_map_next_free->prev_free = 0;
+
+    if (frame->prev_free) {
+        printf("The first free frame has prev_free set. This shouldn't happen, but we'll continue anyways. Frame: %p, "
+               "prev: %p, undecoded prev %p, next %p, undecoded next %p\n",
+               frame, decode_struct_frame_ptr(frame->prev_free), frame->prev_free,
+               decode_struct_frame_ptr(frame->next_free), frame->next_free);
+        hcf();
+        ((phys_mem_free_frame_t *)decode_struct_frame_ptr(frame->prev_free))->next_free
+            = encode_struct_frame_ptr((uint64_t)phys_mem_frame_map_next_free);
+        if (phys_mem_frame_map_next_free)
+            phys_mem_frame_map_next_free->prev_free = encode_struct_frame_ptr(frame->prev_free);
+    }
+
+    // These are kept at zero for non-free frames so we don't have to manage them.
+    frame->next_free = 0;
+    frame->prev_free = 0;
+
+    unlock_pmm();
+
+    return frame_addr_to_phys_addr((uint64_t)frame);
+}
+
+void alloc_page_frame(page_t *page, int user, int writeable) {
+    page->present = 1;
+    page->rw = writeable;
+    page->user = user;
+    page->frame = find_next_free_frame();
 }

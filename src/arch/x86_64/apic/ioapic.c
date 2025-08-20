@@ -73,6 +73,6 @@ void enable_ioapic() {
     outb(0x22, 0x70); // select the IOAPIC indirect register
     outb(0x23, 0x01); // sets the IOAPIC indirect register to 1
 
-    map_virtual_memory(IOAPIC_ADDR, 4096, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE);
+    map_virtual_memory(IOAPIC_ADDR, 4096, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, kernel_pml4);
     IOAPIC_ADDR = phys_to_virt(IOAPIC_ADDR);
 }
