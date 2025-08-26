@@ -155,6 +155,19 @@ uefi_run:
 		-rtc base=utc,clock=host \
         -no-reboot
 
+uefi_run_gdb:
+	qemu-system-x86_64 \
+		-m 4096 \
+		-smp cores=4,threads=1,sockets=1,maxcpus=4 \
+		-boot d \
+		-cdrom ../image.iso \
+		-d guest_errors,cpu_reset,invalid_mem,unimp \
+		-vga std \
+		-smbios type=0,uefi=on \
+		-rtc base=utc,clock=host \
+        -no-reboot \
+        -s -S
+
 #-device i8042
 
 #qemu-system-x86_64 \

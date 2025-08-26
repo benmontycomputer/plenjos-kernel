@@ -25,8 +25,8 @@ uint64_t read_msr(uint32_t msr) {
 void write_msr(uint32_t msr, uint64_t val) {
    uint32_t lo, hi;
 
-   lo = val >> 32;
-   hi = (uint64_t)(val & 0xFFFFFFFF);
+   lo = (uint64_t)(val & 0xFFFFFFFF);
+   hi = val >> 32;
 
    asm volatile("wrmsr" : : "a"(lo), "d"(hi), "c"(msr));
 }

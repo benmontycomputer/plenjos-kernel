@@ -12,6 +12,8 @@
 
 #include "arch/x86_64/irq.h"
 
+#include "devices/input/keyboard/keyboard.h"
+
 uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_t rsi, uint64_t rdi) {
     uint64_t out;
 
@@ -32,51 +34,130 @@ uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_
 }
 
 extern char *fb;
-extern int fb_scanline,fb_width,fb_height,fb_bytes_per_pixel;
+extern int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
 
 registers_t *syscall_routine(registers_t *regs) {
     uint64_t call = regs->rax;
 
+    pml4_t *current_pml4;
+
+    bool valid;
+
     switch (call) {
     case SYSCALL_GET_FB:
+        // rbx: pointer to struct for framebuffer data
         // Map the framebuffer into the currently loaded page table
-        pml4_t *current_pml4 = (pml4_t *)get_cr3_addr();
+        // current_pml4 = (pml4_t *)get_cr3_addr();
         // TODO: check if framebuffer is in use
-        map_virtual_memory(virt_to_phys((uint64_t)fb), fb_scanline * fb_height, PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, current_pml4);
+        current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
+        map_virtual_memory(virt_to_phys((uint64_t)fb), fb_scanline * fb_height,
+                           PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, current_pml4);
 
-        regs->rax = (uint64_t)fb;
+        valid = true;
+
+        uint64_t rbx = regs->rbx;
+
+        if (rbx & 0xFFF) {
+            printf("The fb_info pointer must be page aligned!\n");
+            valid = false;
+        } else {
+            page_t *page = find_page(rbx, false, current_pml4);
+            if (!page) {
+                printf("Page at %p not mapped, can't write fb value.\n", rbx);
+                valid = false;
+            } else if (!page->user) {
+                printf("Page at %p not user accessible, can't write fb value.\n", rbx);
+                valid = false;
+            } else if (!page->rw) {
+                printf("Page at %p not writeable, can't write fb value.\n", rbx);
+                valid = false;
+            }
+        }
+
+        if (valid) {
+            fb_info_t *out = (fb_info_t *)phys_to_virt(get_physaddr(rbx, current_pml4));
+
+            memset(out, 0, sizeof(fb_info_t));
+
+            out->fb_bytes_per_pixel = fb_bytes_per_pixel;
+            out->fb_height = fb_height;
+            out->fb_ptr = fb;
+            out->fb_scanline = fb_scanline;
+            out->fb_width = fb_width;
+
+            regs->rax = rbx;
+        } else {
+            regs->rax = 0;
+        }
         break;
     case SYSCALL_GET_KB:
         break;
+    case SYSCALL_MEMMAP:
+        current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
+
+        uint64_t virt = regs->rbx;
+        uint64_t size = regs->rcx;
+
+        uint64_t voffs;
+
+        for (uint64_t i = 0; i < size; i += PAGE_LEN) {
+            voffs = virt + i;
+            if (get_physaddr(voffs, current_pml4)) {
+                printf("WARNING: the pml4 table at vaddr %p already has %p mapped.\n", current_pml4, voffs);
+            }
+            map_virtual_memory_using_alloc(find_next_free_frame(), voffs, PAGE_LEN,
+                                           PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node,
+                                           current_pml4);
+        }
+
+        break;
     case SYSCALL_PRINT:
-        // map_virtual_memory(virt_to_phys((uint64_t)fb), fb_scanline * fb_height, PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, current_pml4);
-        uint64_t str_ptr = regs->rbx;
+        // map_virtual_memory(virt_to_phys((uint64_t)fb), fb_scanline * fb_height, PAGE_FLAG_PRESENT | PAGE_FLAG_USER |
+        // PAGE_FLAG_WRITE, current_pml4);
+        current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
+
+        uint64_t str_ptr = phys_to_virt(get_physaddr(regs->rbx, current_pml4));
 
         size_t len = strlen((const char *)str_ptr);
 
-        bool valid = true;
+        valid = true;
 
-        for (uint64_t i = str_ptr & ~0xFFF; i < str_ptr + len; i += PAGE_LEN) {
-            if (!get_physaddr(i)) {
+        // printf("str virt: %p, str len: %p, kernel pml4 virt: %p; current pml4 virt: %p\n", str_ptr, len, kernel_pml4,
+        // current_pml4);
+
+        for (uint64_t i = 0; i < len; i += PAGE_LEN) {
+            // TODO: check that the addr is user-accessible (idk if the autocreate option on find_page works rn)
+            page_t *page = find_page(regs->rbx + i, false, current_pml4);
+            if (!page || !(page->present)) {
+                printf("Failed at %p (i=%p): page not mapped\n", regs->rbx + i, i);
+                valid = false;
+                break;
+            }
+            if (!page->user) {
+                printf("Failed at %p (i=%p): permission denied (not user accessible)\n", regs->rbx + i, i);
                 valid = false;
                 break;
             }
         }
 
-        if (valid) {
-            uint64_t str_phys = get_physaddr(str_ptr);
-
-            // TODO: switch to kernel pml4
-
-            const char *str = (const char *)phys_to_virt(str_phys);
-
-            printf("%s", str);
-
-            // TODO: back to user pml4
-        }
-
+        if (valid) { printf("%s", str_ptr); }
+        break;
+    case SYSCALL_PRINT_PTR:
+        printf("%p", regs->rbx);
         break;
     case SYSCALL_READ:
+        while (kbd_buffer_empty()) {
+            asm volatile("sti");
+            // printf("empty\n");
+        }
+
+        char ch;
+        kbd_buffer_pop(&ch);
+
+        // printf("%c", ch);
+
+        regs->rax = (uint64_t)ch;
+
         break;
     default:
         break;

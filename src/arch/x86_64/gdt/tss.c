@@ -9,9 +9,7 @@
 #include "arch/x86_64/gdt/gdt.h"
 #include "arch/x86_64/gdt/tss.h"
 
-#include "memory/kmalloc.h"
-
-#define STACK_SIZE 0x1000
+#include "memory/mm.h"
 
 extern uint64_t gdt_entries[num_gdt_entries];
 
@@ -44,22 +42,42 @@ void tss_set_entry(int i, uint64_t base, uint32_t limit, uint8_t access, uint8_t
 }
 
 void tss_init() {
-    uint64_t stack = (uint64_t) kmalloc_heap_aligned(STACK_SIZE);
+    uint64_t stack = TSS_STACK_ADDR;
 
-    if (!stack) {
-        // Memory creation failed! TODO: output error
-        printf("Stack memory creation failed!\n");
-        return;
+    for (uint64_t i = 0; i < KERNEL_STACK_SIZE; i += PAGE_LEN) {
+        uint64_t frame = find_next_free_frame();
+        if (!frame) {
+            printf("Stack memory creation failed!\n");
+            hcf();
+        }
+        map_virtual_memory_using_alloc(frame, stack + i, true, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, kernel_pml4);
     }
+
+    stack += KERNEL_STACK_SIZE;
+    TSS_STACK_ADDR += KERNEL_STACK_SIZE;
+
+    printf("TSS stack addr: %p\n", stack);
+
     memset(&tss_obj, 0, sizeof(struct tss));
 
-    tss_obj.rsp0 = stack + STACK_SIZE;
+    tss_obj.rsp0 = stack;
     tss_obj.iopb_offset = sizeof(struct tss);
 
     uint64_t tss_base = (uint64_t)&tss_obj;
     uint32_t tss_limit = (uint32_t)(sizeof(struct tss));
 
-    tss_set_entry(5, tss_base, tss_limit, 0x89, 0x00);
+    // tss_set_entry(5, tss_base, tss_limit, 0x89, 0x00);
+
+    gdt_tss_desc_t *tss_seg = (gdt_tss_desc_t *)&gdt_entries[5];
+
+    tss_seg->limit_0 = tss_limit & 0xFFFF;
+    tss_seg->addr_0 = tss_base & 0xFFFF;
+    tss_seg->addr_1 = (tss_base & 0xFF0000) >> 16;
+    tss_seg->type_0 = 0x89;
+    tss_seg->limit_1 = (tss_limit & 0xF0000) >> 16;
+    tss_seg->addr_2 = (tss_base & 0xFF000000) >> 24;
+    tss_seg->addr_3 = tss_base >> 32;
+    tss_seg->reserved = 0;
 
     printf("TSS initialized.\n");
 }

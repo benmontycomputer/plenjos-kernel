@@ -64,7 +64,7 @@ void init_kernel_heap() {
     uint64_t pos = KERNEL_HEAP_START_ADDR;
 
     for (size_t i = 0; i < 4; i++) {
-        find_page_using_alloc(pos, true, alloc_before_kheap, kernel_pml4);
+        find_page_using_alloc(pos, true, alloc_before_kheap, 0, kernel_pml4);
         // find_page(pos, true, kernel_pml4);
         pos += PAGE_LEN;
     }
@@ -82,7 +82,7 @@ void init_kernel_heap() {
     kheap_add_segment(KHEAP_INIT_SIZE - (PAGE_LEN * 4));
 }
 
-static heap_segment_info_t *heap_add_segment(size_t len) {
+static heap_segment_info_t *kheap_add_segment(size_t len) {
     if (len < HEAP_ALLOC_MIN) len = HEAP_ALLOC_MIN;
 
     size_t pages = len + HEAP_HEADER_LEN;
@@ -115,14 +115,6 @@ static heap_segment_info_t *heap_add_segment(size_t len) {
     return new_segment;
 }
 
-static heap_segment_info_t *kheap_add_segment(size_t len) {
-    heap_add_segment(len, kheap_start, kheap_end, kheap_last_segment);
-}
-
-static heap_segment_info_t *uheap_add_segment(size_t len) {
-    heap_add_segment(len, uheap_start, uheap_end, uheap_last_segment);
-}
-
 static heap_segment_info_t *kheap_segment_split(heap_segment_info_t *segment, size_t keep_size) {
     if (!segment) return NULL;
     if (keep_size < HEAP_ALLOC_MIN) keep_size = HEAP_ALLOC_MIN;
@@ -144,54 +136,6 @@ static heap_segment_info_t *kheap_segment_split(heap_segment_info_t *segment, si
     if (kheap_last_segment == segment) kheap_last_segment = new_segment;
 
     return new_segment;
-}
-
-// these can't be freed currently
-void *kmalloc_heap_aligned(uint64_t size) {
-    if (size == 0) return NULL;
-
-    lock_kheap();
-
-    heap_segment_info_t *cur_seg = (heap_segment_info_t *)kheap_start;
-
-    uint64_t addr, needed_size, offset;
-
-    for (;;) {
-        addr = (uint64_t)cur_seg + HEAP_HEADER_LEN;
-        offset = (addr & 0xFFF) ? (PAGE_LEN - (addr & 0xFFF)) : 0;
-        needed_size = size + offset;
-
-        if (cur_seg->free) {
-            if (cur_seg->size > needed_size) {
-                // Split the segment
-                kheap_segment_split(cur_seg, needed_size);
-
-                cur_seg->free = false;
-
-                unlock_kheap();
-                return (void *)((uint64_t)cur_seg + HEAP_HEADER_LEN + offset);
-            } else if (cur_seg->size == needed_size) {
-                cur_seg->free = false;
-
-                unlock_kheap();
-                return (void *)((uint64_t)cur_seg + HEAP_HEADER_LEN + offset);
-            }
-        }
-
-        if (!cur_seg->next) break;
-        cur_seg = cur_seg->next;
-    }
-
-    addr = kheap_end;
-    offset = (addr & 0xFFF) ? (PAGE_LEN - (addr & 0xFFF)) : 0;
-    needed_size = size + offset;
-
-    heap_segment_info_t *seg = kheap_add_segment(needed_size);
-
-    seg->free = false;
-
-    unlock_kheap();
-    return (void *)((uint64_t)seg + HEAP_HEADER_LEN + offset);
 }
 
 void *kmalloc_heap(uint64_t size) {

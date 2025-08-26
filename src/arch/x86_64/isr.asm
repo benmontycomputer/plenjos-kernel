@@ -1,171 +1,9 @@
-%macro isr_err_stub 1
-isr_stub_%+%1:
-    cli
-                        ; Do not need to push dummy error code 
-    push %1             ; Interrupt number
+extern TSS_STACK_ADDR
+extern kernel_pml4_phys
 
-    push r15            ; Save general-purpose registers in reverse order (to match RESTORE_REGISTERS)
-    push r14
-    push r13
-    push r12
-    push r11
-    push r10
-    push r9
-    push r8
-    push rsi
-    push rdi
-    push rbp
-    push rdx
-    push rcx
-    push rbx
-    push rax
-
-    mov rax, cr4         ; save control registers
-    push rax
-    mov rax, cr3
-    push rax
-    mov rax, cr2
-    push rax
-    mov rax, cr0
-    push rax
-    
-    mov ax, ds           ; Save segment registers
-    push rax
-    mov ax, es
-    push rax
-    push fs
-    push gs
-
-    mov rdi, rsp         ; Pass pointer to the `registers_t` structure
-    cld                  ; Clear the direction flag
-    call exception_handler     ; Call the interrupt handler
-
-    pop gs               ; Restore segment registers
-    pop fs
-    pop rax
-    mov es, ax
-    pop rax
-    mov ds, ax
-
-    pop rax             ; restore control registers
-    mov cr0, rax
-    pop rax
-    mov cr2, rax
-    pop rax
-    mov cr3, rax
-    pop rax
-    mov cr4, rax
-
-    pop rax             ; Restore general-purpose registers
-    pop rbx
-    pop rcx
-    pop rdx
-    pop rbp
-    pop rdi
-    pop rsi
-    pop r8
-    pop r9
-    pop r10
-    pop r11
-    pop r12
-    pop r13
-    pop r14
-    pop r15
-    add rsp, 8           ; Remove the pushed interrupt number only
-
-    iretq                ; Return from the interrupt using IRETQ
-%endmacro
-; if writing for 64-bit, use iretq instead
-%macro isr_no_err_stub 1
-isr_stub_%+%1:
-    cli;
-
-    push 0          ; Dummy error code
-    push %1         ; Interrupt number
-    
-    push r15        ; Save general-purpose registers in reverse order (to match RESTORE_REGISTERS)
-    push r14
-    push r13
-    push r12
-    push r11
-    push r10
-    push r9
-    push r8
-    push rsi
-    push rdi
-    push rbp
-    push rdx
-    push rcx
-    push rbx
-    push rax
-
-    mov rax, cr4         ; save control registers
-    push rax
-    mov rax, cr3
-    push rax
-    mov rax, cr2
-    push rax
-    mov rax, cr0
-    push rax
-
-    mov ax, ds      ; Save segment registers
-    push rax
-    mov ax, es
-    push rax
-    push fs
-    push gs
-    
-    mov rdi, rsp         ; Pass pointer to the `registers_t` structure
-    cld                  ; Clear the direction flag
-    call exception_handler     ; Call the interrupt handler
-
-    pop gs               ; Restore segment registers
-    pop fs
-    pop rax
-    mov es, ax
-    pop rax
-    mov ds, ax
-
-    pop rax             ; restore control registers
-    mov cr0, rax
-    pop rax
-    mov cr2, rax
-    pop rax
-    mov cr3, rax
-    pop rax
-    mov cr4, rax
-
-    pop rax             ; Restore general-purpose registers
-    pop rbx
-    pop rcx
-    pop rdx
-    pop rbp
-    pop rdi
-    pop rsi
-    pop r8
-    pop r9
-    pop r10
-    pop r11
-    pop r12
-    pop r13
-    pop r14
-    pop r15
-    
-    add rsp, 16         ; Clean up interrupt no and dummy error code
-
-    iretq               ; Return from the interrupt using IRETQ (iret values remain intact)
-%endmacro
-
-; Setup Interrupt Request(IRQ)
-%macro IRQ 2
-isr_stub_%+%2:
-    cli
-    ; Stack already has 5*8=40 bytes data
-    push 0               ; Dummy error code
-    push %2              ; Interrupt number
-    
+%macro isr_save_ctx 0
     ; Save general-purpose registers in reverse order (to match RESTORE_REGISTERS)
-    push r15
+    push r15 ; r15 is pushed to stack earlier
     push r14
     push r13
     push r12
@@ -191,17 +29,16 @@ isr_stub_%+%2:
     push rax
 
     ; Save segment registers
+    xor rax, rax ; zeroes out rax
     mov ax, ds
     push rax
     mov ax, es
     push rax
     push fs
     push gs
-    
-    mov rdi, rsp                    ; Pass the current stack pointer to `pic_irq_handler`
-    cld
-    call irq_handler
-    
+%endmacro
+
+%macro isr_restore_ctx 0
     ; Restore segment registers
     pop gs
     pop fs
@@ -235,6 +72,135 @@ isr_stub_%+%2:
     pop r13
     pop r14
     pop r15
+%endmacro
+
+%macro isr_err_stub 1
+isr_stub_%+%1:
+    cli
+
+    push rax
+    mov ax, ds
+    cmp ax, 0x10
+    je .isr_err_skip_switch_ctx
+    ; pop rax
+
+    .isr_err_skip_switch_ctx:
+    pop rax
+
+                        ; Do not need to push dummy error code 
+    push %1             ; Interrupt number
+
+    isr_save_ctx
+
+    mov rdi, rsp         ; Pass pointer to the `registers_t` structure
+    cld                  ; Clear the direction flag
+    call exception_handler     ; Call the interrupt handler
+
+    isr_restore_ctx
+
+    add rsp, 8           ; Remove the pushed interrupt number only
+
+    iretq                ; Return from the interrupt using IRETQ
+%endmacro
+; if writing for 64-bit, use iretq instead
+%macro isr_no_err_stub 1
+isr_stub_%+%1:
+    cli;
+
+    push 0          ; Dummy error code
+    push %1         ; Interrupt number
+    
+    isr_save_ctx
+    
+    mov rdi, rsp         ; Pass pointer to the `registers_t` structure
+    cld                  ; Clear the direction flag
+    call exception_handler     ; Call the interrupt handler
+
+    isr_restore_ctx
+    
+    add rsp, 16         ; Clean up interrupt no and dummy error code
+
+    iretq               ; Return from the interrupt using IRETQ (iret values remain intact)
+%endmacro
+
+; Setup Interrupt Request(IRQ)
+%macro IRQ 2
+isr_stub_%+%2:
+    cli
+
+    push rax
+    mov ax, ds
+    cmp ax, 0x10
+    ; je .irq_skip_switch_ctx
+    jmp .irq_skip_switch_ctx
+    .test1:
+    cli
+    hlt
+    jmp .test1
+
+    pop rax
+
+    ; Stack already has 5*8=40 bytes data
+    push 0               ; Dummy error code
+    push %2              ; Interrupt number
+
+    swapgs
+
+    push rax
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+
+    mov rax, [gs:0x10]
+
+    mov cr3, rax; load page tables
+    pop rax
+    ; mov rsp, [gs:0x00] ; load stack pointer
+
+    isr_save_ctx
+
+    mov rdi, rsp                    ; Pass the current stack pointer to `pic_irq_handler`
+    cld
+
+    call irq_handler
+
+    isr_restore_ctx
+
+    add rsp, 16 ; Clean up interrupt no and dummy error code
+
+    push rax
+    mov ax, 0x20
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+
+    mov rax, [gs:0x10]
+
+    mov cr3, rax; load page tables
+    pop rax
+    ; mov rsp, [gs:0x00] ; load stack pointer
+
+    swapgs
+
+    iretq
+
+    .irq_skip_switch_ctx:
+    pop rax
+
+    ; Stack already has 5*8=40 bytes data
+    push 0               ; Dummy error code
+    push %2              ; Interrupt number
+
+    isr_save_ctx
+    
+    mov rdi, rsp                    ; Pass the current stack pointer to `pic_irq_handler`
+    cld
+
+    call irq_handler
+
+    isr_restore_ctx
+
     add rsp, 16 ; Clean up interrupt no and dummy error code
     
     iretq                    ; Return from Interrupt

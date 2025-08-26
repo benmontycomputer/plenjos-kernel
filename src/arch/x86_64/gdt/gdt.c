@@ -18,6 +18,24 @@ struct GDTR
 
 uint64_t gdt_entries[num_gdt_entries];
 
+// granularity(8 Bit)=> Flags(Upper 4 Bit) | Up-Limit(Lower 4 Bit)
+// flags = (granularity & 0xF0) >> 4
+// up_limit = granularity & 0xF
+void gdt_set_entry(int i, uint32_t base, uint32_t limit, uint8_t access, uint8_t gran) {
+    gdt_entry_t *entry = ((gdt_entry_t *)&gdt_entries[i]);
+    entry->limit_low     = (limit & 0xFFFF);        // Set lower 16 bit of limit
+    entry->granularity   = (limit >> 16) & 0x0F;    // Set upper 4 bit of limit
+
+    entry->base_low      = (base & 0xFFFF);         // Set lower 16 bit baase
+    entry->base_middle   = (base >> 16) & 0xFF;     // Set middle 8 bit base
+    entry->base_high     = (base >> 24) & 0xFF;     // Set high 8 bit base
+
+    entry->access        = access;                  // Set  bit access
+
+    entry->granularity  |= gran & 0xF0;             // Set 4 bit Flags
+    
+}
+
 void gdt_fill() {
     //null descriptor, required to be here.
     gdt_entries[0] = 0;
@@ -46,8 +64,15 @@ void gdt_fill() {
     gdt_entries[1] = kernel_code << 32;
 }
 
+extern void tss_reload(uint16_t selector);
+
 void gdt_tss_init() {
-    gdt_fill();
+    // gdt_fill();
+    gdt_set_entry(0, 0, 0, 0, 0);              // Null Descriptor
+    gdt_set_entry(1, 0, 0xFFFFF, 0b10011010, 0xA0);   // Kernel Code Descriptor , Selector 0x08
+    gdt_set_entry(2, 0, 0xFFFFF, 0b10010010, 0xC0);   // Kernel Data Descriptor , Selector 0x10
+    gdt_set_entry(3, 0, 0xFFFFF, 0b11111010, 0xA0);   // User Code Descriptor , Selector 0x18
+    gdt_set_entry(4, 0, 0xFFFFF, 0b11110010, 0xC0);   // User Data Descriptor , Selector 0x20
     tss_init();
 
     struct GDTR example_gdtr =
@@ -57,8 +82,9 @@ void gdt_tss_init() {
     };
 
     asm("lgdt %0" : : "m"(example_gdtr));
-
     reload_segments();
+
+    tss_reload(TSS_SELECTOR);
 
     printf("Loaded GDT tables.\n");
 }

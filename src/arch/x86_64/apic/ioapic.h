@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+extern uint64_t IOAPIC_ADDR;
+
 void enable_ioapic();
 
 uint32_t ioapic_read(void *ioapicaddr, uint32_t reg);

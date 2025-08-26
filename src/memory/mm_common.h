@@ -49,6 +49,7 @@
 // Virtual memory allocation types
 #define ALLOCATE_VM_EX  0x1
 #define ALLOCATE_VM_RO  0x2
+#define ALLOCATE_VM_USER 0x4
 
 // Paging memory manager
 typedef struct dir_entry { // 64 bit; pml4, pdpr and pd entry

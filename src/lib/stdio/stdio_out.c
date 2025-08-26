@@ -5,11 +5,13 @@
 #include "devices/kconsole.h"
 #include "lib/stdio.h"
 
+#include "memory/mm.h"
+
 typedef struct {
     bool held;
 } mutex;
 
-mutex console_access;
+static mutex console_access;
 
 extern char *fb;
 extern int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
@@ -37,28 +39,31 @@ void release_console() {
     console_access.held = false;
 }
 
-void printf_ch(char ch) {
-    if ((int)GET_CONSOLE_Y(console_pos) >= CONSOLE_H()) {
-        // Scroll
+void scroll_console() {
+    // Scroll
 
-        uint64_t offset = fb_scanline * FONT_H;
-        uint64_t i;
+    uint64_t offset = fb_scanline * FONT_H;
+    uint64_t i;
 
-        for (i = 0; i < ((uint64_t)fb_scanline * (uint64_t)fb_height) - offset; i++) {
-            fb[i] = fb[i + offset];
-        }
-
-        for (; i < (uint64_t)fb_scanline * (uint64_t)fb_height; i++) {
-            fb[i] = 0;
-        }
-
-        console_pos -= CONSOLE_W();
+    for (i = 0; i < ((uint64_t)fb_scanline * (uint64_t)fb_height) - offset; i++) {
+        fb[i] = fb[i + offset];
     }
+
+    for (; i < (uint64_t)fb_scanline * (uint64_t)fb_height; i++) {
+        fb[i] = 0;
+    }
+
+    console_pos -= CONSOLE_W();
+}
+
+void printf_ch(char ch) {
+    if ((int)GET_CONSOLE_Y(console_pos) >= CONSOLE_H()) scroll_console();
 
     if (ch == '\n') {
         // Remove the cursor (if any)
         kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0xFFFFFF, 0x000000);
         console_pos += (CONSOLE_W() - GET_CONSOLE_X(console_pos));
+        if ((int)GET_CONSOLE_Y(console_pos) >= CONSOLE_H()) scroll_console();
     } else {
         kputchar(ch, GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0xFFFFFF, 0x000000);
         console_pos++;

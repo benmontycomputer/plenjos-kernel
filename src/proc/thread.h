@@ -19,8 +19,10 @@ struct thread {
     proc_t *parent;
     thread_t *next;
 
+    gsbase_t *base;
+
     void *stack;
-};
+} __attribute__((packed));
 
 thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), void *arg);
 void release_thread(thread_t *thread);

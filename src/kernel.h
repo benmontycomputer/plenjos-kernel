@@ -14,6 +14,12 @@ int memcmp(const void *s1, const void *s2, size_t n);
 
 void hcf();
 
+extern uint64_t kernel_load_phys;
+extern uint64_t kernel_load_virt;
+
+#define IA32_KERNEL_GS_BASE 0xC0000102
+#define IA32_GS_BASE        0xC0000101
+
 // This is partially from KeblaOS
 
 // cpu state 
@@ -58,6 +64,14 @@ struct regs { // Total 30*8 = 240 bytes, 16 bytes aligned
     uint64_t iret_ss;       // Offset 8*29 bytes, stack segment
 } __attribute__((packed));
 typedef struct regs registers_t;
+
+struct gsbase {
+    // This must point to the TOP of the stack
+    uint64_t stack; // 0x00
+    uint64_t pid; // 0x08
+    uint64_t cr3; // 0x10
+} __attribute__((packed));
+typedef struct gsbase gsbase_t;
 
 /* // cpu state 
 struct registers { // Total 26*8 = 208 bytes, 16 bytes aligned

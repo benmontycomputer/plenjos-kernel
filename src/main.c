@@ -24,10 +24,12 @@
 #include "shell/shell.h"
 
 #include "proc/proc.h"
-#include "proc/thread.h"
 #include "proc/scheduler.h"
+#include "proc/thread.h"
 
 #include "syscall/syscall.h"
+
+#include "exec/elf.h"
 
 char *fb;
 int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
@@ -47,6 +49,18 @@ static volatile LIMINE_BASE_REVISION(3);
 __attribute__((used, section(".limine_requests"))) //
 static volatile struct limine_framebuffer_request framebuffer_request
     = { .id = LIMINE_FRAMEBUFFER_REQUEST, .revision = 3 };
+
+// Get Module info by using limine bootloader
+__attribute__((used, section(".limine_requests"))) //
+static volatile struct limine_module_request module_request
+    = { .id = LIMINE_MODULE_REQUEST, .revision = 3 };
+
+__attribute__((used, section(".limine_requests"))) //
+static volatile struct limine_executable_address_request executable_addr_request
+    = { .id = LIMINE_EXECUTABLE_ADDRESS_REQUEST, .revision = 3 };
+
+uint64_t kernel_load_phys = 0;
+uint64_t kernel_load_virt = 0;
 
 // Finally, define the start and end markers for the Limine requests.
 // These can also be moved anywhere, to any .c file, as seen fit.
@@ -144,6 +158,14 @@ void kmain(void) {
     init_memory_manager();
     init_kernel_heap();
 
+    if (!executable_addr_request.response) {
+        printf("Couldn't get kernel load addresses. Halt!\n");
+        hcf();
+    }
+
+    kernel_load_phys = executable_addr_request.response->physical_base;
+    kernel_load_virt = executable_addr_request.response->virtual_base;
+
 // Setup the GDT
 #if ARCH(X86_64)
     init_x86_64();
@@ -173,7 +195,7 @@ void kmain(void) {
     for (int i = 0; i < 32; i++) {
         str = (char *)kmalloc_heap(PAGE_LEN);
 
-        #define test_str "[] Testing heap #%d.    "
+#define test_str "[] Testing heap #%d.    "
 
         memcpy(str, test_str, 25);
 
@@ -183,7 +205,7 @@ void kmain(void) {
     for (int i = 32; i < 64; i++) {
         str = (char *)kmalloc_heap(PAGE_LEN);
 
-        #define test_str "[] Testing heap #%d at %p.\n"
+#define test_str "[] Testing heap #%d at %p.\n"
 
         memcpy(str, test_str, 28);
 
@@ -194,12 +216,45 @@ void kmain(void) {
 
     syscalls_init();
 
-    start_shell();
+    // start_shell();
     /* proc_t *shell_proc = create_proc("kshell");
     thread_t *shell_thread = create_thread(shell_proc, "kshell_t0", start_shell, NULL);
     thread_ready(shell_thread);
 
     assign_thread_to_cpu(shell_thread); */
+
+    if (!module_request.response) {
+        printf("No modules detected.\n");
+    } else {
+        void *elf_addr = module_request.response->modules[0]->address;
+
+        proc_t *shell_proc = create_proc("kshell");
+
+        uint64_t entry, stack;
+
+        loadelf(elf_addr, shell_proc->pml4, &entry, &stack);
+
+        // map_virtual_memory_using_alloc(get_physaddr(stack, shell_proc->pml4), stack, 0x4000, PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node, kernel_pml4);
+
+        thread_t *shell_thread = create_thread(shell_proc, "kshell_t0", (void *)entry, NULL);
+
+        // kfree_heap(shell_thread->stack);
+
+        // shell_thread->stack = (void *)stack;
+        // shell_thread->regs.iret_rsp = stack + 0x4000;
+
+        thread_ready(shell_thread);
+
+        // shell_thread->regs.cr3 = virt_to_phys((uint64_t)kernel_pml4);
+
+        // uint64_t d;
+        // loadelf(elf_addr, kernel_pml4, &d, &d);
+
+        printf("Assigning thread...\n\n");
+        assign_thread_to_cpu(shell_thread);
+    }
+
+    printf("No more code. Halt!\n");
 
     // We're done, just hang...
     hcf();

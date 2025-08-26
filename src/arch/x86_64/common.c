@@ -22,6 +22,8 @@
 #include "timer/hpet.h"
 #include "timer/pit.h"
 
+#include "cpu/cpu.h"
+
 void init_x86_64() {
     asm volatile("cli");
 
@@ -45,6 +47,8 @@ void init_x86_64() {
     pic_disable();
 
     asm volatile("sti");
+
+    setup_bs_gs_base();
 
     // ReadRegister(0x60);
 }

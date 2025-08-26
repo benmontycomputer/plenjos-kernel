@@ -42,6 +42,70 @@
 %define REG_IRET_RSP      8*28
 %define REG_IRET_SS 8*29
 
+%macro load_task_general_registers 0
+    mov rax, [r15 + GEN_REG_RAX]
+    mov rbx, [r15 + GEN_REG_RBX]
+    mov rcx, [r15 + GEN_REG_RCX]
+    mov rdx, [r15 + GEN_REG_RDX]
+    mov rsi, [r15 + GEN_REG_RSI]
+    mov r8, [r15 + GEN_REG_R8]
+    mov r9, [r15 + GEN_REG_R9]
+    mov r10, [r15 + GEN_REG_R10]
+    mov r11, [r15 + GEN_REG_R11]
+    mov r12, [r15 + GEN_REG_R12]
+    mov r13, [r15 + GEN_REG_R13]
+    mov r14, [r15 + GEN_REG_R14]
+    mov rdi, [r15 + GEN_REG_RDI]
+    mov r15, [r15 + GEN_REG_R15]
+%endmacro
+
+global _load_task_page_tables
+_load_task_page_tables:
+    push rbp
+    mov rbp, rsp
+    ; extern paging_walk_page
+    ; call $+(paging_walk_page-$) ; rdi is virt; rax returns phys
+    mov cr3, rdi
+    pop rbp
+    ret
+
+global _finalize_task_switch
+_finalize_task_switch:
+    cli
+    swapgs
+    mov rcx, 0xC0000101
+    rdmsr
+    shl rdx, 32
+    ; and rax, 0x00000000FFFFFFFF ; not needed because the upper 32 bits of rax and rdx are automatically cleared by readmsr
+    ; and rdx, 0x00000000FFFFFFFF
+    or rax, rdx
+    mov [rax], rsp
+    swapgs
+    mov r15, rdi
+    mov rdi, [r15 + CR_REG_CR3] ; task->ctx->cr3
+    mov rsp, [r15 + REG_IRET_RSP]
+    mov cr3, rdi ; I (Plenjamin) added this
+    mov rbp, [r15 + GEN_REG_RBP]
+    mov r14, [r15 + REG_IRET_RIP]
+    ; call $+(_load_task_page_tables-$)
+    xor rax, rax
+    mov ax, 0x23       ; user data segment; 0x20 | 0x3
+    mov ds, ax
+    mov es, ax
+    push rax            ; push user data segment
+    lea rax, [rsp + 0x08]
+    push rax            ; push user stack
+    ; push rsp
+    sti
+    pushfq              ; push flags
+    cli
+    ; push qword [r15 + REG_IRET_RFLAGS]
+    push 0x1B           ; user code segment; 0x18 | 0x3
+    push r14            ; push user instruction pointer
+    load_task_general_registers
+    .end:
+    iretq
+
 
 .text
 global restore_cpu_state            ; use extern void restore_cpu_state(registers_t* registers); in c file
@@ -52,10 +116,10 @@ restore_cpu_state:
     mov rcx, rdi                    ; Save registers_t pointer in rcx
 
     ; Restore segment registers
-    mov rax, [rcx + SEG_REG_GS]  
-    mov gs, ax            
-    mov rax, [rcx + SEG_REG_FS]  
-    mov fs, ax            
+    ; mov rax, [rcx + SEG_REG_GS]  
+    ; mov gs, ax            
+    ; mov rax, [rcx + SEG_REG_FS]  
+    ; mov fs, ax            
     mov rax, [rcx + SEG_REG_ES]  
     mov es, ax            
     mov rax, [rcx + SEG_REG_DS]  
@@ -93,6 +157,7 @@ restore_cpu_state:
 
     ; Push iretq frame (RIP, CS, RFLAGS)
     push qword [rcx + REG_IRET_SS ]
+    ; TODO: Should this next line be "push qword rsp"?
     push qword [rcx + REG_IRET_RSP]
     push qword [rcx + REG_IRET_RFLAGS]
     or   qword [rsp], 0x200  ; Enable interrupts

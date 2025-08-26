@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#define KERNEL_STACK_SIZE 0x4000
+
 // Add TSS entry structure
 struct tss { // 104 bytes is the minimum size of a TSS
     uint32_t reserved0;

@@ -17,6 +17,7 @@
 // Partially modified from KeblaOS
 
 pml4_t *kernel_pml4;
+uint64_t kernel_pml4_phys;
 
 // return current cr3 address i.e. root pml4 pointer address
 uint64_t get_cr3_addr() {
@@ -26,16 +27,16 @@ uint64_t get_cr3_addr() {
     return cr3;
 }
 
+void set_cr3_addr(uint64_t cr3) {
+    asm volatile("movq %0, %%cr3" : : "r"(cr3));
+}
+
 // pml4 = pointer map level 4, pdpt = page directory pointer table, pd = page directory, pt = page table
 static inline void addr_split(uint64_t virt, uint32_t *pml4, uint32_t *pdpt, uint32_t *pd, uint32_t *pt) {
     *pml4 = ((virt) >> 39) & 0x1FF; // 39-47
     *pdpt = ((virt) >> 30) & 0x1FF; // 30-38
     *pd = ((virt) >> 21) & 0x1FF;   // 21-29
     *pt = ((virt) >> 12) & 0x1FF;   // 12-20
-}
-
-inline int is_userspace(uint64_t virt) {
-    return (virt >= KERNEL_START_ADDR) ? 0 : 1;
 }
 
 // Function to flush the entire TLB (by writing to cr3)
@@ -64,7 +65,7 @@ uint64_t *alloc_paging_node() {
     return pt;
 }
 
-page_t *find_page_using_alloc(uint64_t virt, bool autocreate, uint64_t *alloc_func(), pml4_t *pml4) {
+page_t *find_page_using_alloc(uint64_t virt, bool autocreate, uint64_t *alloc_func(), int user, pml4_t *pml4) {
     uint32_t i_pml4, i_pdpt, i_pd, i_pt;
     uint64_t *pml4_table, *pdpt_table, *pd_table, *pt_table, *pg;
 
@@ -78,45 +79,52 @@ page_t *find_page_using_alloc(uint64_t virt, bool autocreate, uint64_t *alloc_fu
 
     addr_split(virt, &i_pml4, &i_pdpt, &i_pd, &i_pt);
 
-    int user = is_userspace(virt);
+    // int user = is_userspace(virt);
 
     uint64_t flags = PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE | (user && PAGE_FLAG_USER);
     // printf("%p %p\n", pml4_table, i_pml4);
 
     // Search for a page directory pointer table; create if not found
     if (!(pml4_table[i_pml4] & PAGE_FLAG_PRESENT)) {
+        if (!autocreate) return NULL;
         // Allocate a new page directory pointer table and add it to the pml4 table
         pdpt_table = alloc_func();
         pml4_table[i_pml4] = (virt_to_phys((uint64_t)pdpt_table) | flags);
     } else {
         // Retrieve the page directory pointer table, making sure to discard unnecessary bits.
         // the tilde inverts the 0xFFF (so we can write ~0xFFF instead of 0xFFFFFFFFFFFFF000)
+        if (user) pml4_table[i_pml4] |= PAGE_FLAG_USER;
         pdpt_table = (uint64_t *)phys_to_virt((uint64_t)pml4_table[i_pml4] & ~(uint64_t)0xFFF);
     }
 
     // Search for a page directory table; create if not found
     if (!(pdpt_table[i_pdpt] & PAGE_FLAG_PRESENT)) {
+        if (!autocreate) return NULL;
         // Allocate a new page directory table and add it to the page directory pointer table
         pd_table = alloc_func();
         pdpt_table[i_pdpt] = (virt_to_phys((uint64_t)pd_table) | flags);
     } else {
         // Retrieve the page directory table, making sure to discard unnecessary bits
+        if (user) pdpt_table[i_pdpt] |= PAGE_FLAG_USER;
         pd_table = (uint64_t *)phys_to_virt((uint64_t)pdpt_table[i_pdpt] & ~(uint64_t)0xFFF);
     }
 
     // Search for a page table; create if not found
     if (!(pd_table[i_pd] & PAGE_FLAG_PRESENT)) {
+        if (!autocreate) return NULL;
         // Allocate a new page table and add it to the page directory table
         pt_table = alloc_func();
         pd_table[i_pd] = (virt_to_phys((uint64_t)pt_table) | flags);
     } else {
         // Retrieve the page table, making sure to discard unnecessary bits
+        if (user) pd_table[i_pd] |= PAGE_FLAG_USER;
         pt_table = (uint64_t *)phys_to_virt((uint64_t)pd_table[i_pd] & ~(uint64_t)0xFFF);
     }
 
     pg = &pt_table[i_pt];
 
     if (!(*pg & PAGE_FLAG_PRESENT)) {
+        if (!autocreate) return NULL;
         alloc_page_frame((page_t *)pg, user, 1);
 
         if (!(*pg >> 12)) return NULL;
@@ -129,7 +137,7 @@ page_t *find_page_using_alloc(uint64_t virt, bool autocreate, uint64_t *alloc_fu
 }
 
 page_t *find_page(uint64_t virt, bool autocreate, pml4_t *pml4) {
-    return find_page_using_alloc(virt, autocreate, alloc_paging_node, pml4);
+    return find_page_using_alloc(virt, autocreate, alloc_paging_node, is_userspace(virt), pml4);
 }
 
 void map_virtual_memory_using_alloc(uint64_t phys_start, uint64_t virt_start, size_t len, uint64_t flags, uint64_t *alloc_func(), pml4_t *pml4) {
@@ -193,12 +201,12 @@ void map_virtual_memory(uint64_t phys_start, size_t len, uint64_t flags, pml4_t 
     map_virtual_memory_using_alloc(phys_start, phys_to_virt(phys_start), len, flags, alloc_paging_node, pml4);
 }
 
-uint64_t get_physaddr(uint64_t virt) {
+uint64_t get_physaddr(uint64_t virt, pml4_t *pml4) {
     uint32_t pml4_index, pdpt_index, pd_index, pt_index;
 
     addr_split(virt, &pml4_index, &pdpt_index, &pd_index, &pt_index);
 
-    dir_entry_t *pml4_entry = (dir_entry_t *)&kernel_pml4->entries[pml4_index];
+    dir_entry_t *pml4_entry = (dir_entry_t *)&pml4->entries[pml4_index];
 
     if (!pml4_entry->present) return 0;
 
@@ -221,12 +229,15 @@ uint64_t get_physaddr(uint64_t virt) {
 }
 
 void init_paging() {
-    kernel_pml4 = (pml4_t *)phys_to_virt(get_cr3_addr());
+    kernel_pml4_phys = get_cr3_addr();
+    kernel_pml4 = (pml4_t *)phys_to_virt(kernel_pml4_phys);
 
-    if (!kernel_pml4) {
+    if (!kernel_pml4_phys) {
         printf("\nNo page table! Halt.\n");
         hcf();
     }
+
+    printf("Page table vaddr: %p, phys addr: %p\n", kernel_pml4, kernel_pml4_phys);
 
     // init_pmm();
 

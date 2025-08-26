@@ -13,12 +13,10 @@ bool phys_mem_lock;
 uint32_t phys_mem_ref_frame(phys_mem_free_frame_t *frame) {
     uint32_t refcnt = (frame->flags & ~FRAME_FLAG_USABLE);
 
-    if (refcnt >> 23) {
+    if (++refcnt >> 23) {
         printf("Somehow the refcnt on frame %p will be too big. Halt!\n", frame);
         hcf();
     }
-
-    refcnt++;
 
     frame->flags &= FRAME_FLAG_USABLE;
     frame->flags |= refcnt;
@@ -134,5 +132,5 @@ void alloc_page_frame(page_t *page, int user, int writeable) {
     page->present = 1;
     page->rw = writeable;
     page->user = user;
-    page->frame = find_next_free_frame();
+    page->frame = find_next_free_frame() >> 12;
 }

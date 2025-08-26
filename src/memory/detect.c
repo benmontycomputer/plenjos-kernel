@@ -23,6 +23,7 @@ uint64_t PAGING_MODE;
 uint64_t HHDM_OFFSET;
 uint64_t PHYS_MEM_HEAD;
 
+uint64_t TSS_STACK_ADDR;
 uint64_t KERNEL_HEAP_START_ADDR;
 
 uint64_t PHYS_MEM_USEABLE_LENGTH;
@@ -38,10 +39,11 @@ uint64_t *test_alloc() {
     hcf();
 }
 
+uint64_t phys_mem_total_frames = 0;
+uint64_t last_useable_phys_frame = 0;
+
 void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
     uint64_t phys_mem_useable_frames = 0;
-    uint64_t phys_mem_total_frames = 0;
-    uint64_t last_useable_phys_frame = 0;
 
     memmap.mem_entries = memmap_response->entries;
     memmap.mem_entry_count = memmap_response->entry_count;
@@ -49,7 +51,7 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
     for (size_t i = 0; i < memmap.mem_entry_count; i++) {
         if (memmap.mem_entries[i]->type == LIMINE_MEMMAP_USABLE) {
             phys_mem_useable_frames += memmap.mem_entries[i]->length;
-            last_useable_phys_frame = memmap.mem_entries[i]->base + memmap.mem_entries[i]->length;
+            last_useable_phys_frame = memmap.mem_entries[i]->base + memmap.mem_entries[i]->length - PAGE_LEN;
         }
         
         phys_mem_total_frames += memmap.mem_entries[i]->length;
@@ -60,8 +62,6 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
     printf("Total useable physical memory: %dMiB\nTotal physical memory: %dMiB\nLast useable physical frame: %p\nNeed to allocate %dMiB for table.\n", (int)(phys_mem_useable_frames >> 20), (int)(phys_mem_total_frames >> 20), last_useable_phys_frame, (int)(phys_mem_frame_map_size >> 20));
 
     // uint64_t page_table_mem_needed = (PAGE_LEN * (phys_mem_frame_map_size + PAGE_LEN - 1) / PAGE_LEN)
-
-    uint64_t frame_map_area_base;
 
     for (size_t i = 0; i < memmap.mem_entry_count; i++) {
         uint64_t base = memmap.mem_entries[i]->base;
@@ -98,11 +98,11 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
         uint64_t type = memmap.mem_entries[i]->type;
 
         if (type == LIMINE_MEMMAP_USABLE) {
-            if (base != frame_map_area_base)
-                map_virtual_memory_using_alloc(base, phys_to_virt(base), length, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, test_alloc, kernel_pml4);
+            // if (base != virt_to_phys((uint64_t)phys_mem_frame_map))
+            map_virtual_memory_using_alloc(base, phys_to_virt(base), length, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, test_alloc, kernel_pml4);
 
             // TODO: i think the code might break if frame 0 is actually valid.
-            for (uint64_t j = phys_addr_to_frame_addr(base); j < phys_addr_to_frame_addr(base + length); j += sizeof(phys_mem_free_frame_t)) {
+            for (uint64_t j = phys_addr_to_frame_addr(base); j < phys_addr_to_frame_addr(base + length) - sizeof(phys_mem_free_frame_t); j += sizeof(phys_mem_free_frame_t)) {
                 frame = (phys_mem_free_frame_t *)j;
 
                 if (frame->flags == 0) {
@@ -113,7 +113,8 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
                         prev_free_frame->next_free = encode_struct_frame_ptr((uint64_t)frame);
                     } else {
                         printf("Next frame %p, prev: %p\n", frame, frame->prev_free);
-                        phys_mem_frame_map_next_free = frame;
+                        if (!phys_mem_frame_map_next_free)
+                            phys_mem_frame_map_next_free = frame;
                     }
 
                     prev_free_frame = frame;
@@ -144,5 +145,6 @@ void detect_memory(struct limine_memmap_response *memmap_response) {
         PAGING_MODE = paging_mode_request.response->mode;
     }
 
+    TSS_STACK_ADDR = 0xFFFF8E0000000000;
     KERNEL_HEAP_START_ADDR = 0xFFFF900000000000;
 }

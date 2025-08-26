@@ -13,16 +13,19 @@ uint64_t virt_to_phys(uint64_t virt) {
     return virt - HHDM_OFFSET;
 }
 
-int alloc_virtual_memory(uint64_t virt, uint8_t flags) {
-    page_t *page = find_page(virt, true, kernel_pml4);
+// Returns the physical address of the allocated memory
+uint64_t alloc_virtual_memory(uint64_t virt, uint8_t flags, pml4_t *pml4) {
+    page_t *page = find_page_using_alloc(virt, true, alloc_paging_node, (flags & ALLOCATE_VM_USER) ? 1 : 0, pml4);
+    printf("Allocating page at vaddr %p paddr %p\n", virt, page->frame << 12);
 
     if (!page) {
         printf("Failed to create page at virtual address %p.\n", virt);
         return 1;
     }
     
-    if (!(flags & ALLOCATE_VM_EX)) page->nx = 1;
-    if (!(flags & ALLOCATE_VM_RO)) page->rw = 1;
+    page->nx = !(flags & ALLOCATE_VM_EX);
 
-    return 0;
+    page->rw = !(flags & ALLOCATE_VM_RO);
+
+    return page->frame << 12;
 }
