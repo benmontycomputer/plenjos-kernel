@@ -1,9 +1,25 @@
 #pragma once
 
-typedef unsigned char uint8_t;
-typedef unsigned short uint16_t;
-typedef unsigned int uint32_t;
-typedef unsigned long int uint64_t;
+#include <stdint.h>
+
+/* struct fb_info {
+    char *fb_ptr;
+    int fb_scanline;
+    int fb_width;
+    int fb_height;
+    int fb_bytes_per_pixel;
+} __attribute__((packed));
+typedef struct fb_info fb_info_t; */
+
+#include "../../src/syscall/syscall.h"
+
+extern fb_info_t *fb_info;
+
+#define fb ((char *)fb_info->fb_ptr)
+#define fb_scanline (fb_info->fb_scanline)
+#define fb_width (fb_info->fb_width)
+#define fb_height (fb_info->fb_height)
+#define fb_bytes_per_pixel (fb_info->fb_bytes_per_pixel)
 
 #define FONT_W 9
 #define FONT_H 16

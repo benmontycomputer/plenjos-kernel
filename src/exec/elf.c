@@ -19,8 +19,11 @@ void loadelf(void *elf_base, pml4_t *pml4, uint64_t *entry_out, uint64_t *stack_
 
         if (phdr->type != 1) continue;
 
+        uint8_t flags = ((phdr->flags & ELF_PHDR_W) ? 0 : ALLOCATE_VM_RO) | ((phdr->flags & ELF_PHDR_EX) ? ALLOCATE_VM_EX : 0) | ALLOCATE_VM_USER;
+
         for (uint64_t j = 0; j < phdr->memsz; j += PAGE_LEN) {
-            uint64_t p = alloc_virtual_memory(j + phdr->vaddr, ALLOCATE_VM_EX | ALLOCATE_VM_RO | ALLOCATE_VM_USER, pml4);
+            // uint64_t p = alloc_virtual_memory(j + phdr->vaddr, ALLOCATE_VM_EX | ALLOCATE_VM_RO | ALLOCATE_VM_USER, pml4);
+            uint64_t p = alloc_virtual_memory(j + phdr->vaddr, flags, pml4);
 
             if (!p) {
                 printf("Couldn't allocate memory at vaddr %p for user process. Halt!\n", j + phdr->vaddr);

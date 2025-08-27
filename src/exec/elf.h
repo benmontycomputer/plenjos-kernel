@@ -29,6 +29,10 @@ struct ELF_header {
     uint16_t sh_string_table_index;
 } __attribute__((packed));
 
+#define ELF_PHDR_EX 0x1
+#define ELF_PHDR_W 0x2
+#define ELF_PHDR_R 0x4
+
 struct ELF_program_header {
     uint32_t type;
     uint32_t flags;

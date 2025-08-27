@@ -147,6 +147,8 @@ void map_virtual_memory_using_alloc(uint64_t phys_start, uint64_t virt_start, si
 
     pml4_table = (uint64_t *)pml4;
 
+    int user = (flags & PAGE_FLAG_USER);
+
     // uint64_t virt_start = phys_to_virt(phys_start);
 
     // Map as many pages as needed to fill the range
@@ -165,6 +167,7 @@ void map_virtual_memory_using_alloc(uint64_t phys_start, uint64_t virt_start, si
         } else {
             // Retrieve the page directory pointer table, making sure to discard unnecessary bits.
             // the tilde inverts the 0xFFF (so we can write ~0xFFF instead of 0xFFFFFFFFFFFFF000)
+            if (user) pml4_table[i_pml4] |= PAGE_FLAG_USER;
             pdpt_table = (uint64_t *)phys_to_virt((uint64_t)pml4_table[i_pml4] & ~(uint64_t)0xFFF);
         }
 
@@ -175,6 +178,7 @@ void map_virtual_memory_using_alloc(uint64_t phys_start, uint64_t virt_start, si
             pdpt_table[i_pdpt] = (virt_to_phys((uint64_t)pd_table) | flags);
         } else {
             // Retrieve the page directory table, making sure to discard unnecessary bits
+            if (user) pdpt_table[i_pdpt] |= PAGE_FLAG_USER;
             pd_table = (uint64_t *)phys_to_virt((uint64_t)pdpt_table[i_pdpt] & ~(uint64_t)0xFFF);
         }
 
@@ -185,6 +189,7 @@ void map_virtual_memory_using_alloc(uint64_t phys_start, uint64_t virt_start, si
             pd_table[i_pd] = (virt_to_phys((uint64_t)pt_table) | flags);
         } else {
             // Retrieve the page table, making sure to discard unnecessary bits
+            if (user) pd_table[i_pd] |= PAGE_FLAG_USER;
             pt_table = (uint64_t *)phys_to_virt((uint64_t)pd_table[i_pd] & ~(uint64_t)0xFFF);
         }
 

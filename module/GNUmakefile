@@ -7,14 +7,14 @@ override OUTPUT = user_shell.elf
 # ====== Compiler & Linker ======
 # GCC = /usr/local/x86_64-elf/bin/x86_64-elf-gcc
 CC = $(TOOLCHAIN_PREFIX)gcc
-CFLAGS := -g -Wall -Wextra -std=gnu11 -m64 \
+CFLAGS := -g -Wall -Wextra -std=gnu11 -m64 -march=x86-64 \
            -fno-pie -no-pie -nostdlib -nostartfiles \
            -ffreestanding -O2
 
 # LD = /usr/local/x86_64-elf/bin/x86_64-elf-ld
 LD = $(TOOLCHAIN_PREFIX)ld
-LDFLAGS := -m elf_x86_64 -nostdlib -static -z max-page-size=0x1000
 LINKER_FILE = linker.lds
+LDFLAGS := -m elf_x86_64 -nostdlib -static -z max-page-size=0x1000 -T $(LINKER_FILE)
 
 OBJCOPY := $(TOOLCHAIN_PREFIX)objcopy
 

@@ -1,7 +1,9 @@
 #include <stdint.h>
+
 #include "../../src/syscall/syscall.h"
 
 #include "uconsole.h"
+#include "lib/stdio.h"
 
 // Uses PSF1 format
 extern void kputchar(
@@ -39,15 +41,15 @@ const char teststr_shell[] = "\ntest!!!\n\n\0";
 // char buffer[3];
 
 volatile char *buf = (char *)0x300000;
-// volatile fb_info_t *fb_info = (fb_info_t *)0x301000;
+fb_info_t *fb_info = (fb_info_t *)0x301000;
 
-volatile char *fb;
-int fb_scanline,fb_width,fb_height,fb_bytes_per_pixel;
+/* uint64_t fb;
+int fb_scanline,fb_width,fb_height,fb_bytes_per_pixel; */
 
 // char str_shell[] = " is the char\n";
 // char buffer[3];
 
-__attribute__((section(".text")))
+// __attribute__((section(".text")))
 void _start() {
     // *((char *)0x800) = 0;
     // SYSCALL_PRINT
@@ -67,27 +69,34 @@ void _start() {
     *(buf) = '\0';
     *(buf + 1) = '\0';
 
-    for (;;) {}/*
-
     syscall(SYSCALL_MEMMAP, (uint64_t)fb_info, sizeof(fb_info_t), 0, 0, 0);
 
     syscall(SYSCALL_GET_FB, (uint64_t)fb_info, 0, 0, 0, 0);
 
-    fb = fb_info->fb_ptr;
+    syscall(SYSCALL_PRINT_PTR, (uint64_t)fb_info, 0, 0, 0, 0);
+    syscall(SYSCALL_PRINT_PTR, (uint64_t)fb_info->fb_ptr, 0, 0, 0, 0);
+
+    /* fb = (uint64_t)fb_info->fb_ptr;
+
+    // for(;;) {}
 
     fb_scanline = fb_info->fb_scanline;
     fb_width = fb_info->fb_width;
     fb_height = fb_info->fb_height;
-    fb_bytes_per_pixel = fb_info->fb_bytes_per_pixel;
+    fb_bytes_per_pixel = fb_info->fb_bytes_per_pixel; */
 
-    kputchar('t', 0, 0, 0xFFFFFF, 0x000000);
+    // kputs("Test string!", 100, 10);
 
-    for(;;) {}*/
+    // for(;;) {}
 
-    /* for (;;) {
+    for (;;) {
         uint64_t ch_uint64 = syscall(SYSCALL_READ, 0, 0, 0, 0, 0);;
         buf[0] = (char)(ch_uint64);
         // syscall(4, ch_uint64, 0, 0, 0, 0);
-        syscall(SYSCALL_PRINT, (uint64_t)buf, 0, 0, 0, 0);
-    } */
+        // syscall(SYSCALL_PRINT, (uint64_t)buf, 0, 0, 0, 0);
+        // kputs((const char *)&teststr_shell, 100, 10);
+        ((uint32_t *)fb_info->fb_ptr)[0] = 0xFFFF0000;
+
+        printf("%c", buf[0]);
+    }
 }

@@ -1,14 +1,15 @@
 #include <stdbool.h>
 #include <limits.h>
 
+#include <stdint.h>
+
 #include <stdarg.h>
 
-#include "string.h"
+#include "lib/string.h"
+
+#include "../../src/syscall/syscall.h"
 
 #include "uconsole.h"
-
-extern char *fb;
-extern int fb_scanline,fb_width,fb_height,fb_bytes_per_pixel;
 
 #define PSF1_FONT_MAGIC 0x0436
 

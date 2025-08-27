@@ -50,8 +50,8 @@ registers_t *syscall_routine(registers_t *regs) {
         // current_pml4 = (pml4_t *)get_cr3_addr();
         // TODO: check if framebuffer is in use
         current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
-        map_virtual_memory(virt_to_phys((uint64_t)fb), fb_scanline * fb_height,
-                           PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, current_pml4);
+        map_virtual_memory_using_alloc(virt_to_phys((uint64_t)fb), (uint64_t)fb, fb_scanline * fb_height,
+                           PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node, current_pml4);
 
         valid = true;
 
