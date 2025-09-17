@@ -123,6 +123,17 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
         }
     }
 
+    for (size_t i = 0; i < memmap.mem_entry_count; i++) {
+        uint64_t base = memmap.mem_entries[i]->base;
+        uint64_t length = memmap.mem_entries[i]->length;
+        uint64_t type = memmap.mem_entries[i]->type;
+
+        if (type == LIMINE_MEMMAP_FRAMEBUFFER) {
+            map_virtual_memory_using_alloc(base, phys_to_virt(base), length, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, test_alloc, kernel_pml4);
+            printf("\n\n\n\n\n\n\n\n\n\n\n\n\nfb base: %p %p %p\n", base, get_physaddr(phys_to_virt(base), kernel_pml4), length);
+        }
+    }
+
     // phys_mem_frame_map_next_free = (phys_mem_free_frame_t *)decode_struct_frame_ptr(phys_mem_frame_map_next_free->next_free);
     
     // map_virtual_memory_using_alloc(frame_addr_to_phys_addr((uint64_t)phys_mem_frame_map_next_free), PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, test_alloc, kernel_pml4);

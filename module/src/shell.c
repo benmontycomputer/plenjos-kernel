@@ -1,9 +1,13 @@
+#include <stddef.h>
 #include <stdint.h>
 
 #include "../../src/syscall/syscall.h"
+#include "../../src/devices/input/keyboard/keyboard.h"
 
-#include "uconsole.h"
+#include "lib/common.h"
 #include "lib/stdio.h"
+#include "lib/string.h"
+#include "uconsole.h"
 
 // Uses PSF1 format
 extern void kputchar(
@@ -40,63 +44,120 @@ uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_
 const char teststr_shell[] = "\ntest!!!\n\n\0";
 // char buffer[3];
 
-volatile char *buf = (char *)0x300000;
-fb_info_t *fb_info = (fb_info_t *)0x301000;
+__attribute__((aligned(0x1000))) //
+fb_info_t fb_info;
+kbd_buffer_state_t *kbd_buffer_state;
 
-/* uint64_t fb;
-int fb_scanline,fb_width,fb_height,fb_bytes_per_pixel; */
+#define SHELL_PROMPT "kernel_shell >> "
+#define CMD_BUFFER_MAX 256
+#define CMD_TOKS_MAX 64
 
-// char str_shell[] = " is the char\n";
-// char buffer[3];
+static char cmdbuffer[CMD_BUFFER_MAX];
+static char toks[CMD_TOKS_MAX][CMD_BUFFER_MAX] = { "" };
+static int cmd_buffer_i = 0;
+static int toks_count = 0;
+
+static void split_cmd(const char *cmd) {
+    memset(toks[0], 0, CMD_BUFFER_MAX);
+
+    int tok = 0;
+    int i_tok = 0;
+
+    size_t cmdlen = strlen(cmd);
+
+    for (size_t i = 0; *cmd; cmd++ /* i is incremented within the loop */) {
+        if (*cmd == ' ') {
+            if (i == 0 || *(cmd - 1) == '\\' || *(cmd - 1) == ' ') {
+                toks[tok][i_tok] = *cmd;
+            } else {
+                memset(toks[++tok], 0, CMD_BUFFER_MAX);
+                i_tok = -1;
+            }
+        } else {
+            toks[tok][i_tok] = *cmd;
+        }
+
+        ++i_tok;
+        ++i;
+    }
+
+    toks_count = ++tok;
+}
+
+extern void tetris_main();
+
+static void process_cmd(const char *cmd) {
+    // printf("Received command: %s\n", cmd);
+
+    split_cmd(cmd);
+
+    if (!strcmp(toks[0], "echo")) {
+        for (int i = 1; i < CMD_TOKS_MAX && toks[i][0] != 0; i++) {
+            printf("%s ", toks[i]);
+        }
+        printf("\n");
+    } else if (!strcmp(toks[0], "clear")) {
+        clear();
+    } else if (!strcmp(toks[0], "help")) {
+        printf("Available commands:\n");
+        printf("  echo [args...] - Print arguments to the console\n");
+        printf("  clear          - Clear the console screen\n");
+        printf("  tetris         - Start the Tetris game\n");
+        printf("  help           - Show this help message\n");
+    } else if (!strcmp(toks[0], "tetris")) {
+        tetris_main();
+        clear();
+    } else if (toks[0][0] != 0) {
+        printf("Unknown command: %s\n", toks[0]);
+    }
+}
 
 // __attribute__((section(".text")))
 void _start() {
-    // *((char *)0x800) = 0;
-    // SYSCALL_PRINT
-
-    // str_shell[1] = 0;
-    // buffer[1] = 'd';
-    // buffer[2] = '\0';
-
     // TODO: handle errors in these syscalls
 
     syscall(SYSCALL_PRINT, (uint64_t)teststr_shell, 0, 0, 0, 0);
 
-    uint64_t buf_len = 0x1000;
+    syscall(SYSCALL_GET_FB, (uint64_t)&fb_info, 0, 0, 0, 0);
+    kbd_buffer_state = (kbd_buffer_state_t *)syscall(SYSCALL_GET_KB, 0, 0, 0, 0, 0);
 
-    syscall(SYSCALL_MEMMAP, (uint64_t)buf, buf_len, 0, 0, 0);
+    clear();
+    setcursor(true);
 
-    *(buf) = '\0';
-    *(buf + 1) = '\0';
-
-    syscall(SYSCALL_MEMMAP, (uint64_t)fb_info, sizeof(fb_info_t), 0, 0, 0);
-
-    syscall(SYSCALL_GET_FB, (uint64_t)fb_info, 0, 0, 0, 0);
-
-    syscall(SYSCALL_PRINT_PTR, (uint64_t)fb_info, 0, 0, 0, 0);
-    syscall(SYSCALL_PRINT_PTR, (uint64_t)fb_info->fb_ptr, 0, 0, 0, 0);
-
-    /* fb = (uint64_t)fb_info->fb_ptr;
-
-    // for(;;) {}
-
-    fb_scanline = fb_info->fb_scanline;
-    fb_width = fb_info->fb_width;
-    fb_height = fb_info->fb_height;
-    fb_bytes_per_pixel = fb_info->fb_bytes_per_pixel; */
-
-    // kputs("Test string!", 100, 10);
-
-    // for(;;) {}
+    printf("%s", SHELL_PROMPT);
 
     for (;;) {
-        uint64_t ch_uint64 = syscall(SYSCALL_READ, 0, 0, 0, 0, 0);;
-        buf[0] = (char)(ch_uint64);
-        // syscall(4, ch_uint64, 0, 0, 0, 0);
-        // syscall(SYSCALL_PRINT, (uint64_t)buf, 0, 0, 0, 0);
-        // kputs((const char *)&teststr_shell, 100, 10);
-        ((uint32_t *)fb_info->fb_ptr)[0] = 0xFFFF0000;
+        while (kbd_buffer_empty()) {
+            
+        }
 
-        printf("%c", buf[0]);
+        char ch;
+        kbd_buffer_pop(&ch);
+
+        if (ch == '\n') {
+            printf("\n");
+
+            cmdbuffer[cmd_buffer_i] = 0;
+
+            process_cmd(cmdbuffer);
+
+            printf(SHELL_PROMPT);
+
+            cmd_buffer_i = 0;
+        } else {
+            if (ch == '\b') {
+                if (cmd_buffer_i > 0) {
+                    --cmd_buffer_i;
+                    backs();
+                }
+            } else {
+                // Leave space for end of string
+                if (cmd_buffer_i < (CMD_BUFFER_MAX - 1)) {
+                    printf("%c", ch);
+                    cmdbuffer[cmd_buffer_i] = ch;
+                    ++cmd_buffer_i;
+                }
+            }
+        }
     }
 }

@@ -12,14 +12,16 @@
 typedef struct fb_info fb_info_t; */
 
 #include "../../src/syscall/syscall.h"
+#include "../../src/devices/input/keyboard/keyboard.h"
 
-extern fb_info_t *fb_info;
+extern fb_info_t fb_info;
+extern kbd_buffer_state_t *kbd_buffer_state;
 
-#define fb ((char *)fb_info->fb_ptr)
-#define fb_scanline (fb_info->fb_scanline)
-#define fb_width (fb_info->fb_width)
-#define fb_height (fb_info->fb_height)
-#define fb_bytes_per_pixel (fb_info->fb_bytes_per_pixel)
+#define fb ((char *)fb_info.fb_ptr)
+#define fb_scanline (fb_info.fb_scanline)
+#define fb_width (fb_info.fb_width)
+#define fb_height (fb_info.fb_height)
+#define fb_bytes_per_pixel (fb_info.fb_bytes_per_pixel)
 
 #define FONT_W 9
 #define FONT_H 16

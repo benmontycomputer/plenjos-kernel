@@ -4,58 +4,56 @@
 #include "devices/input/keyboard/keyboard.h"
 #include "devices/input/keyboard/ps2kbd.h"
 
-#define KBD_BUFFER_SIZE 128
+#include "lib/stdio.h"
 
-// the head is where the next char goes; the tail is the element added least recently
-static int kbd_buffer_head, kbd_buffer_tail;
-static char kbd_buffer[KBD_BUFFER_SIZE];
-
-static bool full;
+kbd_buffer_state_t kbd_buffer_state;
 
 static void advance_tail() {
-    kbd_buffer_tail = (kbd_buffer_tail + 1) % KBD_BUFFER_SIZE;
+    kbd_buffer_state.tail = (kbd_buffer_state.tail + 1) % KBD_BUFFER_SIZE;
 }
 
 static void advance_head() {
-    kbd_buffer_head = (kbd_buffer_head + 1) % KBD_BUFFER_SIZE;
+    kbd_buffer_state.head = (kbd_buffer_state.head + 1) % KBD_BUFFER_SIZE;
 }
 
 bool kbd_buffer_empty() {
-    return (!full) && (kbd_buffer_head == kbd_buffer_tail);
+    return (!kbd_buffer_state.full) && (kbd_buffer_state.head == kbd_buffer_state.tail);
 }
 
 bool kbd_buffer_full() {
-    return full;
+    return kbd_buffer_state.full;
 }
 
 void kbd_buffer_push(char ch) {
-    kbd_buffer[kbd_buffer_head] = ch;
+    kbd_buffer_state.buffer[kbd_buffer_state.head] = ch;
 
-    if (full) {
+    if (kbd_buffer_state.full) {
         advance_tail();
     }
     advance_head();
-    
-    full = (kbd_buffer_head == kbd_buffer_tail);
+
+    kbd_buffer_state.full = (kbd_buffer_state.head == kbd_buffer_state.tail);
 }
 
 int kbd_buffer_pop(char *data) {
     if (kbd_buffer_empty()) return -1;
 
-    *data = kbd_buffer[kbd_buffer_tail];
+    *data = kbd_buffer_state.buffer[kbd_buffer_state.tail];
 
     advance_tail();
 
-    full = false;
+    kbd_buffer_state.full = false;
 
     return 0;
 }
 
 void init_keyboard() {
-    kbd_buffer_head = 0;
-    kbd_buffer_tail = 0;
+    kbd_buffer_state.head = 0;
+    kbd_buffer_state.tail = 0;
 
-    full = false;
+    kbd_buffer_state.full = false;
+
+    printf("kbd: %p\n", &kbd_buffer_state);
 
     init_ps2_keyboard();
 }

@@ -16,6 +16,8 @@
 
 #include "arch/x86_64/cpuid/cpuid.h"
 
+// TODO: do we want to enable sse/sse2/avx instructions?
+
 __attribute__((used, section(".limine_requests")))
 static volatile LIMINE_BASE_REVISION(0);
 

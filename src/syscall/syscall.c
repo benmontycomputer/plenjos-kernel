@@ -14,6 +14,10 @@
 
 #include "devices/input/keyboard/keyboard.h"
 
+#include "timer/pit.h"
+
+extern kbd_buffer_state_t kbd_buffer_state;
+
 uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_t rsi, uint64_t rdi) {
     uint64_t out;
 
@@ -50,8 +54,10 @@ registers_t *syscall_routine(registers_t *regs) {
         // current_pml4 = (pml4_t *)get_cr3_addr();
         // TODO: check if framebuffer is in use
         current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
-        map_virtual_memory_using_alloc(virt_to_phys((uint64_t)fb), (uint64_t)fb, fb_scanline * fb_height,
-                           PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node, current_pml4);
+        // printf("phys %p %p\n", kernel_pml4, get_physaddr((uint64_t)fb, kernel_pml4));
+        map_virtual_memory_using_alloc(
+            virt_to_phys((uint64_t)fb), (uint64_t)fb, (uint64_t)fb_scanline * (uint64_t)fb_height,
+            PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node, current_pml4);
 
         valid = true;
 
@@ -91,6 +97,32 @@ registers_t *syscall_routine(registers_t *regs) {
         }
         break;
     case SYSCALL_GET_KB:
+        current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
+        // printf("phys %p %p\n", kernel_pml4, get_physaddr((uint64_t)fb, kernel_pml4));
+        // VERY IMPORTANT CRITICAL TODO: don't allow random processes to modify the resulting buffer (some sort of
+        // access control is needed)
+        page_t *page = find_page((uint64_t)&kbd_buffer_state, false, current_pml4);
+        if (page && page->present) {
+            printf("WARN: Something is already mapped at keyboard buffer's address in this process!\n");
+            if (get_physaddr((uint64_t)&kbd_buffer_state, current_pml4)
+                != get_physaddr((uint64_t)&kbd_buffer_state, kernel_pml4)) {
+                printf("And it's not the keyboard buffer! %p %p\n",
+                       get_physaddr((uint64_t)&kbd_buffer_state, current_pml4),
+                       get_physaddr((uint64_t)&kbd_buffer_state, kernel_pml4));
+                regs->rax = 0;
+            } else {
+                // Re-map to set proper permissions
+                map_virtual_memory_using_alloc(
+                    get_physaddr((uint64_t)&kbd_buffer_state, kernel_pml4), (uint64_t)&kbd_buffer_state, sizeof(kbd_buffer_state_t),
+                    PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node, current_pml4);
+                regs->rax = (uint64_t)&kbd_buffer_state;
+            }
+        } else {
+            map_virtual_memory_using_alloc(
+                get_physaddr((uint64_t)&kbd_buffer_state, kernel_pml4), (uint64_t)&kbd_buffer_state, sizeof(kbd_buffer_state_t),
+                PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node, current_pml4);
+            regs->rax = (uint64_t)&kbd_buffer_state;
+        }
         break;
     case SYSCALL_MEMMAP:
         current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
@@ -158,6 +190,10 @@ registers_t *syscall_routine(registers_t *regs) {
 
         regs->rax = (uint64_t)ch;
 
+        break;
+    case SYSCALL_SLEEP:
+        asm volatile("sti");
+        pit_sleep((uint32_t)regs->rbx);
         break;
     default:
         break;

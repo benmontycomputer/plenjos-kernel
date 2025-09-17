@@ -61,7 +61,7 @@ void printf_ch(char ch) {
 
     if (ch == '\n') {
         // Remove the cursor (if any)
-        kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0xFFFFFF, 0x000000);
+        if (cursor) kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0xFFFFFF, 0x000000);
         console_pos += (CONSOLE_W() - GET_CONSOLE_X(console_pos));
         if ((int)GET_CONSOLE_Y(console_pos) >= CONSOLE_H()) scroll_console();
     } else {

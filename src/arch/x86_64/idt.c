@@ -92,19 +92,7 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
     uint64_t cr3 = get_cr3_addr();
 
     if (cr3 != kernel_pml4_phys) {
-        // set_cr3_addr(kernel_pml4_phys);
-        // exception_handler_switch_to_kernel(kernel_pml4_phys);
-        asm volatile("swapgs\n"
-                     "mov $0xC0000101, %%rcx\n"
-                     "rdmsr\n"
-                     "shl $32, %%rdx\n"
-                     "or %%rdx, %%rax\n"
-                     "mov %%rax, %%rbx\n"
-                     "mov 0x10(%%rbx), %%rax\n"
-                     "mov %%rax, %%cr3\n"
-                     "mov 0x00(%%rbx), %%rax\n"
-                     "mov %%rax, %%rsp\n" ::
-                         : "rax", "rbx", "rcx", "rdx", "rsp", "memory");
+        set_cr3_addr(kernel_pml4_phys);
 
         uint64_t regs_phys = get_physaddr((uint64_t)regs, (pml4_t *)phys_to_virt(cr3));
         regs = (registers_t *)phys_to_virt(regs_phys);

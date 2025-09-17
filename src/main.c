@@ -155,6 +155,8 @@ void kmain(void) {
     fb_bytes_per_pixel = (int)((framebuffer->bpp + 7) / 8);
     printf("Framebuffer: %p\n", framebuffer->address);
 
+    // map_virtual_memory(virt_to_phys((uint64_t)fb), fb_height * fb_scanline, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, kernel_pml4);
+
     init_memory_manager();
     init_kernel_heap();
 
@@ -249,6 +251,8 @@ void kmain(void) {
 
         // uint64_t d;
         // loadelf(elf_addr, kernel_pml4, &d, &d);
+        // printf("fb: %p -> %p\n", fb, get_physaddr((uint64_t)fb, kernel_pml4));hcf();
+
 
         printf("Assigning thread...\n\n");
         assign_thread_to_cpu(shell_thread);

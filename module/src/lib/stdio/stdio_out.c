@@ -4,6 +4,7 @@
 
 #include "../../uconsole.h"
 #include "../stdio.h"
+#include "../common.h"
 
 // #include "memory/mm.h"
 
@@ -235,3 +236,25 @@ int setcursor(bool curs) {
 
     return 0;
 }
+
+// #pragma GCC push_options
+// #pragma GCC optimize ("O0")
+
+int clear() {
+    request_console();
+
+    uint8_t *p = (uint8_t *)fb_info.fb_ptr;
+    const size_t n = fb_height * fb_scanline;
+
+    for (size_t i = 0; i < n; i++) {
+        p[i] = (uint8_t)0;
+    }
+
+    console_pos = 0;
+
+    release_console();
+
+    return 0;
+}
+
+// #pragma GCC pop_options

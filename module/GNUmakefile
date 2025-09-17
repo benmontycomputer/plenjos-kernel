@@ -9,6 +9,7 @@ override OUTPUT = user_shell.elf
 CC = $(TOOLCHAIN_PREFIX)gcc
 CFLAGS := -g -Wall -Wextra -std=gnu11 -m64 -march=x86-64 \
            -fno-pie -no-pie -nostdlib -nostartfiles \
+		   -mno-mmx -mno-sse -mno-sse2 \
            -ffreestanding -O2
 
 # LD = /usr/local/x86_64-elf/bin/x86_64-elf-ld

@@ -211,26 +211,26 @@ uint64_t get_physaddr(uint64_t virt, pml4_t *pml4) {
 
     addr_split(virt, &pml4_index, &pdpt_index, &pd_index, &pt_index);
 
-    dir_entry_t *pml4_entry = (dir_entry_t *)&pml4->entries[pml4_index];
+    dir_entry_t pml4_entry = pml4->entries[pml4_index];
 
-    if (!pml4_entry->present) return 0;
+    if (!pml4_entry.present) return 0;
 
-    pdpt_t *pdpt_table = (pdpt_t *)(pml4_entry->base_addr << 12);
-    dir_entry_t *pdpt_entry = (dir_entry_t *)phys_to_virt((uint64_t)&pdpt_table->entries[pdpt_index]);
+    pdpt_t *pdpt_table = (pdpt_t *)phys_to_virt(pml4_entry.base_addr << 12);
+    dir_entry_t pdpt_entry = pdpt_table->entries[pdpt_index];
 
-    if (!pdpt_entry->present) return 0;
+    if (!pdpt_entry.present) return 0;
 
-    pd_t *pd_table = (pd_t *)(pdpt_entry->base_addr << 12);
-    dir_entry_t *pd_entry = (dir_entry_t *)phys_to_virt((uint64_t)&pd_table->entries[pd_index]);
+    pd_t *pd_table = (pd_t *)phys_to_virt(pdpt_entry.base_addr << 12);
+    dir_entry_t pd_entry = pd_table->entries[pd_index];
 
-    if (!pd_entry->present) return 0;
+    if (!pd_entry.present) return 0;
 
-    pt_t *pt_table = (pt_t *)(pd_entry->base_addr << 12);
-    page_t *page = (page_t *)phys_to_virt((uint64_t)&pt_table->pages[pt_index]);
+    pt_t *pt_table = (pt_t *)phys_to_virt(pd_entry.base_addr << 12);
+    page_t page = pt_table->pages[pt_index];
 
-    if (!page->present) return 0;
+    if (!page.present) return 0;
 
-    return (page->frame << 12) + (virt & 0xFFF);
+    return (page.frame << 12) + (virt & 0xFFF);
 }
 
 void init_paging() {
@@ -246,9 +246,9 @@ void init_paging() {
 
     // init_pmm();
 
-    uint64_t addr;
+    /* uint64_t addr;
 
-    /* for (addr = KERNEL_START_ADDR; addr < (0x100000 + KERNEL_START_ADDR); addr += PAGE_LEN) {
+    for (addr = KERNEL_START_ADDR; addr < (0x100000 + KERNEL_START_ADDR); addr += PAGE_LEN) {
         page_t *page = find_page(addr, true, kernel_pml4);
 
         if (!page) {
