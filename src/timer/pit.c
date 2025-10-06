@@ -8,6 +8,8 @@
 
 #include "lib/stdio.h"
 
+#include "devices/io/ports.h"
+
 #define PIT_FREQ 1193182     // Hz / 1000
 #define PIT_INTERR_FREQ 2000 // hertz
 
@@ -57,6 +59,6 @@ void pit_sleep(uint32_t mills) {
     uint64_t end = pit_count + ((PIT_INTERR_FREQ * mills) / 1000);
 
     while (pit_count < end) {
-        asm volatile("hlt");
+        // asm volatile("hlt");
     }
 }

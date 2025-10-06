@@ -9,6 +9,8 @@
 #include "lib/string.h"
 #include "uconsole.h"
 
+#include "lib/graphics/draw.h"
+
 // Uses PSF1 format
 extern void kputchar(
     /* note that this is int, not char as it's a unicode character */
@@ -63,8 +65,6 @@ static void split_cmd(const char *cmd) {
     int tok = 0;
     int i_tok = 0;
 
-    size_t cmdlen = strlen(cmd);
-
     for (size_t i = 0; *cmd; cmd++ /* i is incremented within the loop */) {
         if (*cmd == ' ') {
             if (i == 0 || *(cmd - 1) == '\\' || *(cmd - 1) == ' ') {
@@ -84,9 +84,43 @@ static void split_cmd(const char *cmd) {
     toks_count = ++tok;
 }
 
+void draw_terminal_window() {
+    // Window position and size
+    int win_x = 40, win_y = 40;
+    int win_w = 640, win_h = 320;
+    int radius = 8;
+
+    // Colors
+    uint32_t border_color = 0xCCCCCC;
+    uint32_t fill_color = 0x222222;
+    uint32_t titlebar_color = 0x333333;
+    uint32_t close_color = 0xFF5F57;   // Red
+    uint32_t min_color   = 0xFEBC2E;   // Yellow
+    uint32_t zoom_color  = 0x28C940;   // Green
+
+    // Draw window background with rounded corners
+    draw_filled_rounded_rect(win_x, win_y, win_w, win_h, radius, border_color, fill_color);
+
+    // Draw title bar
+    int titlebar_h = 32;
+    draw_filled_rounded_rect(win_x + 1, win_y + 1, win_w - 2, titlebar_h, radius - 2, titlebar_color, titlebar_color);
+
+    // Draw window control buttons
+    int btn_radius = 7;
+    int btn_border = 0;
+    int btn_y = win_y + 16;
+    int btn_x_start = win_x + 22;
+    draw_filled_circle(btn_x_start, btn_y, btn_radius, btn_border, border_color, close_color); // Close
+    draw_filled_circle(btn_x_start + 24, btn_y, btn_radius, btn_border, border_color, min_color); // Minimize
+    draw_filled_circle(btn_x_start + 48, btn_y, btn_radius, btn_border, border_color, zoom_color); // Zoom
+
+    // Optionally, draw window title
+    // kputs("Terminal", win_x + 80, win_y + 8);
+}
+
 extern void tetris_main();
 
-static void process_cmd(const char *cmd) {
+static bool process_cmd(const char *cmd) {
     // printf("Received command: %s\n", cmd);
 
     split_cmd(cmd);
@@ -104,12 +138,19 @@ static void process_cmd(const char *cmd) {
         printf("  clear          - Clear the console screen\n");
         printf("  tetris         - Start the Tetris game\n");
         printf("  help           - Show this help message\n");
+        printf("  exit           - Exit the shell\n");
     } else if (!strcmp(toks[0], "tetris")) {
         tetris_main();
         clear();
+    } else if (!strcmp(toks[0], "exit")) {
+        printf("Exiting shell...\n");
+        setcursor(false);
+        return true;
     } else if (toks[0][0] != 0) {
         printf("Unknown command: %s\n", toks[0]);
     }
+
+    return false;
 }
 
 // __attribute__((section(".text")))
@@ -126,6 +167,8 @@ void _start() {
 
     printf("%s", SHELL_PROMPT);
 
+    draw_terminal_window();
+
     for (;;) {
         while (kbd_buffer_empty()) {
             
@@ -139,7 +182,7 @@ void _start() {
 
             cmdbuffer[cmd_buffer_i] = 0;
 
-            process_cmd(cmdbuffer);
+            if (process_cmd(cmdbuffer)) return;
 
             printf(SHELL_PROMPT);
 

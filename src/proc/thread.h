@@ -9,15 +9,15 @@
 typedef struct thread thread_t;
 
 struct thread {
-    registers_t regs;
+    volatile registers_t regs;
 
     size_t tid;
     char name[PROCESS_THREAD_NAME_LEN];
 
-    proc_thread_state_t state;
+    volatile proc_thread_state_t state;
 
     proc_t *parent;
-    thread_t *next;
+    volatile thread_t * volatile next;
 
     gsbase_t *base;
 

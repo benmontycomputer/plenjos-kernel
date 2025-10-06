@@ -4,6 +4,8 @@
 
 #include "arch/x86_64/gdt/tss.h"
 
+#include "cpu/cpu.h"
+
 #include <lib/stdio.h>
 
 extern void reload_segments();
@@ -16,13 +18,13 @@ struct GDTR
     uint64_t address;
 } __attribute__((packed));
 
-uint64_t gdt_entries[num_gdt_entries];
+uint64_t gdt_entries[MAX_CORES][num_gdt_entries];
 
 // granularity(8 Bit)=> Flags(Upper 4 Bit) | Up-Limit(Lower 4 Bit)
 // flags = (granularity & 0xF0) >> 4
 // up_limit = granularity & 0xF
 void gdt_set_entry(int i, uint32_t base, uint32_t limit, uint8_t access, uint8_t gran) {
-    gdt_entry_t *entry = ((gdt_entry_t *)&gdt_entries[i]);
+    gdt_entry_t *entry = ((gdt_entry_t *)&gdt_entries[get_curr_core()][i]);
     entry->limit_low     = (limit & 0xFFFF);        // Set lower 16 bit of limit
     entry->granularity   = (limit >> 16) & 0x0F;    // Set upper 4 bit of limit
 
@@ -38,7 +40,7 @@ void gdt_set_entry(int i, uint32_t base, uint32_t limit, uint8_t access, uint8_t
 
 void gdt_fill() {
     //null descriptor, required to be here.
-    gdt_entries[0] = 0;
+    gdt_entries[get_curr_core()][0] = 0;
 
     uint64_t kernel_code = 0;
     kernel_code |= 0b1011 << 8; //type of selector
@@ -53,15 +55,15 @@ void gdt_fill() {
     kernel_data |= 0 << 13; //DPL field = 0
     kernel_data |= 1 << 15; //present
     kernel_data |= 1 << 21; //long-mode segment
-    gdt_entries[2] = kernel_data << 32;
+    gdt_entries[get_curr_core()][2] = kernel_data << 32;
 
     uint64_t user_code = kernel_code | (3 << 13);
-    gdt_entries[3] = user_code;
+    gdt_entries[get_curr_core()][3] = user_code;
 
     uint64_t user_data = kernel_data | (3 << 13);
-    gdt_entries[4] = user_data;
+    gdt_entries[get_curr_core()][4] = user_data;
 
-    gdt_entries[1] = kernel_code << 32;
+    gdt_entries[get_curr_core()][1] = kernel_code << 32;
 }
 
 extern void tss_reload(uint16_t selector);
@@ -78,7 +80,7 @@ void gdt_tss_init() {
     struct GDTR example_gdtr =
     {
         limit: num_gdt_entries * sizeof(uint64_t) - 1,
-        address: (uint64_t)gdt_entries,
+        address: (uint64_t)gdt_entries[get_curr_core()],
     };
 
     asm("lgdt %0" : : "m"(example_gdtr));

@@ -12,6 +12,10 @@
 #include "memory/kmalloc.h"
 #include "memory/mm.h"
 
+#include "proc/scheduler.h"
+
+#include "arch/x86_64/cpuid/cpuid.h"
+
 // https://wiki.osdev.org/Interrupts_Tutorial
 
 typedef struct {
@@ -56,14 +60,22 @@ void page_fault_handler(registers_t *regs) {
         printf(") at address %p, paddr %p\n", faulting_address,
                get_physaddr(faulting_address, (pml4_t *)phys_to_virt(get_cr3_addr())));
 
+    printf("RIP: %p, RSP: %p, RFLAGS: %p, CR3: %p\n", regs->iret_rip, regs->iret_rsp, regs->iret_rflags, regs->cr3);
+    /* uint64_t *rsp = (uint64_t *)regs->iret_rsp;
+    printf("Stack (rsp = %p) Contents(First 26) :\n", (uint64_t)rsp);
+
+    for (int i = 0; i < 26; i++) {
+        printf("  [%p] = %p\n", (uint64_t)(rsp + i), rsp[i]);
+    } */
+
     // printf("%p\n", get_physaddr(faulting_address), 0, 47);
 
     // Additional action to handle the page fault could be added here,
     // such as invoking a page allocator or terminating a faulty process.
 
     // Halt the system to prevent further errors (for now).
-    printf("Halting the system due to page fault.\n");
-    hcf();
+    // printf("Halting the system due to page fault.\n");
+    // hcf();
 }
 
 void gpf_handler(registers_t *regs) {
@@ -80,8 +92,49 @@ void gpf_handler(registers_t *regs) {
     }
 
     // debug_error_code(regs->err_code);
-    printf("System Halted!\n");
-    hcf();
+    // printf("System Halted!\n");
+    // hcf();
+}
+
+#define IA32_MCG_CTL     0x0177
+#define IA32_MCG_CAP     0x0179
+#define IA32_MCG_STATUS  0x017A
+
+// base addresses for per-bank registers
+#define IA32_MC_CTL(i)    (0x0400 + ((i) * 4))
+#define IA32_MC_STATUS(i) (0x0401 + ((i) * 4))
+#define IA32_MC_ADDR(i)   (0x0402 + ((i) * 4))
+#define IA32_MC_MISC(i)   (0x0403 + ((i) * 4))
+
+void dump_machine_check_msrs()
+{
+    uint64_t val;
+
+    val = read_msr(IA32_MCG_CAP);
+    unsigned banks = (unsigned)(val & 0xff);
+
+    printf("=== Machine Check Global ===\n");
+    printf("IA32_MCG_CTL    (0x177): %p\n", read_msr(IA32_MCG_CTL));
+    printf("IA32_MCG_CAP    (0x179): %p  (banks=%d)\n", val, banks);
+    printf("IA32_MCG_STATUS (0x17A): %p\n", read_msr(IA32_MCG_STATUS));
+
+    for (unsigned i = 0; i < banks; i++) {
+        uint64_t status = read_msr(IA32_MC_STATUS(i));
+        if (!(status & (1ULL << 63))) {
+            // VAL bit clear: no valid error logged
+            continue;
+        }
+        printf("--- Bank %u ---\n", i);
+        printf("  CTL   (0x%03x): %p\n", IA32_MC_CTL(i), read_msr(IA32_MC_CTL(i)));
+        printf("  STATUS(0x%03x): %p\n", IA32_MC_STATUS(i), status);
+
+        if (status & (1ULL << 58)) { // ADDRV bit
+            printf("  ADDR (0x%03x): %p\n", IA32_MC_ADDR(i), read_msr(IA32_MC_ADDR(i)));
+        }
+        if (status & (1ULL << 59)) { // MISCV bit
+            printf("  MISC (0x%03x): %p\n", IA32_MC_MISC(i), read_msr(IA32_MC_MISC(i)));
+        }
+    }
 }
 
 extern void exception_handler_switch_to_kernel(uint64_t pml4_phys);
@@ -98,7 +151,7 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
         regs = (registers_t *)phys_to_virt(regs_phys);
     }
 
-    release_console();
+    // release_console();
 
     if (regs->int_no == 14) {
         printf("\nPAGE FAULT\n");
@@ -108,11 +161,30 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
         gpf_handler(regs);
     } else if (regs->int_no < 32) {
         printf("\nCPU EXCEPTION\n");
+
+        dump_machine_check_msrs();
     } else {
         printf("\nEXCEPTION %p\n", regs->int_no);
     }
 
-    hcf();
+    if (regs->iret_cs == KERNEL_CS) {
+        printf("Kernel panic! System Halted!\n");
+        debug_serial = false;
+        printf("Kernel panic! System Halted!\n");
+        debug_serial = true;
+        // TODO: halt all threads
+        hcf();
+    } else {
+        uint64_t pid = cores_threads[get_curr_core()]->parent->pid;
+        uint64_t tid = cores_threads[get_curr_core()]->tid;
+
+        printf("Faulting process: PID %p, TID %p\n", pid, tid);
+        printf("Killing offending process...\n");
+
+        process_exit(cores_threads[get_curr_core()]->parent);
+
+        cpu_scheduler_task();
+    }
 }
 
 void idt_set_descriptor(uint8_t vector, void *isr, uint8_t flags) {
@@ -129,6 +201,11 @@ void idt_set_descriptor(uint8_t vector, void *isr, uint8_t flags) {
 
 static bool vectors[IDT_MAX_DESCRIPTORS];
 
+void idt_load() {
+    __asm__ volatile("lidt %0" : : "m"(idtr)); // load the new IDT
+    __asm__ volatile("sti");                   // set the interrupt flag
+}
+
 void idt_init() {
     idtr.base = (uintptr_t)&idt[0];
     idtr.limit = (uint16_t)sizeof(idt_entry_t) * IDT_MAX_DESCRIPTORS - 1;
@@ -142,8 +219,7 @@ void idt_init() {
     // syscall should be callable from all rings, unlike other interrupts
     idt_set_descriptor(128, isr_stub_table[128], 0b11101110);
 
-    __asm__ volatile("lidt %0" : : "m"(idtr)); // load the new IDT
-    __asm__ volatile("sti");                   // set the interrupt flag
+    idt_load();
 
     printf("Loaded IDT tables.\n");
 }

@@ -15,6 +15,8 @@
 #include "arch/x86_64/apic/apic.h"
 #include "arch/x86_64/pic/pic.h"
 
+#include "arch/x86_64/irq.h"
+
 #include "arch/x86_64/cpuid/cpuid.h"
 
 #include "memory/detect.h"
@@ -24,6 +26,9 @@
 
 #include "cpu/cpu.h"
 
+#include "arch/x86_64/apic/apic.h"
+#include "arch/x86_64/apic/ioapic.h"
+
 void init_x86_64() {
     asm volatile("cli");
 
@@ -31,6 +36,10 @@ void init_x86_64() {
     acpi_init();
 
     enable_apic();
+    enable_ioapic();
+
+    uint32_t bsp_flags = (0 << 8) | (0 << 13) | (0 << 15); // Flags for the BSP
+    ioapic_route_all_irq(get_lapic_id(), bsp_flags);
 
     idt_init();
 
@@ -46,31 +55,15 @@ void init_x86_64() {
     PIC_remap(PIC1, PIC2);
     pic_disable();
 
+    irq_register_routine(IPI_TLB_SHOOTDOWN_IRQ, &ipi_tlb_shootdown_routine);
+    irq_register_routine(IPI_TLB_FLUSH_IRQ, &ipi_tlb_flush_routine);
+    irq_register_routine(IPI_KILL_IRQ, &ipi_kill_routine);
+
     asm volatile("sti");
 
     setup_bs_gs_base();
 
     // ReadRegister(0x60);
-}
-
-inline void outb(uint16_t port, uint8_t val) {
-    __asm__ volatile("outb %b0, %w1" : : "a"(val), "Nd"(port) : "memory");
-    /* There's an outb %al, $imm8 encoding, for compile-time constant port
-     * numbers that fit in 8b. (N constraint). Wider immediate constants would
-     * be truncated at assemble-time (e.g. "i" constraint). The  outb  %al, %dx
-     * encoding is the only option for all other cases. %1 expands to %dx
-     * because  port  is a uint16_t.  %w1 could be used if we had the port
-     * number a wider C type */
-}
-
-inline uint8_t inb(uint16_t port) {
-    uint8_t ret;
-    __asm__ volatile("inb %w1, %b0" : "=a"(ret) : "Nd"(port) : "memory");
-    return ret;
-}
-
-inline void io_wait(void) {
-    outb(0x80, 0);
 }
 
 inline bool are_interrupts_enabled() {

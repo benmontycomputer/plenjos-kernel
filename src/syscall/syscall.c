@@ -18,6 +18,8 @@
 
 extern kbd_buffer_state_t kbd_buffer_state;
 
+static uint8_t fb_mapped = 0;
+
 uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_t rsi, uint64_t rdi) {
     uint64_t out;
 
@@ -86,10 +88,14 @@ registers_t *syscall_routine(registers_t *regs) {
             memset(out, 0, sizeof(fb_info_t));
 
             out->fb_bytes_per_pixel = fb_bytes_per_pixel;
-            out->fb_height = fb_height;
+            // out->fb_height = fb_height / 4;
+            // out->fb_ptr = fb + (fb_mapped % 4) * (fb_height / 4) * fb_scanline;
             out->fb_ptr = fb;
             out->fb_scanline = fb_scanline;
             out->fb_width = fb_width;
+            out->fb_height = fb_height;
+
+            // fb_mapped++;
 
             regs->rax = rbx;
         } else {

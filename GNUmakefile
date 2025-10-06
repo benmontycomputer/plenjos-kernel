@@ -151,6 +151,7 @@ uefi_run:
 		-cdrom ../image.iso \
 		-d guest_errors,cpu_reset,invalid_mem,unimp \
 		-vga std \
+		-serial stdio \
 		-smbios type=0,uefi=on \
 		-rtc base=utc,clock=host \
         -no-reboot

@@ -5,6 +5,8 @@
 
 #include "memory/mm.h"
 
+#include "devices/io/ports.h"
+
 #include "lib/stdio.h"
 
 // This is the default addr

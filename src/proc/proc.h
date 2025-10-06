@@ -25,14 +25,15 @@ struct proc {
     size_t pid;
     char name[PROCESS_THREAD_NAME_LEN];
     
-    proc_thread_state_t state;
+    volatile proc_thread_state_t state;
 
-    thread_t *threads;
+    volatile thread_t * volatile threads;
 
-    pml4_t *pml4;
+    volatile pml4_t *pml4;
 
-    proc_t *next;
+    volatile proc_t * volatile next;
 };
 
 proc_t *create_proc(const char *name);
 void release_proc(proc_t *proc);
+void process_exit(proc_t *proc);

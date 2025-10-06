@@ -11,9 +11,11 @@
 
 #include "memory/mm.h"
 
-extern uint64_t gdt_entries[num_gdt_entries];
+#include "cpu/cpu.h"
 
-struct tss tss_obj;
+extern uint64_t gdt_entries[MAX_CORES][num_gdt_entries];
+
+struct tss tss_obj[MAX_CORES];
 
 uint64_t create_descriptor(uint32_t base, uint32_t limit, uint8_t access, uint8_t gran)
 {
@@ -38,7 +40,7 @@ uint64_t create_descriptor(uint32_t base, uint32_t limit, uint8_t access, uint8_
 }
 
 void tss_set_entry(int i, uint64_t base, uint32_t limit, uint8_t access, uint8_t gran) {
-    gdt_entries[i] = create_descriptor(base, limit, access, gran);
+    gdt_entries[get_curr_core()][i] = create_descriptor(base, limit, access, gran);
 }
 
 void tss_init() {
@@ -58,17 +60,17 @@ void tss_init() {
 
     printf("TSS stack addr: %p\n", stack);
 
-    memset(&tss_obj, 0, sizeof(struct tss));
+    memset(&tss_obj[get_curr_core()], 0, sizeof(struct tss));
 
-    tss_obj.rsp0 = stack;
-    tss_obj.iopb_offset = sizeof(struct tss);
+    tss_obj[get_curr_core()].rsp0 = stack;
+    tss_obj[get_curr_core()].iopb_offset = sizeof(struct tss);
 
-    uint64_t tss_base = (uint64_t)&tss_obj;
+    uint64_t tss_base = (uint64_t)&tss_obj[get_curr_core()];
     uint32_t tss_limit = (uint32_t)(sizeof(struct tss));
 
     // tss_set_entry(5, tss_base, tss_limit, 0x89, 0x00);
 
-    gdt_tss_desc_t *tss_seg = (gdt_tss_desc_t *)&gdt_entries[5];
+    gdt_tss_desc_t *tss_seg = (gdt_tss_desc_t *)&gdt_entries[get_curr_core()][5];
 
     tss_seg->limit_0 = tss_limit & 0xFFFF;
     tss_seg->addr_0 = tss_base & 0xFFFF;

@@ -1,8 +1,11 @@
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 #ifndef _KERNEL_H
 #define _KERNEL_H
+
+extern bool debug_serial;
 
 void *memcpy(void *dest, const void *src, size_t n);
 
@@ -70,6 +73,9 @@ struct gsbase {
     uint64_t stack; // 0x00
     uint64_t pid; // 0x08
     uint64_t cr3; // 0x10
+    uint32_t processor_id; // 0x18
+    uint32_t reserved0; // 0x1C
+    uint64_t reserved[4]; // 0x20 - 0x38
 } __attribute__((packed));
 typedef struct gsbase gsbase_t;
 

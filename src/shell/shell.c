@@ -30,7 +30,7 @@ static void process_cmd(const char *cmd) {
 
 static void shell() {
     // char *fb = (char *)syscall(SYSCALL_GET_FB, 0, 0, 0, 0, 0);
-    syscall(SYSCALL_PRINT, (uint64_t)"\ntest!!!\n\n", 0, 0, 0, 0);
+    // syscall(SYSCALL_PRINT, (uint64_t)"\ntest!!!\n\n", 0, 0, 0, 0);
 
     // Shell stub
     setcursor(true);

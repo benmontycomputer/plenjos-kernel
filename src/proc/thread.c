@@ -81,8 +81,8 @@ thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), vo
     thread->base->cr3 = thread->regs.cr3;
     thread->base->stack = (uint64_t)thread->regs.iret_rsp;
 
-    map_virtual_memory_using_alloc(get_physaddr((uint64_t)thread, kernel_pml4), (uint64_t)thread, PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
-    map_virtual_memory_using_alloc(get_physaddr((uint64_t)thread->base, kernel_pml4), (uint64_t)thread->base, PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
+    map_virtual_memory_using_alloc(virt_to_phys((uint64_t)thread), (uint64_t)thread, PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
+    map_virtual_memory_using_alloc(virt_to_phys((uint64_t)thread->base), (uint64_t)thread->base, PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
 
     if (proc->threads == NULL) {
         proc->threads = thread;

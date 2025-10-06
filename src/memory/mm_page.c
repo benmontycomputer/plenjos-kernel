@@ -13,8 +13,12 @@
 #include "lib/stdio.h"
 
 #include "arch/x86_64/cpuid/cpuid.h"
+#include "arch/x86_64/irq.h"
+#include "cpu/cpu.h"
 
 // Partially modified from KeblaOS
+
+// TODO: figure out on core-by-core basis if TLB shootdown is needed
 
 pml4_t *kernel_pml4;
 uint64_t kernel_pml4_phys;
@@ -39,16 +43,33 @@ static inline void addr_split(uint64_t virt, uint32_t *pml4, uint32_t *pdpt, uin
     *pt = ((virt) >> 12) & 0x1FF;   // 12-20
 }
 
+static inline void flush_ipi_all() {
+    if (!smp_loaded) return;
+
+    uint32_t curr_core = get_curr_core();
+
+    for (uint32_t i = 0; i < get_n_cores(); i++) {
+        if (cpu_cores[i].online && i != curr_core) {
+            send_ipi(cpu_cores[i].lapic_id, IPI_TLB_SHOOTDOWN_IRQ + 32); // IPI for tlb shootdown
+        }
+    }
+}
+
 // Function to flush the entire TLB (by writing to cr3)
-void flush_tlb_all() {
+static inline void flush_tlb_all() {
     uint64_t cr3;
     // Get the current value of CR3 (the base of the PML4 table)
     asm volatile("mov %%cr3, %0" : "=r"(cr3));
 
     // Write the value of CR3 back to itself, which will flush the TLB
     asm volatile("mov %0, %%cr3" : : "r"(cr3) : "memory");
+
+    uint32_t curr_core = get_curr_core();
+
+    flush_ipi_all();
 }
 
+// MAKE SURE TO SEND THE IPI AFTER CALLING THIS FUNCTION
 static inline void __native_flush_tlb_single(uint64_t addr) {
     asm volatile("invlpg (%0)" ::"r"(addr) : "memory");
 }
@@ -132,6 +153,7 @@ page_t *find_page_using_alloc(uint64_t virt, bool autocreate, uint64_t *alloc_fu
 
     // Flush the tlb to update the tables in the CPU
     __native_flush_tlb_single(virt);
+    flush_ipi_all();
 
     return (page_t *)pg;
 }
@@ -140,7 +162,8 @@ page_t *find_page(uint64_t virt, bool autocreate, pml4_t *pml4) {
     return find_page_using_alloc(virt, autocreate, alloc_paging_node, is_userspace(virt), pml4);
 }
 
-void map_virtual_memory_using_alloc(uint64_t phys_start, uint64_t virt_start, size_t len, uint64_t flags, uint64_t *alloc_func(), pml4_t *pml4) {
+void map_virtual_memory_using_alloc(uint64_t phys_start, uint64_t virt_start, size_t len, uint64_t flags,
+                                    uint64_t *alloc_func(), pml4_t *pml4) {
     uint32_t i_pml4, i_pdpt, i_pd, i_pt;
 
     uint64_t *pml4_table, *pdpt_table, *pd_table, *pt_table;
@@ -200,6 +223,8 @@ void map_virtual_memory_using_alloc(uint64_t phys_start, uint64_t virt_start, si
         // Flush the tlb to update the tables in the CPU
         __native_flush_tlb_single(virt_current);
     }
+
+    flush_ipi_all();
 }
 
 void map_virtual_memory(uint64_t phys_start, size_t len, uint64_t flags, pml4_t *pml4) {
@@ -258,4 +283,52 @@ void init_paging() {
             continue;
         }
     } */
+}
+
+#define PTE_ADDR(x) ((x) & 0x000FFFFFFFFFF000ULL)
+
+void free_page_table(pml4_t *pml4_virt) {
+    uint64_t *pml4 = (uint64_t *)pml4_virt;
+
+    for (size_t pml4_i = 0; pml4_i < 512; pml4_i++) {
+        uint64_t pml4e = pml4[pml4_i];
+        if (!(pml4e & PAGE_FLAG_PRESENT)) continue;
+
+        uint64_t *pdpt = (uint64_t *)phys_to_virt(PTE_ADDR(pml4e));
+        for (size_t pdpt_i = 0; pdpt_i < 512; pdpt_i++) {
+            uint64_t pdpte = pdpt[pdpt_i];
+            if (!(pdpte & PAGE_FLAG_PRESENT)) continue;
+
+            // 1 GiB huge page?
+            /* if (pdpte & PTE_PS) {
+                free_page((void *)PTE_ADDR(pdpte));
+                continue;
+            } */
+
+            uint64_t *pd = (uint64_t *)phys_to_virt(PTE_ADDR(pdpte));
+            for (size_t pd_i = 0; pd_i < 512; pd_i++) {
+                uint64_t pde = pd[pd_i];
+                if (!(pde & PAGE_FLAG_PRESENT)) continue;
+
+                // 2 MiB huge page?
+                /* if (pde & PTE_PS) {
+                    free_page((void *)PTE_ADDR(pde));
+                    continue;
+                } */
+
+                uint64_t *pt = (uint64_t *)phys_to_virt(PTE_ADDR(pde));
+                for (size_t pt_i = 0; pt_i < 512; pt_i++) {
+                    uint64_t pte = pt[pt_i];
+                    if (!(pte & PAGE_FLAG_PRESENT)) continue;
+
+                    phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(PTE_ADDR(pte)));
+                    pt[pt_i] = 0;
+                }
+                phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(PTE_ADDR(pde)));   // free page table
+            }
+            phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(PTE_ADDR(pdpte)));     // free page directory
+        }
+        phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(PTE_ADDR(pml4e)));         // free pdpt
+    }
+    phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(virt_to_phys((uint64_t)pml4_virt))); // free pml4
 }

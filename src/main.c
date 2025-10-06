@@ -20,6 +20,7 @@
 #include "cpu/cpu.h"
 
 #include "devices/input/keyboard/keyboard.h"
+#include "devices/pci/pci.h"
 
 #include "shell/shell.h"
 
@@ -30,6 +31,16 @@
 #include "syscall/syscall.h"
 
 #include "exec/elf.h"
+
+#include "lib/serial.h"
+
+#include "timer/pit.h"
+
+#include "arch/x86_64/gdt/gdt.h"
+
+#include "devices/storage/ide.h"
+
+bool debug_serial = false;
 
 char *fb;
 int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
@@ -126,12 +137,19 @@ int memcmp(const void *s1, const void *s2, size_t n) {
     return 0;
 }
 
+void test_func() {
+    for (size_t i = 0; i < 10; i++) {
+        printf("Test %d on core %d\n", i, get_curr_core());
+        pit_sleep(1000);
+    }
+}
+
 // Halt and catch fire function.
 __attribute__((noreturn)) //
 void
 hcf(void) {
     for (;;) {
-        asm("hlt");
+        asm volatile("hlt");
     }
 }
 
@@ -155,7 +173,8 @@ void kmain(void) {
     fb_bytes_per_pixel = (int)((framebuffer->bpp + 7) / 8);
     printf("Framebuffer: %p\n", framebuffer->address);
 
-    // map_virtual_memory(virt_to_phys((uint64_t)fb), fb_height * fb_scanline, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, kernel_pml4);
+    // map_virtual_memory(virt_to_phys((uint64_t)fb), fb_height * fb_scanline, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,
+    // kernel_pml4);
 
     init_memory_manager();
     init_kernel_heap();
@@ -173,9 +192,18 @@ void kmain(void) {
     init_x86_64();
 #endif
 
+    debug_serial = true;
+
+    init_serial();
+
+    printf("Debugging to serial output now...\n");
+
     load_smp();
 
     init_keyboard();
+
+    pci_scan();
+    ide_init();
 
 #define helloworld "Hello World!\n"
 
@@ -228,6 +256,7 @@ void kmain(void) {
     if (!module_request.response) {
         printf("No modules detected.\n");
     } else {
+        // for (size_t i = 0; i < 12; i++) {
         void *elf_addr = module_request.response->modules[0]->address;
 
         proc_t *shell_proc = create_proc("kshell");
@@ -236,27 +265,28 @@ void kmain(void) {
 
         loadelf(elf_addr, shell_proc->pml4, &entry, &stack);
 
-        // map_virtual_memory_using_alloc(get_physaddr(stack, shell_proc->pml4), stack, 0x4000, PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node, kernel_pml4);
-
         thread_t *shell_thread = create_thread(shell_proc, "kshell_t0", (void *)entry, NULL);
 
-        // kfree_heap(shell_thread->stack);
-
-        // shell_thread->stack = (void *)stack;
-        // shell_thread->regs.iret_rsp = stack + 0x4000;
-
         thread_ready(shell_thread);
-
-        // shell_thread->regs.cr3 = virt_to_phys((uint64_t)kernel_pml4);
-
-        // uint64_t d;
-        // loadelf(elf_addr, kernel_pml4, &d, &d);
-        // printf("fb: %p -> %p\n", fb, get_physaddr((uint64_t)fb, kernel_pml4));hcf();
-
-
-        printf("Assigning thread...\n\n");
-        assign_thread_to_cpu(shell_thread);
+        // }
     }
+
+    /* for (size_t i = 0; i < 4; i++) {
+        proc_t *test_proc = create_proc("testproc");
+        thread_t *test_thread = create_thread(test_proc, "testproc_t0", test_func, NULL);
+
+        test_thread->regs.iret_cs = KERNEL_CS; // Kernel code
+        test_thread->regs.iret_ss = KERNEL_DS; // Kernel stack/data
+
+        test_thread->regs.ds = KERNEL_DS;
+        test_thread->regs.es = KERNEL_DS;
+        test_thread->regs.fs = KERNEL_DS;
+        test_thread->regs.gs = KERNEL_DS;
+
+        thread_ready(test_thread);
+    } */
+
+    start_scheduler();
 
     printf("No more code. Halt!\n");
 

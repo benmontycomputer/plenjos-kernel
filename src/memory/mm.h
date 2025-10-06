@@ -24,7 +24,6 @@ extern uint64_t kernel_pml4_phys;
 uint64_t get_cr3_addr();
 void set_cr3_addr(uint64_t cr3);
 void init_paging();
-void flush_tlb_all();
 
 inline int is_userspace(uint64_t virt) {
     return (virt >= KERNEL_START_ADDR) ? 0 : 1;
@@ -34,6 +33,8 @@ page_t *find_page_using_alloc(uint64_t virt, bool autocreate, uint64_t *alloc_fu
 page_t *find_page(uint64_t virt, bool autocreate, pml4_t *pml4);
 
 uint64_t get_physaddr(uint64_t virt, pml4_t *pml4);
+
+void free_page_table(pml4_t *pml4_virt);
 
 // Physical memory manager
 extern struct kernel_memory_map memmap;

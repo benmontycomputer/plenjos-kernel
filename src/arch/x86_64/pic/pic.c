@@ -5,6 +5,8 @@
 
 #include "lib/stdio.h"
 
+#include "devices/io/ports.h"
+
 void PIC_sendEOI(uint8_t irq)
 {
 	if(irq >= 8)

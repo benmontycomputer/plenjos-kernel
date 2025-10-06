@@ -7,6 +7,9 @@
 
 #include "memory/mm.h"
 
+#include "kernel.h"
+#include "lib/serial.h"
+
 typedef struct {
     bool held;
 } mutex;
@@ -57,6 +60,11 @@ void scroll_console() {
 }
 
 void printf_ch(char ch) {
+    if (debug_serial) {
+        write_serial(ch);
+        return;
+    }
+
     if ((int)GET_CONSOLE_Y(console_pos) >= CONSOLE_H()) scroll_console();
 
     if (ch == '\n') {

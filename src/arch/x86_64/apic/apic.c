@@ -15,21 +15,10 @@
 #include "timer/pit.h"
 
 #include "arch/x86_64/irq.h"
+#include "cpu/cpu.h"
 
 // osdev wiki and
 // https://github.com/baponkar/KeblaOS/blob/main/kernel/src/arch/interrupt/apic/apic.c
-
-#define IA32_APIC_BASE_MSR 0x1B
-#define IA32_APIC_BASE_MSR_BSP 0x100 // Processor is a BSP
-#define IA32_APIC_BASE_MSR_ENABLE 0x800
-#define APIC_EOI 0xB0
-
-#define APIC_LVT_TIMER 0x320
-#define APIC_TIMER_INITCNT 0x380
-#define APIC_TIMER_CURRCNT 0x390
-#define APIC_TIMER_DIV 0x3E0
-
-#define LAPIC_ID_REG 0x20
 
 uint64_t LAPIC_BASE = 0x0; // = 0xFEE00000;
 
@@ -83,9 +72,21 @@ void apic_calibrate_timer() {
     apic_timer_tpms = apic_tmr_freq / 1000;
 }
 
+// static volatile uint64_t apic_timer_ticks[MAX_CORES] = {0};
+
 void apic_timer_irq_handler(registers_t *regs) {
+    // apic_timer_ticks[get_curr_core()]++;
+    // apic_send_eoi();
     // TODO: implement this
 }
+
+/* void apic_timer_sleep(uint32_t mills) {
+    uint64_t end = apic_timer_ticks[get_curr_core()] + mills;
+
+    while (apic_timer_ticks[get_curr_core()] < end) {
+        asm volatile("hlt");
+    }
+} */
 
 void apic_start_timer() {
     irq_register_routine(16, apic_timer_irq_handler);
@@ -99,6 +100,35 @@ void apic_start_timer() {
 
 uint32_t get_lapic_id() {
     return ReadRegister(LAPIC_ID_REG) >> 24;
+}
+
+#define LAPIC_ICR_LOW   0x300
+#define LAPIC_ICR_HIGH  0x310
+
+static inline void lapic_wait_for_idle(void)
+{
+    while (*(volatile uint32_t *)(LAPIC_BASE + 0x300) & (1 << 12)) {
+        // Optionally pause to reduce bus contention
+        asm volatile("pause");
+    }
+}
+
+// extern void release_console();
+
+void send_ipi(uint8_t apic_id, uint8_t vector) {
+    lapic_wait_for_idle();
+
+    // release_console();
+    // printf("Sending IPI to apic id %d with vector %d\n", apic_id, vector);
+    
+    // set destination
+    write_reg(LAPIC_ICR_HIGH, ((uint32_t)apic_id) << 24);
+
+    // write ICR low: vector + fixed delivery + physical dest
+    write_reg(LAPIC_ICR_LOW, vector | (0 << 8));  // Delivery mode Fixed
+
+    // Optionally wait for the IPI to be sent
+    lapic_wait_for_idle();
 }
 
 void enable_apic() {
@@ -119,8 +149,8 @@ void enable_apic() {
 
     apic_send_eoi();
 
-    enable_ioapic();
+    // enable_ioapic();
 
-    uint32_t bsp_flags = (0 << 8) | (0 << 13) | (0 << 15); // Flags for the BSP
-    ioapic_route_all_irq(get_lapic_id(), bsp_flags);
+    /* uint32_t bsp_flags = (0 << 8) | (0 << 13) | (0 << 15); // Flags for the BSP
+    ioapic_route_all_irq(get_lapic_id(), bsp_flags); */
 }

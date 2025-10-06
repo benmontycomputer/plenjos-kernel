@@ -12,6 +12,8 @@
 
 #include "lib/stdio.h"
 
+#include "devices/io/ports.h"
+
 const uint32_t lowercase[128]
     = { UNKNOWN, ESC,     '1',     '2',       '3',         '4',     '5',     '6',     '7',     '8',     '9',
         '0',     '-',     '=',     '\b',      '\t',        'q',     'w',     'e',     'r',     't',     'y',

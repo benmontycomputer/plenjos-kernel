@@ -153,14 +153,14 @@ IRQ  10,    42
 IRQ  11,    43
 IRQ  12,    44      ; Mouse Interrupt
 IRQ  13,    45
-IRQ  14,    46
-IRQ  15,    47
+IRQ  14,    46      ; ATA Primary?
+IRQ  15,    47      ; ATA Secondary?
 
 IRQ  16,    48      ; APIC Timer Interrupt
 IRQ  17,    49      ; HPET Timer Interrupt
-IRQ  18,    50      ; IPI
-IRQ  19,    51
-IRQ  20,    52
+IRQ  18,    50      ; IPI (tlb shootdown)
+IRQ  19,    51      ; IPI (flush tlb)
+IRQ  20,    52      ; IPI (kill)
 IRQ  21,    53
 IRQ  22,    54
 IRQ  23,    55
