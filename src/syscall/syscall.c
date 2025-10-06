@@ -143,7 +143,13 @@ registers_t *syscall_routine(registers_t *regs) {
             if (get_physaddr(voffs, current_pml4)) {
                 printf("WARNING: the pml4 table at vaddr %p already has %p mapped.\n", current_pml4, voffs);
             }
-            map_virtual_memory_using_alloc(find_next_free_frame(), voffs, PAGE_LEN,
+            uint64_t frame = find_next_free_frame();
+            if (!frame) {
+                printf("Failed to find free frame for vaddr %p\n", voffs);
+                break;
+            }
+            memset((void *)phys_to_virt(frame), 0, PAGE_LEN);
+            map_virtual_memory_using_alloc(frame, voffs, PAGE_LEN,
                                            PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node,
                                            current_pml4);
         }
