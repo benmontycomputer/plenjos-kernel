@@ -37,3 +37,53 @@ char *strncpy(char *dest, const char *src, size_t n) {
         memcpy(dest, src, n);
     }
 }
+
+static char *olds;
+
+// Written by Plenjamin
+char *strtok(char *str, const char *delim) {
+    if (str == NULL) str = olds;
+    if (str == NULL) return NULL;
+    if (delim == NULL) return NULL;
+
+    char *d = NULL;
+
+    // First, skip over any leading delimiters
+    while (*str) {
+        d = (char *)delim;
+
+        while (*d) {
+            if (*str == *d) break;
+            d++;
+        }
+
+        if (*d == '\0') break;
+
+        ++str;
+    }
+
+    if (*str == '\0') {
+        olds = NULL;
+        return NULL;
+    }
+
+    char *s = str;
+
+    while (*str) {
+        d = (char *)delim;
+
+        while (*d) {
+            if (*str == *d) {
+                *str = '\0';
+                olds = ++str;
+                return s;
+            }
+            d++;
+        }
+
+        ++str;
+    }
+
+    olds = NULL;
+    return s;
+}

@@ -3,17 +3,17 @@
 #include "proc/proc.h"
 #include "proc/thread.h"
 
-#include "memory/mm.h"
 #include "memory/kmalloc.h"
+#include "memory/mm.h"
 
 #include "lib/stdio.h"
 #include "lib/string.h"
 
-#include "arch/x86_64/gdt/tss.h"
-#include "arch/x86_64/idt.h"
-#include "arch/x86_64/gdt/gdt.h"
 #include "arch/x86_64/apic/apic.h"
 #include "arch/x86_64/apic/ioapic.h"
+#include "arch/x86_64/gdt/gdt.h"
+#include "arch/x86_64/gdt/tss.h"
+#include "arch/x86_64/idt.h"
 
 #include "cpu/cpu.h"
 
@@ -21,124 +21,105 @@
 
 #include "arch/x86_64/irq.h"
 
-volatile proc_t *procs = NULL;
+#include "arch/x86_64/cpuid/cpuid.h"
+
+volatile proc_t *pid_zero = NULL;
 
 volatile uint64_t next_pid = 0;
 
-/* typedef struct paging_node_list paging_node_list_t;
+proc_t *_get_proc_kernel() {
+    gsbase_t *gsbase = (gsbase_t *)read_msr(IA32_GS_BASE);
 
-struct paging_node_list {
-    uint64_t node;
-    paging_node_list_t *next;
-};
+    return (proc_t *)gsbase->proc;
+}
 
-paging_node_list_t *nodes = NULL;
-paging_node_list_t *last_node = NULL; */
-
-/* uint64_t *proc_alloc_paging_node() {
-    uint64_t *node = alloc_paging_node();
-
-    paging_node_list_t *new_node = kmalloc_heap(sizeof(paging_node_list_t));
-
-    new_node->next = NULL;
-    new_node->node = (uint64_t)node;
-
-    if (nodes) {
-        last_node->next = new_node;
-        last_node = new_node;
-    } else {
-        nodes = new_node;
-        last_node = new_node;
+proc_t *create_proc(const char *name, proc_t *parent) {
+    if (!parent) {
+        if (next_pid != 0) {
+            printf("Error: trying to create a new process (name %s), but pid 0 is taken and no parent was provided!\n",
+                   name);
+            return NULL;
+        }
     }
 
-    return node;
-} */
-
-extern struct tss tss_obj[MAX_CORES];
-extern idtr_t idtr;
-extern uint64_t gdt_entries[MAX_CORES][num_gdt_entries];
-extern uint64_t phys_mem_total_frames;
-extern uint64_t last_useable_phys_frame;
-
-proc_t *create_proc(const char *name) {
     proc_t *proc = (proc_t *)phys_to_virt(find_next_free_frame());
-    memset(proc, 0, PAGE_LEN);
 
     if (!proc) {
         printf("Error allocating memory for proc_t.\n");
         return NULL;
     }
 
-    if (name) strncpy(proc->name, name, PROCESS_THREAD_NAME_LEN);
-    else
-        proc->name[0] = 0;
+    memset(proc, 0, PAGE_LEN);
 
-    proc->next = NULL;
+    if (name) {
+        strncpy(proc->name, name, PROCESS_THREAD_NAME_LEN);
+        proc->name[PROCESS_THREAD_NAME_LEN - 1] = '\0';
+    } else {
+        proc->name[0] = 0;
+    }
+
+    proc->first_child = NULL;
+    proc->prev_sibling = NULL;
+    proc->next_sibling = NULL;
+    proc->parent = parent;
+
+    if (parent) {
+        proc->uid = parent->uid;
+    } else {
+        proc->uid = 0;
+    }
+
     proc->pid = next_pid++;
+    if (proc->pid == 0) {
+        pid_zero = proc;
+    }
     proc->state = READY;
     proc->threads = NULL;
 
     // TODO: page table
     proc->pml4 = (pml4_t *)phys_to_virt(find_next_free_frame());
+    if (!proc->pml4) {
+        printf("Error allocating page table for proc %s (%lu)\n", proc->name, proc->pid);
+        return NULL;
+    }
     memset(proc->pml4, 0, PAGE_LEN);
 
     printf("proc pml4 virt: %p\n", proc->pml4);
 
-    // proc->pml4 = kernel_pml4;
-
-    // TODO: check perms on this
-    // map_virtual_memory_using_alloc(virt_to_phys((uint64_t)proc->pml4), (uint64_t)proc->pml4, PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_USER, alloc_paging_node, proc->pml4);
-    // map_virtual_memory_using_alloc(get_physaddr((uint64_t)&tss_obj[get_curr_core()], kernel_pml4), (uint64_t)&tss_obj[get_curr_core()], sizeof(struct tss), PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
-    
     for (uint64_t i = TSS_STACK_ADDR - (KERNEL_STACK_SIZE * get_n_cores()); i < TSS_STACK_ADDR; i += PAGE_LEN) {
         // printf("mapping %p\n", gs_bases[i]);
-        map_virtual_memory_using_alloc(get_physaddr(i, kernel_pml4), i, PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
+        map_virtual_memory_using_alloc(get_physaddr(i, kernel_pml4), i, PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,
+                                       alloc_paging_node, proc->pml4);
     }
-    
-    // map_virtual_memory_using_alloc(get_physaddr((uint64_t)&idtr, kernel_pml4), (uint64_t)&idtr, sizeof(idtr_t), PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
-    // map_virtual_memory_using_alloc(get_physaddr((uint64_t)idtr.base, kernel_pml4), (uint64_t)idtr.base, PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
-    // map_virtual_memory_using_alloc(get_physaddr((uint64_t)isr_stub_table, kernel_pml4), (uint64_t)isr_stub_table, PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
-    // alloc_virtual_memory((uint64_t)isr_stub_table[128], ALLOCATE_VM_EX, proc->pml4);
-    // map_virtual_memory_using_alloc(get_physaddr((uint64_t)isr_stub_table[128], kernel_pml4), (uint64_t)isr_stub_table[128], PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
-    // map_virtual_memory_using_alloc(get_physaddr((uint64_t)gdt_entries, kernel_pml4), (uint64_t)gdt_entries, sizeof(gdt_entries), PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
-    // map_virtual_memory_using_alloc(0x1000, phys_to_virt(0x1000), last_useable_phys_frame - 0x1000, PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
-    map_virtual_memory_using_alloc(kernel_load_phys, kernel_load_virt, 1<<20 /* 2 MiB */, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
-    map_virtual_memory_using_alloc(virt_to_phys(IOAPIC_ADDR), IOAPIC_ADDR, 4096, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
-    map_virtual_memory_using_alloc(virt_to_phys(LAPIC_BASE), LAPIC_BASE, 4096, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
+
+    map_virtual_memory_using_alloc(kernel_load_phys, kernel_load_virt, 1 << 20 /* 2 MiB */,
+                                   PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
+    map_virtual_memory_using_alloc(virt_to_phys(IOAPIC_ADDR), IOAPIC_ADDR, 4096, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,
+                                   alloc_paging_node, proc->pml4);
+    map_virtual_memory_using_alloc(virt_to_phys(LAPIC_BASE), LAPIC_BASE, 4096, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,
+                                   alloc_paging_node, proc->pml4);
 
     for (uint32_t i = 0; (i < MAX_CORES) && (gs_bases[i]); i++) {
         // printf("mapping %p\n", gs_bases[i]);
-        map_virtual_memory_using_alloc(get_physaddr((uint64_t)gs_bases[i], kernel_pml4), (uint64_t)gs_bases[i], PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
+        map_virtual_memory_using_alloc(get_physaddr((uint64_t)gs_bases[i], kernel_pml4), (uint64_t)gs_bases[i],
+                                       PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
     }
 
-    /* while (nodes) {
-        paging_node_list_t *old_nodes = nodes;
+    proc->fds_max = PROCESS_FDS_MAX;
 
-        nodes = NULL;
-        last_node = NULL;
+    size_t fds_size = sizeof(vfs_node_t *) * proc->fds_max;
 
-        while (old_nodes) {
-            map_virtual_memory_using_alloc(virt_to_phys(old_nodes->node), old_nodes->node, PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_USER, alloc_paging_node, proc->pml4);
+    proc->fds = kmalloc_heap(fds_size);
+    memset((void *)proc->fds, 0, fds_size);
 
-            // printf("%p -> %p\n", old_nodes->node, get_physaddr(old_nodes->node, proc->pml4));
-
-            paging_node_list_t *next_node = old_nodes->next;
-            kfree_heap(old_nodes);
-            old_nodes = next_node;
+    if (parent) {
+        // Insert this proc into the list
+        if (parent->first_child) {
+            proc->next_sibling = parent->first_child;
+            parent->first_child->prev_sibling = proc;
         }
-    } */
 
-    // proc->pml4 = kernel_pml4;
-
-    if (procs) {
-        proc_t *p = procs;
-
-        while (p->next)
-            p = p->next;
-
-        p->next = proc;
-    } else {
-        procs = proc;
+        parent->first_child = proc;
     }
 
     return proc;
@@ -146,6 +127,16 @@ proc_t *create_proc(const char *name) {
 
 void process_exit(proc_t *proc) {
     if (!proc) return;
+
+    if (proc->pid == 0) {
+        printf("\n\n[ FATAL ERROR: process_exit called on pid 0! ]\n");
+        hcf();
+    }
+
+    // Kill all child processes
+    while (proc->first_child) {
+        process_exit(proc->first_child);
+    }
 
     lock_ready_threads();
 
@@ -174,7 +165,8 @@ void process_exit(proc_t *proc) {
         // Free stack
         if (thread->stack) {
             for (uint64_t i = 0; i < THREAD_STACK_SIZE; i += PAGE_LEN) {
-                phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(get_physaddr((uint64_t)thread->stack + i, proc->pml4)));
+                phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(
+                    get_physaddr((uint64_t)thread->stack + i, proc->pml4)));
             }
         }
         phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(virt_to_phys((uint64_t)thread->base)));
@@ -188,17 +180,51 @@ void process_exit(proc_t *proc) {
     // Unref page table
     free_page_table((pml4_t *)proc->pml4);
 
-    // Remove from process list
-    if (procs == proc) {
-        procs = proc->next;
-    } else {
-        proc_t *p = (proc_t *)procs;
+    proc_t *tmp = proc->parent ? proc->parent->first_child : NULL;
 
-        while (p && p->next != proc)
-            p = p->next;
+    while (tmp) {
+        if (tmp == proc) {
+            if (tmp->prev_sibling) { tmp->prev_sibling->next_sibling = tmp->next_sibling; }
 
-        if (p) p->next = proc->next;
+            if (tmp->next_sibling) { tmp->next_sibling->prev_sibling = tmp->prev_sibling; }
+
+            break;
+        }
+        tmp = tmp->next_sibling;
+    }
+
+    if (!tmp) {
+        printf("ERROR: when destroying process %lu (%s), we couldn't find it in it's parent's processes!\n", proc->pid,
+               proc->name);
     }
 
     phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(virt_to_phys((uint64_t)proc)));
+}
+
+vfs_node_t *proc_get_fd(proc_t *proc, size_t fd) {
+    if (fd >= proc->fds_max) {
+        return NULL;
+    }
+
+    return proc->fds[fd];
+}
+
+size_t proc_alloc_fd(proc_t *proc, vfs_node_t *node) {
+    for (size_t i = 0; i < proc->fds_max; i++) {
+        if (proc->fds[i] == NULL) {
+            proc->fds[i] = node;
+            return i;
+        }
+    }
+
+    return (size_t)-1;
+}
+
+// WARNING: this does *not* free the underlying vfs_node_t!
+void proc_free_fd(proc_t *proc, size_t fd) {
+    if (fd >= proc->fds_max) {
+        return;
+    }
+
+    proc->fds[fd] = NULL;
 }

@@ -71,7 +71,7 @@ typedef struct regs registers_t;
 struct gsbase {
     // This must point to the TOP of the stack
     uint64_t stack; // 0x00
-    uint64_t pid; // 0x08
+    uint64_t proc; // 0x08
     uint64_t cr3; // 0x10
     uint32_t processor_id; // 0x18
     uint32_t reserved0; // 0x1C

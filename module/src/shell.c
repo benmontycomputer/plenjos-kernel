@@ -167,7 +167,7 @@ void _start() {
 
     printf("%s", SHELL_PROMPT);
 
-    draw_terminal_window();
+    // draw_terminal_window();
 
     for (;;) {
         while (kbd_buffer_empty()) {

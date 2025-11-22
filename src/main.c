@@ -259,7 +259,7 @@ void kmain(void) {
         // for (size_t i = 0; i < 12; i++) {
         void *elf_addr = module_request.response->modules[0]->address;
 
-        proc_t *shell_proc = create_proc("kshell");
+        proc_t *shell_proc = create_proc("kshell", NULL);
 
         uint64_t entry, stack;
 

@@ -50,6 +50,28 @@ registers_t *syscall_routine(registers_t *regs) {
     bool valid;
 
     switch (call) {
+    case SYSCALL_READ:
+        regs->rax = (uint64_t)syscall_routine_read(regs->rbx, (void *)regs->rcx, (size_t)regs->rdx);
+        break;
+    case SYSCALL_WRITE:
+        regs->rax = (uint64_t)syscall_routine_write(regs->rbx, (const void *)regs->rcx, (size_t)regs->rdx);
+        break;
+    case SYSCALL_OPEN:
+        regs->rax = (uint64_t)syscall_routine_open((const char *)regs->rbx, (const char *)regs->rcx);
+        break;
+    case SYSCALL_CLOSE:
+        regs->rax = (uint64_t)syscall_routine_close(regs->rbx);
+        break;
+    case SYSCALL_STAT:
+        break;
+    case SYSCALL_FSTAT:
+        break;
+    case SYSCALL_LSTAT:
+        break;
+    case SYSCALL_POLL:
+        break;
+    case SYSCALL_LSEEK:
+        break;
     case SYSCALL_GET_FB:
         // rbx: pointer to struct for framebuffer data
         // Map the framebuffer into the currently loaded page table
@@ -189,7 +211,7 @@ registers_t *syscall_routine(registers_t *regs) {
     case SYSCALL_PRINT_PTR:
         printf("%p", regs->rbx);
         break;
-    case SYSCALL_READ:
+    case SYSCALL_KB_READ:
         while (kbd_buffer_empty()) {
             asm volatile("sti");
             // printf("empty\n");

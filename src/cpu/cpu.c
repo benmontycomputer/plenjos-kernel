@@ -44,7 +44,7 @@ static gsbase_t *new_kernel_gs_base(uint32_t processor_id) {
     gsbase_t *base = (gsbase_t *)phys_to_virt(find_next_free_frame());
     memset(base, 0, PAGE_LEN);
 
-    base->pid = (uint64_t)-1;
+    base->proc = (uint64_t)NULL;
     base->cr3 = kernel_pml4_phys;
     base->stack = TSS_STACK_ADDR;
     base->processor_id = processor_id;

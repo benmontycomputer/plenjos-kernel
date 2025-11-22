@@ -77,7 +77,7 @@ thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), vo
     thread->base = (gsbase_t *)phys_to_virt(find_next_free_frame());
     memset(thread->base, 0, PAGE_LEN);
 
-    thread->base->pid = proc->pid;
+    thread->base->proc = proc;
     thread->base->cr3 = thread->regs.cr3;
     thread->base->stack = (uint64_t)thread->regs.iret_rsp;
 

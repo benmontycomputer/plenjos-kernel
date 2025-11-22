@@ -1,3 +1,5 @@
+MODULE_DIR = module
+
 # Nuke built-in rules and variables.
 MAKEFLAGS += -rR
 .SUFFIXES:
@@ -108,7 +110,12 @@ override HEADER_DEPS := $(addprefix obj/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d))
 
 # Default target. This must come first, before header dependencies.
 .PHONY: all
-all: bin/$(OUTPUT)
+.PHONY: kernel_module
+
+all: bin/$(OUTPUT) kernel_module
+
+kernel_module:
+	$(MAKE) -C $(MODULE_DIR)
 
 # Include header dependencies.
 -include $(HEADER_DEPS)
