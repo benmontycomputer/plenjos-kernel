@@ -42,6 +42,30 @@ uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_
 extern char *fb;
 extern int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
 
+bool _syscall_helper_check_str_ptr_perms(pml4_t *current_pml4, uint64_t user_ptr, char **out) {
+    uint64_t str_ptr = phys_to_virt(get_physaddr(user_ptr, current_pml4));
+    uint64_t end = user_ptr + strlen((char *)str_ptr) + 1;
+
+    for (uint64_t i = user_ptr; i < end; i += PAGE_LEN) {
+        // TODO: check that the addr is user-accessible (idk if the autocreate option on find_page works rn)
+        page_t *page = find_page(i, false, current_pml4);
+        if (!page || !(page->present)) {
+            printf("Failed at %p: page not mapped\n", i);
+            if (out) *out = NULL;
+            return false;
+        }
+        if (!page->user) {
+            printf("Failed at %p: permission denied (not user accessible)\n", i);
+            if (out) *out = NULL;
+            return false;
+        }
+    }
+
+    if (out) *out = (char *)str_ptr;
+
+    return true;
+}
+
 registers_t *syscall_routine(registers_t *regs) {
     uint64_t call = regs->rax;
 
@@ -57,7 +81,16 @@ registers_t *syscall_routine(registers_t *regs) {
         regs->rax = (uint64_t)syscall_routine_write(regs->rbx, (const void *)regs->rcx, (size_t)regs->rdx);
         break;
     case SYSCALL_OPEN:
-        regs->rax = (uint64_t)syscall_routine_open((const char *)regs->rbx, (const char *)regs->rcx);
+        current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
+        char *path = NULL;
+        char *mode = NULL;
+        printf("trying...\n\n");
+        _syscall_helper_check_str_ptr_perms(current_pml4, regs->rbx, &path);
+        _syscall_helper_check_str_ptr_perms(current_pml4, regs->rcx, &mode);
+        if (path && mode)
+            regs->rax = (uint64_t)syscall_routine_open((const char *)path, (const char *)mode);
+        else
+            regs->rax = (uint64_t)-1;
         break;
     case SYSCALL_CLOSE:
         regs->rax = (uint64_t)syscall_routine_close(regs->rbx);
@@ -182,29 +215,13 @@ registers_t *syscall_routine(registers_t *regs) {
         // PAGE_FLAG_WRITE, current_pml4);
         current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
 
-        uint64_t str_ptr = phys_to_virt(get_physaddr(regs->rbx, current_pml4));
+        // uint64_t str_ptr = phys_to_virt(get_physaddr(regs->rbx, current_pml4));
+        char *str_ptr = NULL;
 
-        size_t len = strlen((const char *)str_ptr);
-
-        valid = true;
+        valid = _syscall_helper_check_str_ptr_perms(current_pml4, regs->rbx, &str_ptr);
 
         // printf("str virt: %p, str len: %p, kernel pml4 virt: %p; current pml4 virt: %p\n", str_ptr, len, kernel_pml4,
         // current_pml4);
-
-        for (uint64_t i = 0; i < len; i += PAGE_LEN) {
-            // TODO: check that the addr is user-accessible (idk if the autocreate option on find_page works rn)
-            page_t *page = find_page(regs->rbx + i, false, current_pml4);
-            if (!page || !(page->present)) {
-                printf("Failed at %p (i=%p): page not mapped\n", regs->rbx + i, i);
-                valid = false;
-                break;
-            }
-            if (!page->user) {
-                printf("Failed at %p (i=%p): permission denied (not user accessible)\n", regs->rbx + i, i);
-                valid = false;
-                break;
-            }
-        }
 
         if (valid) { printf("%s", str_ptr); }
         break;

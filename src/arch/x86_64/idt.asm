@@ -1,5 +1,6 @@
-global exception_handler_switch_to_kernel
+; global exception_handler_switch_to_kernel
 
+; DON'T USE THIS
 exception_handler_switch_to_kernel:
     pop r15 ; return address
     swapgs

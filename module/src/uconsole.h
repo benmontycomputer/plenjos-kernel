@@ -11,7 +11,7 @@
 } __attribute__((packed));
 typedef struct fb_info fb_info_t; */
 
-#include "../../src/syscall/syscall.h"
+#include "../../src/syscall/syscall_ext.h"
 #include "../../src/devices/input/keyboard/keyboard.h"
 
 extern fb_info_t fb_info;

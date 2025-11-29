@@ -190,7 +190,7 @@ void assign_thread_to_cpu(thread_t *thread) {
     }
 
     // The thread's regs are the first item in the struct
-    printf("Thread info: regs addr %p, regs phys addr %p %p\n", &thread->regs, get_physaddr((uint64_t)&thread->regs, thread->parent->pml4), get_physaddr((uint64_t)&thread->regs, kernel_pml4));
+    printf("Thread info: regs addr %p, regs phys addr %p %p, base %p, base proc %p\n", &thread->regs, get_physaddr((uint64_t)&thread->regs, thread->parent->pml4), get_physaddr((uint64_t)&thread->regs, kernel_pml4), thread->base, thread->base->proc);
 
     // write_msr(IA32_KERNEL_GS_BASE, (uint64_t)thread->base);
     write_msr(IA32_GS_BASE, (uint64_t)thread->base);

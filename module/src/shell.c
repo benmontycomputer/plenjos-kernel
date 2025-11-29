@@ -1,7 +1,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "../../src/syscall/syscall.h"
+#include "../../src/syscall/syscall_ext.h"
 #include "../../src/devices/input/keyboard/keyboard.h"
 
 #include "lib/common.h"
@@ -58,6 +58,9 @@ static char cmdbuffer[CMD_BUFFER_MAX];
 static char toks[CMD_TOKS_MAX][CMD_BUFFER_MAX] = { "" };
 static int cmd_buffer_i = 0;
 static int toks_count = 0;
+
+static char pcipath[] = "/dev/pci_00_02";
+static char pcimode[] = "rw";
 
 static void split_cmd(const char *cmd) {
     memset(toks[0], 0, CMD_BUFFER_MAX);
@@ -168,6 +171,8 @@ void _start() {
     printf("%s", SHELL_PROMPT);
 
     // draw_terminal_window();
+
+    uint64_t fd = syscall(SYSCALL_OPEN, (uint64_t)pcipath, (uint64_t)pcimode, 0, 0, 0);
 
     for (;;) {
         while (kbd_buffer_empty()) {

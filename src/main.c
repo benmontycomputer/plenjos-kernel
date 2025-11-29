@@ -7,38 +7,31 @@
 #include <stdint.h>
 
 #include "lib/stdio.h"
+#include "lib/serial.h"
+
+#include "arch/platform.h"
+#if ARCH(X86_64)
+#include "arch/x86_64/common.h"
+#include "arch/x86_64/gdt/gdt.h"
+#endif
 
 #include "memory/kmalloc.h"
 #include "memory/mm.h"
 
-#include "arch/platform.h"
-
-#if ARCH(X86_64)
-#include "arch/x86_64/common.h"
-#endif
-
 #include "cpu/cpu.h"
+#include "timer/pit.h"
 
-#include "devices/input/keyboard/keyboard.h"
 #include "devices/pci/pci.h"
+#include "devices/storage/ide.h"
+#include "devices/input/keyboard/keyboard.h"
 
+#include "vfs/vfs.h"
 #include "shell/shell.h"
-
 #include "proc/proc.h"
 #include "proc/scheduler.h"
 #include "proc/thread.h"
-
 #include "syscall/syscall.h"
-
 #include "exec/elf.h"
-
-#include "lib/serial.h"
-
-#include "timer/pit.h"
-
-#include "arch/x86_64/gdt/gdt.h"
-
-#include "devices/storage/ide.h"
 
 bool debug_serial = false;
 
@@ -199,6 +192,8 @@ void kmain(void) {
     printf("Debugging to serial output now...\n");
 
     load_smp();
+
+    vfs_init();
 
     init_keyboard();
 

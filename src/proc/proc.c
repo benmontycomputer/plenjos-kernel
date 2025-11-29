@@ -28,8 +28,9 @@ volatile proc_t *pid_zero = NULL;
 volatile uint64_t next_pid = 0;
 
 proc_t *_get_proc_kernel() {
-    gsbase_t *gsbase = (gsbase_t *)read_msr(IA32_GS_BASE);
+    gsbase_t *gsbase = (gsbase_t *)read_msr(IA32_KERNEL_GS_BASE);
 
+    if (!gsbase) return NULL;
     return (proc_t *)gsbase->proc;
 }
 
@@ -107,7 +108,7 @@ proc_t *create_proc(const char *name, proc_t *parent) {
 
     proc->fds_max = PROCESS_FDS_MAX;
 
-    size_t fds_size = sizeof(vfs_node_t *) * proc->fds_max;
+    size_t fds_size = sizeof(vfs_handle_t *) * proc->fds_max;
 
     proc->fds = kmalloc_heap(fds_size);
     memset((void *)proc->fds, 0, fds_size);
@@ -201,7 +202,7 @@ void process_exit(proc_t *proc) {
     phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(virt_to_phys((uint64_t)proc)));
 }
 
-vfs_node_t *proc_get_fd(proc_t *proc, size_t fd) {
+vfs_handle_t *proc_get_fd(proc_t *proc, size_t fd) {
     if (fd >= proc->fds_max) {
         return NULL;
     }
@@ -209,10 +210,10 @@ vfs_node_t *proc_get_fd(proc_t *proc, size_t fd) {
     return proc->fds[fd];
 }
 
-size_t proc_alloc_fd(proc_t *proc, vfs_node_t *node) {
+size_t proc_alloc_fd(proc_t *proc, vfs_handle_t *handle) {
     for (size_t i = 0; i < proc->fds_max; i++) {
         if (proc->fds[i] == NULL) {
-            proc->fds[i] = node;
+            proc->fds[i] = handle;
             return i;
         }
     }
@@ -220,7 +221,7 @@ size_t proc_alloc_fd(proc_t *proc, vfs_node_t *node) {
     return (size_t)-1;
 }
 
-// WARNING: this does *not* free the underlying vfs_node_t!
+// WARNING: this does *not* free the underlying vfs_handle_t!
 void proc_free_fd(proc_t *proc, size_t fd) {
     if (fd >= proc->fds_max) {
         return;

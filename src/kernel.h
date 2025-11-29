@@ -5,6 +5,8 @@
 #ifndef _KERNEL_H
 #define _KERNEL_H
 
+typedef int64_t ssize_t;
+
 extern bool debug_serial;
 
 void *memcpy(void *dest, const void *src, size_t n);

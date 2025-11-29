@@ -37,7 +37,7 @@ struct proc {
     volatile pml4_t *pml4;
 
     size_t fds_max;
-    vfs_node_t **fds;
+    vfs_handle_t **fds;
 
     volatile proc_t *first_child;
     volatile proc_t *prev_sibling;
@@ -50,6 +50,6 @@ void process_exit(proc_t *proc);
 
 proc_t *_get_proc_kernel();
 
-vfs_node_t *proc_get_fd(proc_t *proc, size_t fd);
-size_t proc_alloc_fd(proc_t *proc, vfs_node_t *node);
+vfs_handle_t *proc_get_fd(proc_t *proc, size_t fd);
+size_t proc_alloc_fd(proc_t *proc, vfs_handle_t *handle);
 void proc_free_fd(proc_t *proc, size_t fd);

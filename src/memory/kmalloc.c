@@ -138,6 +138,7 @@ static heap_segment_info_t *kheap_segment_split(heap_segment_info_t *segment, si
     return new_segment;
 }
 
+// TODO: is it safe to return this memory without clearing it?
 void *kmalloc_heap(uint64_t size) {
     if (size == 0) return NULL;
 

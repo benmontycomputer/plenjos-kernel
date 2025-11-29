@@ -137,8 +137,6 @@ void dump_machine_check_msrs()
     }
 }
 
-extern void exception_handler_switch_to_kernel(uint64_t pml4_phys);
-
 __attribute__((noreturn)) void exception_handler(registers_t *regs) {
     // __asm__ volatile ("cli; hlt"); // Completely hangs the computer
 

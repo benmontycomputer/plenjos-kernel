@@ -1,7 +1,11 @@
 #include "devices/pci/pci.h"
 
 #include "lib/stdio.h"
+#include "lib/string.h"
 
+#include "vfs/vfs.h"
+#include "vfs/kernelfs.h"
+#include "memory/kmalloc.h"
 #include "devices/io/ports.h"
 
 pci_device_t pci_devices[PCI_MAX_DEVICES];
@@ -191,10 +195,15 @@ pci_device_t pci_check_device(uint8_t bus, uint8_t device, uint8_t function) {
     return dev;
 }
 
+#define PCI_DEV_PREFIX "pci_dev_"
+
 // First, scan for devices using a brute-force approach
 void pci_scan() {
     uint16_t bus;
     uint8_t device;
+
+    kernelfs_create_node("/", "dev", VFS_NODE_TYPE_DIR, NULL, NULL, NULL);
+    kernelfs_create_node("/dev", "pci", VFS_NODE_TYPE_DIR, NULL, NULL, NULL);
 
     for (bus = 0; bus < 256; bus++) {
         for (device = 0; device < 32; device++) {
@@ -208,6 +217,20 @@ void pci_scan() {
 
             if (pci_device_count < PCI_MAX_DEVICES) {
                 pci_devices[pci_device_count] = pci_check_device(bus, device, function);
+
+                char *devaddr = (char *)kmalloc_heap(strlen(PCI_DEV_PREFIX) + 6 + 2);
+
+                strncpy(devaddr, PCI_DEV_PREFIX, strlen(PCI_DEV_PREFIX) + 1);
+                // TODO: once snprintf is implemented, use that instead
+                devaddr[strlen(PCI_DEV_PREFIX) + 0] = '0' + (bus / 16);
+                devaddr[strlen(PCI_DEV_PREFIX) + 1] = '0' + (bus % 16);
+                devaddr[strlen(PCI_DEV_PREFIX) + 2] = '_';
+                devaddr[strlen(PCI_DEV_PREFIX) + 3] = '0' + (device / 16);
+                devaddr[strlen(PCI_DEV_PREFIX) + 4] = '0' + (device % 16);
+                devaddr[strlen(PCI_DEV_PREFIX) + 5] = 0;
+
+                kernelfs_create_node("/dev/pci", devaddr, VFS_NODE_TYPE_FILE, NULL, NULL, NULL);
+
                 pci_device_count++;
             } else {
                 printf("PCI device array full, cannot record more devices.\n");

@@ -7,7 +7,7 @@
 
 #include "lib/string.h"
 
-#include "../../src/syscall/syscall.h"
+#include "../../src/syscall/syscall_ext.h"
 
 #include "uconsole.h"
 
