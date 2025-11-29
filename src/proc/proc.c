@@ -28,9 +28,12 @@ volatile proc_t *pid_zero = NULL;
 volatile uint64_t next_pid = 0;
 
 proc_t *_get_proc_kernel() {
-    gsbase_t *gsbase = (gsbase_t *)read_msr(IA32_KERNEL_GS_BASE);
+    gsbase_t *gsbase = (gsbase_t *)read_msr(IA32_GS_BASE);
 
-    if (!gsbase) return NULL;
+    if (!gsbase) {
+        printf("Error: gsbase is NULL in _get_proc_kernel!\n");
+        return NULL;
+    }
     return (proc_t *)gsbase->proc;
 }
 

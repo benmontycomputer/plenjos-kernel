@@ -1,12 +1,17 @@
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "kernel.h"
 
 #include "lib/stdio.h"
+#include "lib/string.h"
 
 #include "memory/detect.h"
 #include "memory/kmalloc.h"
 #include "memory/mm.h"
+
+// TODO: make sure all sizes are less than uint64_t max?
+// Shouldn't be a huge security issue since this is kernel memory allocation
 
 uint64_t kheap_start, kheap_end;
 
@@ -24,7 +29,7 @@ struct heap_segment_info {
 heap_segment_info_t *kheap_last_segment = NULL;
 
 static inline bool is_page_misaligned(uint64_t ptr) {
-    return (bool)(ptr & 0xFFF);
+    return (ptr & (PAGE_LEN - 1)) != 0;
 }
 
 // Set to 16 for debug purposes
@@ -70,14 +75,14 @@ void init_kernel_heap() {
     }
 
     kheap_start = KERNEL_HEAP_START_ADDR;
-    kheap_end = KERNEL_HEAP_START_ADDR + PAGE_LEN;
+    kheap_end = KERNEL_HEAP_START_ADDR + (PAGE_LEN * 4);
 
     kheap_last_segment = (heap_segment_info_t *)kheap_start;
 
     kheap_last_segment->free = true;
     kheap_last_segment->next = NULL;
     kheap_last_segment->prev = NULL;
-    kheap_last_segment->size = PAGE_LEN - HEAP_HEADER_LEN;
+    kheap_last_segment->size = (PAGE_LEN * 4) - HEAP_HEADER_LEN;
 
     kheap_add_segment(KHEAP_INIT_SIZE - (PAGE_LEN * 4));
 }
@@ -85,23 +90,23 @@ void init_kernel_heap() {
 static heap_segment_info_t *kheap_add_segment(size_t len) {
     if (len < HEAP_ALLOC_MIN) len = HEAP_ALLOC_MIN;
 
-    size_t pages = len + HEAP_HEADER_LEN;
+    /* Calculate number of pages required (round up). */
+    size_t pages = (len + HEAP_HEADER_LEN + PAGE_LEN - 1) / PAGE_LEN;
 
-    // Page align len, rounding up
-    if (pages % PAGE_LEN) { pages += PAGE_LEN; }
+    /* Align the next mapping address up to a page boundary. */
+    uint64_t pg_addr = kheap_end;
+    if (pg_addr & (PAGE_LEN - 1)) {
+        pg_addr = (pg_addr + PAGE_LEN - 1) & ~((uint64_t)(PAGE_LEN - 1));
+    }
 
-    pages = pages / PAGE_LEN;
-
-    uint64_t pg_addr = kheap_end & ~(uint64_t)0xFFF;
-
-    // Map the pages
-    for (size_t i = 0; i <= pages; i++) {
+    /* Map the pages */
+    for (size_t i = 0; i < pages; i++) {
         find_page(pg_addr + (i * PAGE_LEN), true, kernel_pml4);
     }
 
-    heap_segment_info_t *new_segment = (heap_segment_info_t *)kheap_end;
+    heap_segment_info_t *new_segment = (heap_segment_info_t *)pg_addr;
 
-    kheap_last_segment->next = new_segment;
+    if (kheap_last_segment) kheap_last_segment->next = new_segment;
 
     new_segment->free = true;
     new_segment->prev = kheap_last_segment;
@@ -110,7 +115,7 @@ static heap_segment_info_t *kheap_add_segment(size_t len) {
 
     kheap_last_segment = new_segment;
 
-    kheap_end += (len + HEAP_HEADER_LEN);
+    kheap_end = pg_addr + (pages * PAGE_LEN);
 
     return new_segment;
 }
@@ -118,6 +123,8 @@ static heap_segment_info_t *kheap_add_segment(size_t len) {
 static heap_segment_info_t *kheap_segment_split(heap_segment_info_t *segment, size_t keep_size) {
     if (!segment) return NULL;
     if (keep_size < HEAP_ALLOC_MIN) keep_size = HEAP_ALLOC_MIN;
+    // This next line is needed because we use signed integers instead of unsigned
+    if (keep_size + HEAP_HEADER_LEN >= segment->size) return NULL;
     if ((segment->size - keep_size - HEAP_HEADER_LEN) < HEAP_ALLOC_MIN) return NULL;
 
     heap_segment_info_t *new_segment = (heap_segment_info_t *)((uint64_t)segment + keep_size + HEAP_HEADER_LEN);
@@ -184,7 +191,7 @@ void kfree_heap(void *ptr) {
         return;
     }
 
-    heap_segment_info_t *cur_seg = (heap_segment_info_t *)(ptr - HEAP_HEADER_LEN);
+    heap_segment_info_t *cur_seg = (heap_segment_info_t *)((uint64_t)ptr - HEAP_HEADER_LEN);
 
     lock_kheap();
 
@@ -214,11 +221,9 @@ void *kmalloc(uint64_t size) {
 
 // page aligned (4KiB)
 void *kmalloc_a(uint64_t size, bool align) {
-    if (align && (PHYS_MEM_HEAD & is_page_misaligned(PHYS_MEM_HEAD))) {
-        // Align the physical memory head to page size
-
-        PHYS_MEM_HEAD &= 0xFFFFFFFFFFFFF000;
-        PHYS_MEM_HEAD += PAGE_LEN;
+    if (align && is_page_misaligned(PHYS_MEM_HEAD)) {
+        /* Align the physical memory head up to the next page. */
+        PHYS_MEM_HEAD = (PHYS_MEM_HEAD + PAGE_LEN - 1) & ~((uint64_t)(PAGE_LEN - 1));
     }
 
     if (PHYS_MEM_HEAD + size >= PHYS_MEM_USEABLE_END) {

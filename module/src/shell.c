@@ -59,7 +59,7 @@ static char toks[CMD_TOKS_MAX][CMD_BUFFER_MAX] = { "" };
 static int cmd_buffer_i = 0;
 static int toks_count = 0;
 
-static char pcipath[] = "/dev/pci_00_02";
+static char pcipath[] = "/dev/pci/pci_dev_00_02";
 static char pcimode[] = "rw";
 
 static void split_cmd(const char *cmd) {

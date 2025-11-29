@@ -31,14 +31,22 @@
     push rax
     mov ax, es
     push rax
-    push fs
-    push gs
+    ; push fs
+    ; push gs
+    mov ax, fs
+    push rax
+    mov ax, gs
+    push rax
 %endmacro
 
 %macro isr_restore_ctx 0
     ; Restore segment registers
-    pop gs
-    pop fs
+    ; pop gs
+    ; pop fs
+    pop rax
+    ; mov gs, ax ; don't actually modify this
+    pop rax
+    ; mov fs, ax ; don't actually modify this
     pop rax
     mov es, ax
     pop rax

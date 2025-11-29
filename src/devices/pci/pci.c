@@ -204,6 +204,7 @@ void pci_scan() {
 
     kernelfs_create_node("/", "dev", VFS_NODE_TYPE_DIR, NULL, NULL, NULL);
     kernelfs_create_node("/dev", "pci", VFS_NODE_TYPE_DIR, NULL, NULL, NULL);
+    kernelfs_create_node("/dev/pci", "subftest", VFS_NODE_TYPE_DIR, NULL, NULL, NULL);
 
     for (bus = 0; bus < 256; bus++) {
         for (device = 0; device < 32; device++) {

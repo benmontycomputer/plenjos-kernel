@@ -47,7 +47,7 @@ size_t syscall_routine_open(const char *path, const char *mode) {
 
     vfs_handle_t *handle = vfs_open(path, mode);
     if (!handle) {
-        printf("syscall_routine_open: failed to open %s for process %s (pid %lu)\n", path, proc->name, proc->pid);
+        printf("syscall_routine_open: failed to open %s for process %s (pid %p)\n", path, proc->name, proc->pid);
         return (size_t)-1;
     }
 

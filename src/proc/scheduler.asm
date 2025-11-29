@@ -73,13 +73,13 @@ global _finalize_task_switch
 _finalize_task_switch:
     cli
     swapgs
-    mov rcx, 0xC0000101
-    rdmsr
-    shl rdx, 32
+    ; mov rcx, 0xC0000101
+    ; rdmsr
+    ; shl rdx, 32
     ; and rax, 0x00000000FFFFFFFF ; not needed because the upper 32 bits of rax and rdx are automatically cleared by readmsr
     ; and rdx, 0x00000000FFFFFFFF
-    or rax, rdx
-    mov [rax], rsp
+    ; or rax, rdx
+    mov [gs:0], rsp
     swapgs
     mov r15, rdi
     mov rdi, [r15 + CR_REG_CR3] ; task->ctx->cr3
