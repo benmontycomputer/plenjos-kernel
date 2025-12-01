@@ -3,6 +3,8 @@
 
 #include "kernel.h"
 
+#include "memory/mm.h"
+
 #include "vfs/vfs.h"
 #include "proc/proc.h"
 

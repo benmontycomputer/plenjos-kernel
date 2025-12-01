@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+#include "memory/mm_common.h"
+
 #include "syscall/syscall_ext.h"
 #include "kernel.h"
 

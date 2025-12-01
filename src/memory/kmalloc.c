@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 
 #include "kernel.h"
 
@@ -40,19 +41,24 @@ static inline bool is_page_misaligned(uint64_t ptr) {
 
 #define HEAP_HEADER_LEN sizeof(heap_segment_info_t)
 
-bool kheap_locked = false;
+// bool kheap_locked = false;
+static atomic_bool kheap_locked_atomic = ATOMIC_VAR_INIT(false);
 
 void lock_kheap() {
-    for (;;) {
+    /* for (;;) {
         if (!kheap_locked) {
             kheap_locked = true;
             return;
         }
+    } */
+    while (atomic_flag_test_and_set_explicit(&kheap_locked_atomic, __ATOMIC_ACQUIRE)) {
+        // Wait
     }
 }
 
 void unlock_kheap() {
-    kheap_locked = false;
+    // kheap_locked = false;
+    atomic_flag_clear_explicit(&kheap_locked_atomic, __ATOMIC_RELEASE);
 }
 
 uint64_t *alloc_before_kheap() {

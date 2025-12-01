@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 
 #include "proc/scheduler.h"
 
@@ -24,19 +25,25 @@ volatile thread_t * volatile ready_threads_last = NULL;
 
 volatile thread_t * volatile cores_threads[MAX_CORES] = {0};
 
-static volatile uint32_t ready_threads_lock = (uint32_t)-1;
+// static _Atomic(uint32_t) ready_threads_lock = (uint32_t)-1;
+static atomic_flag ready_threads_locked_atomic = ATOMIC_FLAG_INIT;
 
 uint32_t lock_ready_threads() {
-    for (;;) {
+    /* for (;;) {
+        atomic
         if (ready_threads_lock == (uint32_t)-1) {
             ready_threads_lock = get_curr_core();
             return ready_threads_lock;
         }
+    } */
+    while (atomic_flag_test_and_set_explicit(&ready_threads_locked_atomic, __ATOMIC_ACQUIRE)) {
+        // Wait
     }
 }
 
 void unlock_ready_threads() {
-    ready_threads_lock = (uint32_t)-1;
+    // ready_threads_lock = (uint32_t)-1;
+    atomic_flag_clear_explicit(&ready_threads_locked_atomic, __ATOMIC_RELEASE);
 }
 
 static void thread_unready_nolock(thread_t *thread) {

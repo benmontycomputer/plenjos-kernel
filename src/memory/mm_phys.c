@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdatomic.h>
 
 #include "kernel.h"
 #include "lib/stdio.h"
@@ -7,7 +8,9 @@
 #include "memory/kmalloc.h"
 #include "memory/mm.h"
 
-bool phys_mem_lock;
+// bool phys_mem_lock;
+// TODO: can we make parts of these frames atomic instead, allowing us to avoid locking the entire PMM?
+static atomic_bool phys_mem_lock_atomic = ATOMIC_VAR_INIT(false);
 
 // PMM doesn't need to be locked
 uint32_t phys_mem_ref_frame(phys_mem_free_frame_t *frame) {
@@ -34,16 +37,20 @@ uint32_t phys_mem_unref_frame(phys_mem_free_frame_t *frame) {
 }
 
 void lock_pmm() {
-    for (;;) {
+    /* for (;;) {
         if (!phys_mem_lock) {
             phys_mem_lock = true;
             return;
         }
+    } */
+    while (atomic_flag_test_and_set_explicit(&phys_mem_lock_atomic, __ATOMIC_ACQUIRE)) {
+        // Wait
     }
 }
 
 void unlock_pmm() {
-    phys_mem_lock = false;
+    // phys_mem_lock = false;
+    atomic_flag_clear_explicit(&phys_mem_lock_atomic, __ATOMIC_RELEASE);
 }
 
 /* void alloc_page_frame(page_t *page, int user, int writeable) {
