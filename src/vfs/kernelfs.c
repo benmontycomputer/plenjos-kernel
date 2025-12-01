@@ -169,6 +169,8 @@ int kernelfs_create_node(const char *path, const char *name, vfs_node_type_t typ
     new_node->children = NULL;
     new_node->parent = parent_node;
 
+    new_node->func_args = func_args;
+
     // Insert into the parent node's children
     if (parent_node->children == NULL) {
         parent_node->children = new_node;

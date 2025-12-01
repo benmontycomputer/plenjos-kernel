@@ -1,7 +1,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdatomic.h>
-#include <immintrin.h>
 
 #include "proc/scheduler.h"
 
@@ -39,7 +38,7 @@ uint32_t lock_ready_threads() {
     } */
     while (atomic_flag_test_and_set_explicit(&ready_threads_locked_atomic, __ATOMIC_ACQUIRE)) {
         // Wait
-        _mm_pause();
+        __builtin_ia32_pause();
     }
 }
 

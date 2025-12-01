@@ -176,10 +176,16 @@ void _start() {
     if (fd == (uint64_t)-1) {
         printf("Failed to open PCI device file at %s\n", pcipath);
     } else {
-        printf("Opened PCI device file at %s with fd %d\n", pcipath, (int)fd);
+        printf("Opened PCI device file at %s with fd %d\nResult: ", pcipath, (int)fd);
 
         char pcidev[1024];
         int64_t res = (int64_t)syscall(SYSCALL_READ, fd, (uint64_t)&pcidev, 1024, 0, 0);
+
+        for (size_t i = 0; i < 36; i++) {
+            printf("%x\n", pcidev[i] & 0xFF);
+        }
+
+        syscall(SYSCALL_READ, fd, 0xffffffff800056d0, 1024, 0, 0);
     }
 
     for (;;) {

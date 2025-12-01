@@ -1,6 +1,5 @@
 #include <stdint.h>
 #include <stdatomic.h>
-#include <immintrin.h>
 
 #include "kernel.h"
 #include "lib/stdio.h"
@@ -46,7 +45,7 @@ void lock_pmm() {
     } */
     while (atomic_flag_test_and_set_explicit(&phys_mem_lock_atomic, __ATOMIC_ACQUIRE)) {
         // Wait
-        _mm_pause();
+        __builtin_ia32_pause();
     }
 }
 

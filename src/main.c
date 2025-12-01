@@ -208,12 +208,12 @@ void kmain(void) {
 
     printf(hwld);
 
+    kfree_heap(hwld);
+
     // This tests console autoscroll
     /* for (uint64_t n = 0; n <= 0x3F; n++) {
         printf("%p\n", (void *)n);
     } */
-
-    // TODO: free hwld
 
     char *str;
 

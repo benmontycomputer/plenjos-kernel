@@ -4,6 +4,7 @@
 #include "kernel.h"
 
 #include "memory/mm.h"
+#include "memory/kmalloc.h"
 
 #include "vfs/vfs.h"
 #include "proc/proc.h"
@@ -12,11 +13,17 @@
 
 #include "syscall/syscall.h"
 
-int copy_to_buf(void *buf, size_t count, pml4_t *current_pml4) {
-    size_t first_page_len = PAGE_LEN - ((uint64_t)buf % PAGE_LEN);
+// TODO: any attempts to read/write from an out-of-bounds buffer should kill the process (segfault?)
 
-    for (size_t offset = 0; offset < count; offset += PAGE_LEN) {
-        uint64_t addr = (uint64_t)buf + offset;
+int copy_to_buf(void *dest, void *src, size_t count, pml4_t *current_pml4) {
+    size_t first_page_len = PAGE_LEN - ((uint64_t)dest % PAGE_LEN);
+    size_t last_page_len = ((uint64_t)dest + count) % PAGE_LEN;
+
+    uint64_t offs = 0;
+
+    while (offs < count) {
+        uint64_t addr = (uint64_t)dest + offs;
+
         page_t *page = find_page(addr, false, current_pml4);
         if (!page || !(page->present)) {
             printf("check_buf: page not mapped at addr %p\n", addr);
@@ -26,9 +33,24 @@ int copy_to_buf(void *buf, size_t count, pml4_t *current_pml4) {
             printf("check_buf: permission denied (not user accessible) at addr %p\n", addr);
             return -1;
         }
+        if (!page->rw) {
+            printf("check_buf: permission denied (not writeable) at addr %p\n", addr);
+            return -1;
+        }
 
-        if (offset == 0) {
-
+        if (offs == 0) {
+            // First page (or we only need 1 page); might not have to write a full page
+            size_t to_copy = (count < first_page_len) ? count : first_page_len;
+            memcpy((void *)phys_to_virt((page->frame << 12) + (addr % PAGE_LEN)), src + offs, to_copy);
+            offs += to_copy;
+        } else if (offs + PAGE_LEN > count) {
+            // Last page; might not have to write a full page
+            memcpy((void *)phys_to_virt((page->frame << 12) + (addr % PAGE_LEN)), src + offs, last_page_len);
+            offs += last_page_len;
+        } else {
+            // Full page
+            memcpy((void *)phys_to_virt(page->frame << 12), src + offs, PAGE_LEN);
+            offs += PAGE_LEN;
         }
     }
 }
@@ -45,7 +67,29 @@ ssize_t syscall_routine_read(size_t fd, void *buf, size_t count, pml4_t *current
         return -1;
     }
 
-    return vfs_read(handle, buf, count);
+    void *buf_tmp = kmalloc_heap(count);
+
+    if (!buf_tmp) {
+        printf("syscall_routine_read: failed to allocate temporary buffer for read of %p bytes for process %s (pid %p)\n",
+               count, proc->name, proc->pid);
+        return -1;
+    }
+
+    ssize_t res = vfs_read(handle, buf_tmp, count);
+
+    if (res > 0) {
+        int check = copy_to_buf(buf, buf_tmp, res, current_pml4);
+        if (check < 0) {
+            printf("syscall_routine_read: failed to copy data to user buffer %p for process %s (pid %p)\n", buf,
+                   proc->name, proc->pid);
+            kfree_heap(buf_tmp);
+            return -1;
+        }
+    }
+
+    kfree_heap(buf_tmp);
+
+    return res;
 }
 
 ssize_t syscall_routine_write(size_t fd, const void *buf, size_t count, pml4_t *current_pml4) {
