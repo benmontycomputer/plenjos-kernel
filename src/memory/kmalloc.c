@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdatomic.h>
+#include <immintrin.h>
 
 #include "kernel.h"
 
@@ -53,6 +54,7 @@ void lock_kheap() {
     } */
     while (atomic_flag_test_and_set_explicit(&kheap_locked_atomic, __ATOMIC_ACQUIRE)) {
         // Wait
+        _mm_pause();
     }
 }
 
