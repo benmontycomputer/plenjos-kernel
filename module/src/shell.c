@@ -4,13 +4,13 @@
 #include "plenjos/dev/fb.h"
 #include "plenjos/dev/kbd.h"
 
-#include "lib/common.h"
-#include "lib/stdio.h"
-#include "lib/string.h"
-#include "lib/keyboard.h"
+#include "common.h"
+#include "stdio.h"
+#include "string.h"
+#include "keyboard.h"
 #include "uconsole.h"
 
-#include "lib/graphics/draw.h"
+#include "graphics/draw.h"
 
 // Uses PSF1 format
 extern void kputchar(

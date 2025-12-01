@@ -1,5 +1,8 @@
+#include "string.h"
+
 #include <stdint.h>
-#include <stddef.h>
+
+/* Copying functions */
 
 void *memcpy(void *dest, const void *src, size_t n) {
     uint8_t *pdest = (uint8_t *)dest;
@@ -10,16 +13,6 @@ void *memcpy(void *dest, const void *src, size_t n) {
     }
 
     return dest;
-}
-
-void *memset(void *s, int c, size_t n) {
-    uint8_t *p = (uint8_t *)s;
-
-    for (size_t i = 0; i < n; i++) {
-        p[i] = (uint8_t)c;
-    }
-
-    return s;
 }
 
 void *memmove(void *dest, const void *src, size_t n) {
@@ -39,13 +32,19 @@ void *memmove(void *dest, const void *src, size_t n) {
     return dest;
 }
 
-int memcmp(const void *s1, const void *s2, size_t n) {
-    const uint8_t *p1 = (const uint8_t *)s1;
-    const uint8_t *p2 = (const uint8_t *)s2;
+char *strcpy(char *dest, const char *src) {
+    size_t len = strlen(src) + 1;
+    memcpy(dest, src, len);
+    return dest;
+}
 
-    for (size_t i = 0; i < n; i++) {
-        if (p1[i] != p2[i]) { return p1[i] < p2[i] ? -1 : 1; }
+char *strncpy(char *dest, const char *src, size_t n) {
+    if (strlen(src) >= n) {
+        memcpy(dest, src, n - 1);
+        dest[n - 1] = 0;
+    } else {
+        memcpy(dest, src, n);
     }
 
-    return 0;
+    return dest;
 }

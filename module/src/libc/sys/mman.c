@@ -2,11 +2,11 @@
 
 #include "plenjos/syscall.h"
 
-#include "lib/common.h"
+#include "common.h"
 
 // TODO: find a way to handle debug messages without just printing them to the console; this will be necessary once this
 // becomes a freestanding userland library
-#include "lib/stdio.h"
+#include "stdio.h"
 
 int mmap(void *addr, size_t length) {
     if (addr == NULL) {

@@ -3,6 +3,6 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#include "lib/types.h"
+#include "types.h"
 
 int mmap(void *addr, size_t length);

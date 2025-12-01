@@ -1,10 +1,10 @@
 #pragma once
 
 #include "plenjos/syscall.h"
-#include "lib/stdio.h"
-#include "lib/types.h"
-#include "lib/stdlib.h"
-#include "lib/common.h"
+#include "stdio.h"
+#include "types.h"
+#include "stdlib.h"
+#include "common.h"
 
 FILE *fopen(const char *filename, const char *mode) {
     ssize_t fd_res = (ssize_t)syscall(SYSCALL_OPEN, (uint64_t)filename, (uint64_t)mode, 0, 0, 0);

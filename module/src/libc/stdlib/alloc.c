@@ -3,9 +3,9 @@
 // TODO: find a way to handle debug messages without just printing them to the console; this will be necessary once this
 // becomes a freestanding userland library
 
-#include "lib/common.h"
-#include "lib/sys/mman.h"
-#include "lib/stdio.h"
+#include "common.h"
+#include "sys/mman.h"
+#include "stdio.h"
 
 #include <stdatomic.h>
 #include <stdbool.h>
@@ -41,17 +41,10 @@ heap_segment_info_t *heap_last_segment = NULL;
 // TODO: should this be defined elsewhere?
 #define PAGE_LEN 4096
 
-// bool heap_locked = false;
 // TODO: i'm pretty sure this is still needed, as different threads could share a heap
 static atomic_bool heap_locked_atomic = ATOMIC_VAR_INIT(false);
 
 void lock_heap() {
-    /* for (;;) {
-        if (!heap_locked) {
-            heap_locked = true;
-            return;
-        }
-    } */
     while (atomic_flag_test_and_set_explicit(&heap_locked_atomic, __ATOMIC_ACQUIRE)) {
         // Wait
         __builtin_ia32_pause();
@@ -59,7 +52,6 @@ void lock_heap() {
 }
 
 void unlock_heap() {
-    // heap_locked = false;
     atomic_flag_clear_explicit(&heap_locked_atomic, __ATOMIC_RELEASE);
 }
 
@@ -176,6 +168,17 @@ void *malloc(size_t size) {
 
     unlock_heap();
     return (void *)((uint64_t)seg + HEAP_HEADER_LEN);
+}
+
+void *calloc(size_t nmemb, size_t size) {
+    size_t total_size = nmemb * size;
+
+    void *ptr = malloc(total_size);
+    if (ptr == NULL) return NULL;
+
+    memset(ptr, 0, total_size);
+
+    return ptr;
 }
 
 void free(void *ptr) {

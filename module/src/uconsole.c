@@ -5,7 +5,7 @@
 
 #include <stdarg.h>
 
-#include "lib/string.h"
+#include "string.h"
 
 #include "uconsole.h"
 
