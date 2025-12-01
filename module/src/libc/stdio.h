@@ -1,4 +1,5 @@
-#pragma once
+#ifndef _STDIO_H
+#define _STDIO_H 1
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -31,9 +32,9 @@ typedef struct {
 
 #define TMP_MAX 32767
 
-FILE *stderr;
-FILE *stdin;
-FILE *stdout;
+extern FILE *stderr;
+extern FILE *stdin;
+extern FILE *stdout;
 
 /* Wide character input */
 
@@ -54,3 +55,5 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream);
 int fseek(FILE *stream, long offset, int whence);
 long ftell(FILE *stream);
+
+#endif /* _STDIO_H */

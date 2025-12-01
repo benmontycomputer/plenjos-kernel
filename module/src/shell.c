@@ -47,10 +47,6 @@ uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_
 const char teststr_shell[] = "\ntest!!!\n\n\0";
 // char buffer[3];
 
-__attribute__((aligned(0x1000))) //
-fb_info_t fb_info;
-kbd_buffer_state_t *kbd_buffer_state;
-
 #define SHELL_PROMPT "kernel_shell >> "
 #define CMD_BUFFER_MAX 256
 #define CMD_TOKS_MAX 64
@@ -158,15 +154,12 @@ static bool process_cmd(const char *cmd) {
 }
 
 // __attribute__((section(".text")))
-void _start() {
+void main(int argc, char **argv) {
     // TODO: handle errors in these syscalls
 
-    syscall(SYSCALL_PRINT, (uint64_t)teststr_shell, 0, 0, 0, 0);
+    // syscall(SYSCALL_PRINT, (uint64_t)teststr_shell, 0, 0, 0, 0);
 
-    syscall(SYSCALL_GET_FB, (uint64_t)&fb_info, 0, 0, 0, 0);
-    kbd_buffer_state = (kbd_buffer_state_t *)syscall(SYSCALL_GET_KB, 0, 0, 0, 0, 0);
-
-    clear();
+    // clear();
     setcursor(true);
 
     printf("%s", SHELL_PROMPT);

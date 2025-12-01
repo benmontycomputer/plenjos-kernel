@@ -6,6 +6,7 @@
 #include "common.h"
 #include "sys/mman.h"
 #include "stdio.h"
+#include "string.h"
 
 #include <stdatomic.h>
 #include <stdbool.h>
@@ -42,7 +43,7 @@ heap_segment_info_t *heap_last_segment = NULL;
 #define PAGE_LEN 4096
 
 // TODO: i'm pretty sure this is still needed, as different threads could share a heap
-static atomic_bool heap_locked_atomic = ATOMIC_VAR_INIT(false);
+static atomic_flag heap_locked_atomic = ATOMIC_FLAG_INIT;
 
 void lock_heap() {
     while (atomic_flag_test_and_set_explicit(&heap_locked_atomic, __ATOMIC_ACQUIRE)) {
@@ -57,25 +58,13 @@ void unlock_heap() {
 
 static heap_segment_info_t *heap_add_segment(size_t len);
 
-// TODO: should this be called automatically on program start, or should it be left as being called on first malloc like
-// currently?
 void init_heap() {
-    uint64_t pos = HEAP_START_ADDR;
-
-    mmap((void *)pos, PAGE_LEN * 4);
-    pos += PAGE_LEN * 4;
-
     heap_start = HEAP_START_ADDR;
-    heap_end = HEAP_START_ADDR + (PAGE_LEN * 4);
+    heap_end = HEAP_START_ADDR;
 
-    heap_last_segment = (heap_segment_info_t *)heap_start;
+    heap_last_segment = NULL;
 
-    heap_last_segment->free = true;
-    heap_last_segment->next = NULL;
-    heap_last_segment->prev = NULL;
-    heap_last_segment->size = (PAGE_LEN * 4) - HEAP_HEADER_LEN;
-
-    heap_add_segment(HEAP_INIT_SIZE - (PAGE_LEN * 4));
+    heap_add_segment(HEAP_INIT_SIZE);
 }
 
 static heap_segment_info_t *heap_add_segment(size_t len) {
@@ -133,7 +122,7 @@ static heap_segment_info_t *heap_segment_split(heap_segment_info_t *segment, siz
 
 // TODO: is it safe to return this memory without clearing it? should be; it should automatically be cleared in kernel
 void *malloc(size_t size) {
-    if (!heap_last_segment) { init_heap(); }
+    if (!heap_last_segment) { return NULL; }
 
     if (size == 0) return NULL;
 
@@ -172,6 +161,11 @@ void *malloc(size_t size) {
 
 void *calloc(size_t nmemb, size_t size) {
     size_t total_size = nmemb * size;
+
+    if (nmemb && total_size / nmemb != size) {
+        // nmemb * size overflowed the max for size_t
+        return NULL;
+    }
 
     void *ptr = malloc(total_size);
     if (ptr == NULL) return NULL;

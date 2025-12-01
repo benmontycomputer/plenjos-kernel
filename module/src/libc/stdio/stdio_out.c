@@ -3,10 +3,13 @@
 #include <stdint.h>
 
 #include "../../uconsole.h"
-#include "../stdio.h"
-#include "../common.h"
+#include "stdio.h"
+#include "common.h"
 
 // #include "memory/mm.h"
+
+FILE *stderr = NULL;
+FILE *stdout = NULL;
 
 typedef struct {
     bool held;

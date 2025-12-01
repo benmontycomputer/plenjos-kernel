@@ -57,6 +57,10 @@ obj/%.c.o: %.c GNUmakefile
 	mkdir -p "$$(dirname $@)"
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
+obj/%.S.o: %.S GNUmakefile
+	mkdir -p "$$(dirname $@)"
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+
 # Compilation rules for *.psf files.
 obj/%.psf.o: %.psf GNUmakefile
 	mkdir -p "$$(dirname $@)"

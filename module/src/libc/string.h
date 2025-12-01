@@ -1,5 +1,5 @@
-#ifndef _STRING_H_
-#define _STRING_H_
+#ifndef _STRING_H
+#define _STRING_H 1
 
 // Based on the C11 standard
 
@@ -37,4 +37,4 @@ void *memset(void *s, int c, size_t n);
 char *strerror(int errnum);
 size_t strlen(const char *s);
 
-#endif /* _STRING_H_ */
+#endif /* _STRING_H */

@@ -3,7 +3,9 @@
 #include <stdarg.h>
 
 #include "../../uconsole.h"
-#include "../stdio.h"
+#include "stdio.h"
+
+FILE *stdin = NULL;
 
 char *gets(char *str) {
     

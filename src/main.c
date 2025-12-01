@@ -241,6 +241,8 @@ void kmain(void) {
 
     syscalls_init();
 
+    clear();
+
     // start_shell();
     /* proc_t *shell_proc = create_proc("kshell");
     thread_t *shell_thread = create_thread(shell_proc, "kshell_t0", start_shell, NULL);

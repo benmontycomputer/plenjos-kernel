@@ -246,3 +246,20 @@ int setcursor(bool curs) {
 
     return 0;
 }
+
+int clear() {
+    request_console();
+
+    uint8_t *p = (uint8_t *)fb;
+    const size_t n = fb_height * fb_scanline;
+
+    for (size_t i = 0; i < n; i++) {
+        p[i] = (uint8_t)0;
+    }
+
+    console_pos = 0;
+
+    release_console();
+
+    return 0;
+}

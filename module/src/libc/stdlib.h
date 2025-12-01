@@ -1,7 +1,7 @@
 // https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf
 
-#ifndef _STDLIB_H_
-#define _STDLIB_H_
+#ifndef _STDLIB_H
+#define _STDLIB_H 1
 
 #include <stddef.h>
 
@@ -80,4 +80,4 @@ int wctomb(char *s, wchar_t wc);
 size_t mbstowcs(wchar_t * restrict pwcs, const char * restrict s, size_t n);
 size_t wcstombs(char * restrict s, const wchar_t * restrict pwcs, size_t n);
 
-#endif /* _STDLIB_H_ */
+#endif /* _STDLIB_H */

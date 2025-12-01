@@ -10,7 +10,7 @@
 
 // bool phys_mem_lock;
 // TODO: can we make parts of these frames atomic instead, allowing us to avoid locking the entire PMM?
-static atomic_bool phys_mem_lock_atomic = ATOMIC_VAR_INIT(false);
+static atomic_flag phys_mem_lock_atomic = ATOMIC_FLAG_INIT;
 
 // PMM doesn't need to be locked
 uint32_t phys_mem_ref_frame(phys_mem_free_frame_t *frame) {

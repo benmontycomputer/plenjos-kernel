@@ -42,7 +42,7 @@ static inline bool is_page_misaligned(uint64_t ptr) {
 #define HEAP_HEADER_LEN sizeof(heap_segment_info_t)
 
 // bool kheap_locked = false;
-static atomic_bool kheap_locked_atomic = ATOMIC_VAR_INIT(false);
+static atomic_flag kheap_locked_atomic = ATOMIC_FLAG_INIT;
 
 void lock_kheap() {
     /* for (;;) {
