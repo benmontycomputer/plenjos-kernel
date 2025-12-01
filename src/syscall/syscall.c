@@ -1,6 +1,7 @@
 #include <stdint.h>
 
 #include "syscall/syscall.h"
+#include "plenjos/dev/fb.h"
 
 #include "memory/mm.h"
 #include "memory/mm_common.h"
@@ -189,7 +190,10 @@ registers_t *syscall_routine(registers_t *regs) {
         }
         break;
     case SYSCALL_MEMMAP:
+        // TODO: have some way of tracking what has been mapped so we can unmap it if the process doesn't unmap on exit
+        // TODO: we also need a way of unmapping this
         current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
+        regs->rax = 0;
 
         uint64_t virt = regs->rbx;
         uint64_t size = regs->rcx;
@@ -200,10 +204,12 @@ registers_t *syscall_routine(registers_t *regs) {
             voffs = virt + i;
             if (get_physaddr(voffs, current_pml4)) {
                 printf("WARNING: the pml4 table at vaddr %p already has %p mapped.\n", current_pml4, voffs);
+                // TODO: handle this better
             }
             uint64_t frame = find_next_free_frame();
             if (!frame) {
                 printf("Failed to find free frame for vaddr %p\n", voffs);
+                regs->rax = (uint64_t)-1;
                 break;
             }
             memset((void *)phys_to_virt(frame), 0, PAGE_LEN);

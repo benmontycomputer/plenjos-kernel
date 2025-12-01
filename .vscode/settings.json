@@ -66,7 +66,11 @@
         "types.h": "c",
         "stddef.h": "c",
         "syscall_list.h": "c",
-        "syscall_ext.h": "c"
+        "syscall_ext.h": "c",
+        "kbd.h": "c",
+        "stdio_fs.h": "c",
+        "stdlib.h": "c",
+        "malloc.h": "c"
     },
     "C_Cpp.clang_format_fallbackStyle": "{ BasedOnStyle: GNU, ColumnLimit: 120, IndentWidth: 4, TabWidth: 4, BreakBeforeBraces: Attach, BreakAfterReturnType: Automatic, SpaceBeforeParens: ControlStatements, AllowShortBlocksOnASingleLine: Always, AllowShortIfStatementsOnASingleLine: Always, AllowShortFunctionsOnASingleLine: Empty, BreakAfterAttributes: Always }",
     "editor.tabSize": 4,

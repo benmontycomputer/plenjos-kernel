@@ -1,11 +1,6 @@
 #pragma once
 
 #include <stdbool.h>
-#include <stdint.h>
-
-#include "plenjos/dev/kbd.h"
-
-void init_keyboard();
 
 bool kbd_buffer_empty();
 bool kbd_buffer_full();

@@ -1,8 +1,11 @@
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stddef.h>
 
-#include "../../../src/devices/input/keyboard/keyboard.h"
-#include "../uconsole.h"
+#include "keyboard.h"
+#include "plenjos/dev/kbd.h"
+
+extern kbd_buffer_state_t *kbd_buffer_state;
 
 static void advance_tail() {
     kbd_buffer_state->tail = (kbd_buffer_state->tail + 1) % KBD_BUFFER_SIZE;

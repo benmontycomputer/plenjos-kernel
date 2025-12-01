@@ -1,8 +1,12 @@
-#include "lib/common.h"
-#include "lib/string.h"
-#include "uconsole.h"
 #include <stdbool.h>
 #include <stdint.h>
+
+#include "plenjos/syscall.h"
+
+#include "lib/common.h"
+#include "lib/string.h"
+#include "lib/keyboard.h"
+#include "uconsole.h"
 
 // http://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf
 // The following functions define a portable implementation of rand and srand.

@@ -105,11 +105,11 @@ ssize_t syscall_routine_write(size_t fd, const void *buf, size_t count, pml4_t *
     return vfs_write(handle, buf, count);
 }
 
-size_t syscall_routine_open(const char *path, const char *mode) {
+ssize_t syscall_routine_open(const char *path, const char *mode) {
     proc_t *proc = _get_proc_kernel();
     if (!proc) {
         printf("syscall_routine_open: failed to get current process!\n");
-        return (size_t)-1;
+        return -1;
     }
 
     printf("Open syscall called with path %s and mode %s.\n", path, mode);
@@ -117,14 +117,14 @@ size_t syscall_routine_open(const char *path, const char *mode) {
     vfs_handle_t *handle = vfs_open(path, mode);
     if (!handle) {
         printf("syscall_routine_open: failed to open %s for process %s (pid %p)\n", path, proc->name, proc->pid);
-        return (size_t)-1;
+        return -1;
     }
 
-    size_t fd = proc_alloc_fd(proc, handle);
-    if (fd == (size_t)-1) {
+    ssize_t fd = proc_alloc_fd(proc, handle);
+    if (fd == -1) {
         printf("syscall_routine_open: no available fd for process %s (pid %p)\n", proc->name, proc->pid);
         vfs_close(handle);
-        return (size_t)-1;
+        return -1;
     }
 
     return fd;

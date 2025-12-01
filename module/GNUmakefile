@@ -12,6 +12,8 @@ CFLAGS := -g -Wall -Wextra -std=gnu11 -m64 -march=x86-64 \
 		   -mno-mmx -mno-sse -mno-sse2 \
            -ffreestanding -O2
 
+CPPFLAGS := -I ../include -I src
+
 # LD = /usr/local/x86_64-elf/bin/x86_64-elf-ld
 LD = $(TOOLCHAIN_PREFIX)ld
 LINKER_FILE = linker.lds

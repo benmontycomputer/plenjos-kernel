@@ -1,12 +1,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "../../src/syscall/syscall_ext.h"
-#include "../../src/devices/input/keyboard/keyboard.h"
+#include "plenjos/dev/fb.h"
+#include "plenjos/dev/kbd.h"
 
 #include "lib/common.h"
 #include "lib/stdio.h"
 #include "lib/string.h"
+#include "lib/keyboard.h"
 #include "uconsole.h"
 
 #include "lib/graphics/draw.h"
@@ -172,20 +173,20 @@ void _start() {
 
     // draw_terminal_window();
 
-    uint64_t fd = syscall(SYSCALL_OPEN, (uint64_t)pcipath, (uint64_t)pcimode, 0, 0, 0);
-    if (fd == (uint64_t)-1) {
+    FILE *fd = fopen(pcipath, pcimode);
+    if (fd == NULL) {
         printf("Failed to open PCI device file at %s\n", pcipath);
     } else {
         printf("Opened PCI device file at %s with fd %d\nResult: ", pcipath, (int)fd);
 
         char pcidev[1024];
-        int64_t res = (int64_t)syscall(SYSCALL_READ, fd, (uint64_t)&pcidev, 1024, 0, 0);
+        size_t res = fread((void *)&pcidev, 1, 1024, fd);
 
         for (size_t i = 0; i < 36; i++) {
             printf("%x\n", pcidev[i] & 0xFF);
         }
 
-        syscall(SYSCALL_READ, fd, 0xffffffff800056d0, 1024, 0, 0);
+        fclose(fd);
     }
 
     for (;;) {

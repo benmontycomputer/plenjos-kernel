@@ -36,6 +36,7 @@ struct proc {
 
     volatile pml4_t *pml4;
 
+    // Make sure this is always less than SSIZE_MAX!
     size_t fds_max;
     vfs_handle_t **fds;
 
@@ -51,5 +52,5 @@ void process_exit(proc_t *proc);
 proc_t *_get_proc_kernel();
 
 vfs_handle_t *proc_get_fd(proc_t *proc, size_t fd);
-size_t proc_alloc_fd(proc_t *proc, vfs_handle_t *handle);
+ssize_t proc_alloc_fd(proc_t *proc, vfs_handle_t *handle);
 void proc_free_fd(proc_t *proc, size_t fd);

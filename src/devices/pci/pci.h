@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+#include "plenjos/dev/pci.h"
+
 #define PCI_CONFIG_ADDRESS 0xCF8
 #define PCI_CONFIG_DATA 0xCFC
 
@@ -117,25 +119,6 @@ typedef enum {
     PCI_PROGIF_PCI_TO_PCI_SEMI_PRIMARY       = 0x40, // Primary bus toward host CPU
     PCI_PROGIF_PCI_TO_PCI_SEMI_SECONDARY     = 0x80  // Secondary bus toward host CPU
 } pci_progif_bridge_t;
-
-typedef struct {
-    uint8_t header_type;
-    uint8_t bus;
-    uint8_t device;
-    uint8_t function;
-    uint16_t vendor_id;
-    uint16_t device_id;
-    uint8_t class_code;
-    uint8_t subclass_code;
-    uint8_t prog_if;
-
-    uint32_t bar0;
-    uint32_t bar1;
-    uint32_t bar2;
-    uint32_t bar3;
-    uint32_t bar4;
-    uint32_t bar5;
-} pci_device_t;
 
 extern pci_device_t pci_devices[PCI_MAX_DEVICES];
 extern uint32_t pci_device_count;

@@ -11,8 +11,9 @@
 } __attribute__((packed));
 typedef struct fb_info fb_info_t; */
 
-#include "../../src/syscall/syscall_ext.h"
-#include "../../src/devices/input/keyboard/keyboard.h"
+#include "plenjos/syscall.h"
+#include "plenjos/dev/kbd.h"
+#include "plenjos/dev/fb.h"
 
 extern fb_info_t fb_info;
 extern kbd_buffer_state_t *kbd_buffer_state;

@@ -96,6 +96,7 @@ proc_t *create_proc(const char *name, proc_t *parent) {
                                        alloc_paging_node, proc->pml4);
     }
 
+    // TODO: only map the necessary regions (interrupt tables + stubs only?)
     map_virtual_memory_using_alloc(kernel_load_phys, kernel_load_virt, 1 << 20 /* 2 MiB */,
                                    PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
     map_virtual_memory_using_alloc(virt_to_phys(IOAPIC_ADDR), IOAPIC_ADDR, 4096, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,
@@ -213,15 +214,15 @@ vfs_handle_t *proc_get_fd(proc_t *proc, size_t fd) {
     return proc->fds[fd];
 }
 
-size_t proc_alloc_fd(proc_t *proc, vfs_handle_t *handle) {
+ssize_t proc_alloc_fd(proc_t *proc, vfs_handle_t *handle) {
     for (size_t i = 0; i < proc->fds_max; i++) {
         if (proc->fds[i] == NULL) {
             proc->fds[i] = handle;
-            return i;
+            return (ssize_t)i;
         }
     }
 
-    return (size_t)-1;
+    return -1;
 }
 
 // WARNING: this does *not* free the underlying vfs_handle_t!
