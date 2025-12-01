@@ -59,7 +59,7 @@ static char toks[CMD_TOKS_MAX][CMD_BUFFER_MAX] = { "" };
 static int cmd_buffer_i = 0;
 static int toks_count = 0;
 
-static char pcipath[] = "/dev/pci/pci_dev_00_02";
+static char pcipath[] = "/dev/pci/pci_dev_0x0002";
 static char pcimode[] = "rw";
 
 static void split_cmd(const char *cmd) {
@@ -173,6 +173,14 @@ void _start() {
     // draw_terminal_window();
 
     uint64_t fd = syscall(SYSCALL_OPEN, (uint64_t)pcipath, (uint64_t)pcimode, 0, 0, 0);
+    if (fd == (uint64_t)-1) {
+        printf("Failed to open PCI device file at %s\n", pcipath);
+    } else {
+        printf("Opened PCI device file at %s with fd %d\n", pcipath, (int)fd);
+
+        char pcidev[1024];
+        int64_t res = (int64_t)syscall(SYSCALL_READ, fd, (uint64_t)&pcidev, 1024, 0, 0);
+    }
 
     for (;;) {
         while (kbd_buffer_empty()) {

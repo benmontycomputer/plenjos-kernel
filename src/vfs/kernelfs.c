@@ -22,17 +22,14 @@ typedef enum kernelfs_find_node_result {
     KERNELFS_FIND_NODE_ROOT_NODE_NULL = -5,
 } kernelfs_find_node_result_t;
 
-kernelfs_find_node_result_t kernelfs_find_node(const char *path, kernelfs_node_t **node_out, vfs_handle_t **handle_out) {
-    if (!path) {
-        return KERNELFS_FIND_NODE_PATH_NULL;
-    }
-    
+kernelfs_find_node_result_t kernelfs_find_node(const char *path, kernelfs_node_t **node_out,
+                                               vfs_handle_t **handle_out) {
+    if (!path) { return KERNELFS_FIND_NODE_PATH_NULL; }
+
     // Split the path using '/' as delimiter using strtok
     size_t path_copy_len = strlen(path) + 1;
     char *path_copy = kmalloc_heap(path_copy_len);
-    if (!path_copy) {
-        return KERNELFS_FIND_NODE_ALLOC_FAILED;
-    }
+    if (!path_copy) { return KERNELFS_FIND_NODE_ALLOC_FAILED; }
 
     strncpy(path_copy, path, path_copy_len);
 
@@ -82,9 +79,7 @@ kernelfs_find_node_result_t kernelfs_find_node(const char *path, kernelfs_node_t
     if (node_out) *node_out = current_node;
     if (handle_out) {
         vfs_handle_t *handle = kmalloc_heap(sizeof(vfs_handle_t));
-        if (!handle) {
-            return KERNELFS_FIND_NODE_ALLOC_FAILED;
-        }
+        if (!handle) { return KERNELFS_FIND_NODE_ALLOC_FAILED; }
         handle->type = current_node->type;
         handle->read = kernelfs_read;
         handle->write = kernelfs_write;
@@ -101,27 +96,21 @@ kernelfs_find_node_result_t kernelfs_find_node(const char *path, kernelfs_node_t
 ssize_t kernelfs_read(vfs_handle_t *f, void *buf, size_t len) {
     kernelfs_node_t *node = (kernelfs_node_t *)f->func_args;
 
-    if (node && node->read) {
-        return node->read(node, buf, len);
-    }
+    if (node && node->read) { return node->read(node, buf, len); }
     return -1;
 }
 
 ssize_t kernelfs_write(vfs_handle_t *f, const void *buf, size_t len) {
     kernelfs_node_t *node = (kernelfs_node_t *)f->func_args;
-    
-    if (node && node->write) {
-        return node->write(node, buf, len);
-    }
+
+    if (node && node->write) { return node->write(node, buf, len); }
     return -1;
 }
 
 ssize_t kernelfs_seek(vfs_handle_t *f, ssize_t offset, vfs_seek_whence_t whence) {
     kernelfs_node_t *node = (kernelfs_node_t *)f->func_args;
 
-    if (node && node->seek) {
-        return node->seek(node, offset, whence);
-    }
+    if (node && node->seek) { return node->seek(node, offset, whence); }
     return -1;
 }
 
@@ -138,9 +127,9 @@ void kernelfs_close(vfs_handle_t *f) {
 }
 
 int kernelfs_create_node(const char *path, const char *name, vfs_node_type_t type,
-                          ssize_t (*read)(kernelfs_node_t *, void *, size_t),
-                          ssize_t (*write)(kernelfs_node_t *, const void *, size_t),
-                          ssize_t (*seek)(kernelfs_node_t *, ssize_t, vfs_seek_whence_t)) {
+                         ssize_t (*read)(kernelfs_node_t *, void *, size_t),
+                         ssize_t (*write)(kernelfs_node_t *, const void *, size_t),
+                         ssize_t (*seek)(kernelfs_node_t *, ssize_t, vfs_seek_whence_t), void *func_args) {
     printf("Creating kernelfs node %s at %s\n", name, path);
 
     kernelfs_node_t *parent_node = NULL;
@@ -148,13 +137,13 @@ int kernelfs_create_node(const char *path, const char *name, vfs_node_type_t typ
     kernelfs_find_node_result_t res = kernelfs_find_node(path, &parent_node, NULL);
 
     if (!parent_node || res != 0) {
-        //kfree_heap(new_node);
+        // kfree_heap(new_node);
         printf("Failed to find parent node at %s (result %d)\n", path, res);
         return -1;
     }
 
     if (parent_node->type != VFS_NODE_TYPE_DIR) {
-        //kfree_heap(new_node);
+        // kfree_heap(new_node);
         printf("Parent node at %s is not a directory\n", path);
         return -2;
     }

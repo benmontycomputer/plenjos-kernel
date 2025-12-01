@@ -195,16 +195,58 @@ pci_device_t pci_check_device(uint8_t bus, uint8_t device, uint8_t function) {
     return dev;
 }
 
-#define PCI_DEV_PREFIX "pci_dev_"
+static char hex_to_char(uint8_t val) {
+    if (val > 15) return '?';
+    if (val < 10) return '0' + val;
+    return 'A' + (val - 10);
+}
+
+static uint8_t char_to_hex(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    return 0xFF; // Invalid
+}
+
+#define PCI_DEV_PREFIX "pci_dev_0x"
+
+ssize_t pci_dev_file_read(kernelfs_node_t *node, void *buf, size_t len) {
+    pci_device_t *dev = (pci_device_t *)node->func_args;
+
+    // For simplicity, just copy the pci_device_t structure into the buffer
+    size_t copylen = (len > sizeof(pci_device_t)) ? sizeof(pci_device_t) : len;
+    memcpy(buf, dev, copylen);
+
+    return copylen;
+}
+
+static void pci_add_device_to_array(uint8_t bus, uint8_t device, uint8_t function) {
+    pci_devices[pci_device_count] = pci_check_device(bus, device, function);
+
+    // Ex: pci_dev_0000
+    char *devaddr = (char *)kmalloc_heap(strlen(PCI_DEV_PREFIX) + 5);
+
+    strncpy(devaddr, PCI_DEV_PREFIX, strlen(PCI_DEV_PREFIX) + 1);
+    // TODO: once snprintf is implemented, use that instead
+    devaddr[strlen(PCI_DEV_PREFIX) + 0] = hex_to_char((pci_device_count / 16 / 16 / 16) % 16);
+    devaddr[strlen(PCI_DEV_PREFIX) + 1] = hex_to_char((pci_device_count / 16 / 16) % 16);
+    devaddr[strlen(PCI_DEV_PREFIX) + 2] = hex_to_char((pci_device_count / 16) % 16);
+    devaddr[strlen(PCI_DEV_PREFIX) + 3] = hex_to_char((pci_device_count) % 16);
+    devaddr[strlen(PCI_DEV_PREFIX) + 4] = 0;
+
+    kernelfs_create_node("/dev/pci", devaddr, VFS_NODE_TYPE_FILE, pci_dev_file_read, NULL, NULL, &pci_devices[pci_device_count]);
+
+    pci_device_count++;
+}
 
 // First, scan for devices using a brute-force approach
 void pci_scan() {
     uint16_t bus;
     uint8_t device;
 
-    kernelfs_create_node("/", "dev", VFS_NODE_TYPE_DIR, NULL, NULL, NULL);
-    kernelfs_create_node("/dev", "pci", VFS_NODE_TYPE_DIR, NULL, NULL, NULL);
-    kernelfs_create_node("/dev/pci", "subftest", VFS_NODE_TYPE_DIR, NULL, NULL, NULL);
+    kernelfs_create_node("/", "dev", VFS_NODE_TYPE_DIR, NULL, NULL, NULL, NULL);
+    kernelfs_create_node("/dev", "pci", VFS_NODE_TYPE_DIR, NULL, NULL, NULL, NULL);
+    // kernelfs_create_node("/dev/pci", "subftest", VFS_NODE_TYPE_DIR, NULL, NULL, NULL);
 
     for (bus = 0; bus < 256; bus++) {
         for (device = 0; device < 32; device++) {
@@ -217,22 +259,7 @@ void pci_scan() {
             uint8_t function = 0;
 
             if (pci_device_count < PCI_MAX_DEVICES) {
-                pci_devices[pci_device_count] = pci_check_device(bus, device, function);
-
-                char *devaddr = (char *)kmalloc_heap(strlen(PCI_DEV_PREFIX) + 6 + 2);
-
-                strncpy(devaddr, PCI_DEV_PREFIX, strlen(PCI_DEV_PREFIX) + 1);
-                // TODO: once snprintf is implemented, use that instead
-                devaddr[strlen(PCI_DEV_PREFIX) + 0] = '0' + (bus / 16);
-                devaddr[strlen(PCI_DEV_PREFIX) + 1] = '0' + (bus % 16);
-                devaddr[strlen(PCI_DEV_PREFIX) + 2] = '_';
-                devaddr[strlen(PCI_DEV_PREFIX) + 3] = '0' + (device / 16);
-                devaddr[strlen(PCI_DEV_PREFIX) + 4] = '0' + (device % 16);
-                devaddr[strlen(PCI_DEV_PREFIX) + 5] = 0;
-
-                kernelfs_create_node("/dev/pci", devaddr, VFS_NODE_TYPE_FILE, NULL, NULL, NULL);
-
-                pci_device_count++;
+                pci_add_device_to_array(bus, device, function);
             } else {
                 printf("PCI device array full, cannot record more devices.\n");
                 return;
@@ -244,8 +271,7 @@ void pci_scan() {
                     vendor_device = pci_read(bus, device, function, 0);
                     if (vendor_device != 0xFFFFFFFF) {
                         if (pci_device_count < PCI_MAX_DEVICES) {
-                            pci_devices[pci_device_count] = pci_check_device(bus, device, function);
-                            pci_device_count++;
+                            pci_add_device_to_array(bus, device, function);
                         } else {
                             printf("PCI device array full, cannot record more devices.\n");
                             return;

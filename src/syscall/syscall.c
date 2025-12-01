@@ -42,6 +42,7 @@ uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_
 extern char *fb;
 extern int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
 
+// TODO: how do we handle the string being a non-contiguous set of pages?
 bool _syscall_helper_check_str_ptr_perms(pml4_t *current_pml4, uint64_t user_ptr, char **out) {
     uint64_t str_ptr = phys_to_virt(get_physaddr(user_ptr, current_pml4));
     uint64_t end = user_ptr + strlen((char *)str_ptr) + 1;
@@ -75,10 +76,12 @@ registers_t *syscall_routine(registers_t *regs) {
 
     switch (call) {
     case SYSCALL_READ:
-        regs->rax = (uint64_t)syscall_routine_read(regs->rbx, (void *)regs->rcx, (size_t)regs->rdx);
+        current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
+        regs->rax = (uint64_t)syscall_routine_read(regs->rbx, (void *)regs->rcx, (size_t)regs->rdx, current_pml4);
         break;
     case SYSCALL_WRITE:
-        regs->rax = (uint64_t)syscall_routine_write(regs->rbx, (const void *)regs->rcx, (size_t)regs->rdx);
+        current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
+        regs->rax = (uint64_t)syscall_routine_write(regs->rbx, (const void *)regs->rcx, (size_t)regs->rdx, current_pml4);
         break;
     case SYSCALL_OPEN:
         current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
