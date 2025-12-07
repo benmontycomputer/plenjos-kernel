@@ -7,6 +7,7 @@
 #include "memory/kmalloc.h"
 
 #include "vfs/vfs.h"
+#include "vfs/kernelfs.h"
 #include "proc/proc.h"
 
 #include "lib/stdio.h"
@@ -60,6 +61,11 @@ ssize_t syscall_routine_read(size_t fd, void *buf, size_t count, pml4_t *current
 
     proc_t *proc = _get_proc_kernel();
 
+    if (!proc) {
+        printf("syscall_routine_read: failed to get current process!\n");
+        return -1;
+    }
+
     vfs_handle_t *handle = proc_get_fd(proc, fd);
 
     if (!handle) {
@@ -95,6 +101,11 @@ ssize_t syscall_routine_read(size_t fd, void *buf, size_t count, pml4_t *current
 ssize_t syscall_routine_write(size_t fd, const void *buf, size_t count, pml4_t *current_pml4) {
     proc_t *proc = _get_proc_kernel();
 
+    if (!proc) {
+        printf("syscall_routine_write: failed to get current process!\n");
+        return -1;
+    }
+
     vfs_handle_t *handle = proc_get_fd(proc, fd);
 
     if (!handle) {
@@ -105,16 +116,16 @@ ssize_t syscall_routine_write(size_t fd, const void *buf, size_t count, pml4_t *
     return vfs_write(handle, buf, count);
 }
 
-ssize_t syscall_routine_open(const char *path, const char *mode) {
+ssize_t syscall_routine_open(const char *path, uint64_t flags, uint64_t mode) {
     proc_t *proc = _get_proc_kernel();
     if (!proc) {
         printf("syscall_routine_open: failed to get current process!\n");
         return -1;
     }
 
-    printf("Open syscall called with path %s and mode %s.\n", path, mode);
+    printf("Open syscall called with path %s and mode %o.\n", path, mode);
 
-    vfs_handle_t *handle = vfs_open(path, mode);
+    vfs_handle_t *handle = kernelfs_open(path, flags, mode, proc);
     if (!handle) {
         printf("syscall_routine_open: failed to open %s for process %s (pid %p)\n", path, proc->name, proc->pid);
         return -1;
@@ -132,6 +143,11 @@ ssize_t syscall_routine_open(const char *path, const char *mode) {
 
 int syscall_routine_close(size_t fd) {
     proc_t *proc = _get_proc_kernel();
+
+    if (!proc) {
+        printf("syscall_routine_close: failed to get current process!\n");
+        return -1;
+    }
 
     vfs_handle_t *handle = proc_get_fd(proc, fd);
     if (!handle) {

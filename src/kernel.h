@@ -1,11 +1,11 @@
+#ifndef _KERNEL_H
+#define _KERNEL_H
+
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
 
-#ifndef _KERNEL_H
-#define _KERNEL_H
-
-typedef int64_t ssize_t;
+#include "plenjos/types.h"
 
 extern bool debug_serial;
 

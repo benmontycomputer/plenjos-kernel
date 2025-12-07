@@ -2,15 +2,13 @@
 
 #include "memory/kmalloc.h"
 
+#include "proc/proc.h"
+
 #include "vfs/vfs.h"
 #include "vfs/kernelfs.h"
 
 void vfs_init() {
     kernelfs_init();
-}
-
-vfs_handle_t *vfs_open(const char *path, const char *mode) {
-    return kernelfs_open(path, mode);
 }
 
 void vfs_close(vfs_handle_t *f) {

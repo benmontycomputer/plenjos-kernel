@@ -2,6 +2,7 @@
 
 #include "syscall/syscall.h"
 #include "plenjos/dev/fb.h"
+#include "plenjos/syscall.h"
 
 #include "memory/mm.h"
 #include "memory/mm_common.h"
@@ -87,12 +88,10 @@ registers_t *syscall_routine(registers_t *regs) {
     case SYSCALL_OPEN:
         current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
         char *path = NULL;
-        char *mode = NULL;
         printf("trying...\n\n");
         _syscall_helper_check_str_ptr_perms(current_pml4, regs->rbx, &path);
-        _syscall_helper_check_str_ptr_perms(current_pml4, regs->rcx, &mode);
-        if (path && mode)
-            regs->rax = (uint64_t)syscall_routine_open((const char *)path, (const char *)mode);
+        if (path)
+            regs->rax = (uint64_t)syscall_routine_open((const char *)path, regs->rcx, regs->rdx);
         else
             regs->rax = (uint64_t)-1;
         break;
@@ -108,6 +107,8 @@ registers_t *syscall_routine(registers_t *regs) {
     case SYSCALL_POLL:
         break;
     case SYSCALL_LSEEK:
+        break;
+    case SYSCALL_GETDENTS:
         break;
     case SYSCALL_GET_FB:
         // rbx: pointer to struct for framebuffer data

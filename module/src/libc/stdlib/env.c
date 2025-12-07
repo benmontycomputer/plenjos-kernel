@@ -2,7 +2,7 @@
 #include "stdio.h"
 #include "common.h"
 
-#include "plenjos/syscall.h"
+#include "sys/syscall.h"
 #include "plenjos/dev/fb.h"
 #include "plenjos/dev/kbd.h"
 
@@ -13,8 +13,8 @@ fb_info_t fb_info;
 kbd_buffer_state_t *kbd_buffer_state;
 
 void initialize_standard_library(int argc, char *argv[], int envc, char *envp[]) {
-    syscall(SYSCALL_GET_FB, (uint64_t)&fb_info, 0, 0, 0, 0);
-    kbd_buffer_state = (kbd_buffer_state_t *)syscall(SYSCALL_GET_KB, 0, 0, 0, 0, 0);
+    syscall_get_fb(&fb_info);
+    kbd_buffer_state = syscall_get_kb();
 
     init_heap();
 

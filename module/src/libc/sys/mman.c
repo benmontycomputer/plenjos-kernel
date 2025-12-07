@@ -1,6 +1,6 @@
 #include "mman.h"
 
-#include "plenjos/syscall.h"
+#include "sys/syscall.h"
 
 #include "common.h"
 
@@ -14,7 +14,7 @@ int mmap(void *addr, size_t length) {
         return -1;
     }
 
-    int res = (int)syscall(SYSCALL_MEMMAP, (uint64_t)addr, length, 0, 0, 0);
+    int res = (int)syscall_memmap(addr, length);
     if (res != 0) {
         printf("mmap: syscall failed with res %d\n", res);
         return -1;

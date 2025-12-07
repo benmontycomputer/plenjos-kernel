@@ -1,5 +1,3 @@
-#include "plenjos/syscall.h"
-
 // TODO: find a way to handle debug messages without just printing them to the console; this will be necessary once this
 // becomes a freestanding userland library
 
@@ -121,6 +119,7 @@ static heap_segment_info_t *heap_segment_split(heap_segment_info_t *segment, siz
 }
 
 // TODO: is it safe to return this memory without clearing it? should be; it should automatically be cleared in kernel
+// TODO: do we want to allocate the returned block aligned to 8 or 16 bytes? this might help performance; google it for details
 void *malloc(size_t size) {
     if (!heap_last_segment) { return NULL; }
 

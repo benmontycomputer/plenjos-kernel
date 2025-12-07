@@ -1,18 +1,18 @@
 #pragma once
 
-#include "plenjos/syscall.h"
+#include "sys/syscall.h"
 #include "stdio.h"
 #include "types.h"
 #include "stdlib.h"
 #include "common.h"
 
 FILE *fopen(const char *filename, const char *mode) {
-    ssize_t fd_res = (ssize_t)syscall(SYSCALL_OPEN, (uint64_t)filename, (uint64_t)mode, 0, 0, 0);
+    ssize_t fd_res = syscall_open(filename, mode);
 
     if (fd_res >= 0) {
         FILE *file = (FILE *)malloc(sizeof(FILE));
         if (!file) {
-            syscall(SYSCALL_CLOSE, (uint64_t)fd_res, 0, 0, 0, 0);
+            syscall_close((size_t)fd_res);
             return NULL;
         }
 
@@ -26,14 +26,14 @@ FILE *fopen(const char *filename, const char *mode) {
 int fclose(FILE *stream) {
     if (!stream) return -1;
 
-    syscall(SYSCALL_CLOSE, stream->fd, 0, 0, 0, 0);
+    syscall_close(stream->fd);
     free(stream);
 
     return 0;
 }
 
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
-    ssize_t res = (ssize_t)syscall(SYSCALL_READ, stream->fd, (uint64_t)ptr, size * nmemb, 0, 0);
+    ssize_t res = syscall_read(stream->fd, ptr, size * nmemb);
     if (res < 0) return 0;
 
     return (size_t)(res / size);

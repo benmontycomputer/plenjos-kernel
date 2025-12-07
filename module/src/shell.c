@@ -10,38 +10,9 @@
 #include "keyboard.h"
 #include "uconsole.h"
 
+#include "sys/syscall.h"
+
 #include "graphics/draw.h"
-
-// Uses PSF1 format
-extern void kputchar(
-    /* note that this is int, not char as it's a unicode character */
-    unsigned short int c,
-    /* cursor position on screen, in characters not in pixels */
-    int cx, int cy,
-    /* foreground and background colors, say 0xFFFFFF and 0x000000 */
-    uint32_t fg, uint32_t bg);
-
-extern void kputs(const char *str, int cx, int cy);
-extern void kputhex(uint64_t hex, int cx, int cy);
-
-uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_t rsi, uint64_t rdi) {
-    uint64_t out;
-
-    asm volatile("mov %[_rax], %%rax\n"
-                 "mov %[_rbx], %%rbx\n"
-                 "mov %[_rcx], %%rcx\n"
-                 "mov %[_rdx], %%rdx\n"
-                 "mov %[_rsi], %%rsi\n"
-                 "mov %[_rdi], %%rdi\n"
-                 "int $0x80\n"
-                 "mov %%rax, %[_out]\n"
-                 : [_out] "=r"(out)
-                 : [_rax] "r"(rax), [_rbx] "r"(rbx), [_rcx] "r"(rcx), [_rdx] "r"(rdx), [_rsi] "r"(rsi), [_rdi] "r"(rdi)
-                 : "rax", "rbx", "rcx", "rdx", "rsi", "rdi" // Clobbered registers
-    );
-
-    return out;
-}
 
 // __attribute__((section(".data")))
 const char teststr_shell[] = "\ntest!!!\n\n\0";

@@ -1,7 +1,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "plenjos/syscall.h"
+#include "sys/syscall.h"
 
 #include "common.h"
 #include "string.h"
@@ -264,6 +264,6 @@ void tetris_main() {
             }
         }
         // usleep(20000); // ~50 FPS
-        syscall(SYSCALL_SLEEP, 20, 0, 0, 0, 0);
+        syscall_sleep(20);
     }
 }

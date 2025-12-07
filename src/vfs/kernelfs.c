@@ -4,9 +4,12 @@
 
 #include "memory/kmalloc.h"
 #include "memory/mm.h"
+#include "proc/proc.h"
 
 #include "lib/stdio.h"
 #include "lib/string.h"
+
+#include "plenjos/dirent.h"
 
 kernelfs_node_t *root_kernelfs_node = NULL;
 
@@ -15,6 +18,8 @@ ssize_t kernelfs_write(vfs_handle_t *f, const void *buf, size_t len);
 ssize_t kernelfs_seek(vfs_handle_t *f, ssize_t offset, vfs_seek_whence_t whence);
 
 typedef enum kernelfs_find_node_result {
+    KERNELFS_FIND_NODE_HANDLE_ONLY = 1,
+    KERNELFS_FIND_NODE_SUCCESS = 0,
     KERNELFS_FIND_NODE_PATH_NULL = -1,
     KERNELFS_FIND_NODE_NOT_A_DIRECTORY = -2,
     KERNELFS_FIND_NODE_NOT_FOUND = -3,
@@ -22,8 +27,31 @@ typedef enum kernelfs_find_node_result {
     KERNELFS_FIND_NODE_ROOT_NODE_NULL = -5,
 } kernelfs_find_node_result_t;
 
-kernelfs_find_node_result_t kernelfs_find_node(const char *path, kernelfs_node_t **node_out,
-                                               vfs_handle_t **handle_out) {
+ssize_t kernelfs_read(vfs_handle_t *f, void *buf, size_t len) {
+    kernelfs_node_t *node = (kernelfs_node_t *)f->func_args;
+
+    if (node && node->read) { return node->read(node, buf, len); }
+    return -1;
+}
+
+ssize_t kernelfs_write(vfs_handle_t *f, const void *buf, size_t len) {
+    kernelfs_node_t *node = (kernelfs_node_t *)f->func_args;
+
+    if (node && node->write) { return node->write(node, buf, len); }
+    return -1;
+}
+
+ssize_t kernelfs_seek(vfs_handle_t *f, ssize_t offset, vfs_seek_whence_t whence) {
+    kernelfs_node_t *node = (kernelfs_node_t *)f->func_args;
+
+    if (node && node->seek) { return node->seek(node, offset, whence); }
+    return -1;
+}
+
+// TODO: we need to implement permissions
+vfs_handle_t *kernelfs_open(const char *path, uint64_t flags, uint64_t mode, proc_t *proc) {
+    vfs_handle_t *handle = NULL;
+
     if (!path) { return KERNELFS_FIND_NODE_PATH_NULL; }
 
     // Split the path using '/' as delimiter using strtok
@@ -48,7 +76,21 @@ kernelfs_find_node_result_t kernelfs_find_node(const char *path, kernelfs_node_t
     while (token != NULL) {
         printf("token: %s\n", token);
         // TODO: handle mounted filesystems
-        if (current_node->type != VFS_NODE_TYPE_DIR) {
+        if (current_node->type == DT_BLK) {
+            char *rem = strtok(NULL, "");
+            printf("Opening block device (path_copy: %s, token: %s, rem: %s)\n", path_copy, token, rem ? rem : "{NULL}");
+            if (current_node->open) {
+                // We're at the end of the path
+                    
+                // current_node->open(, mode); */
+            } else {
+                printf("Trying to open a block device node with no open function! (path_copy: %s, token: %s)\n", path_copy, token);
+            }
+
+            return KERNELFS_FIND_NODE_NOT_FOUND;
+        }
+        // TODO: handle links
+        if (current_node->type != DT_DIR) {
             // Can't traverse into a non-directory
             kfree_heap(path_copy);
             return KERNELFS_FIND_NODE_NOT_A_DIRECTORY;
@@ -58,7 +100,7 @@ kernelfs_find_node_result_t kernelfs_find_node(const char *path, kernelfs_node_t
 
         while (current_node) {
             printf("checking node %s\n", current_node->name);
-            if (strncmp(current_node->name, token, 256) == 0) {
+            if (strncmp(current_node->name, token, NAME_MAX + 1) == 0) {
                 // Found the node
                 break;
             }
@@ -76,49 +118,6 @@ kernelfs_find_node_result_t kernelfs_find_node(const char *path, kernelfs_node_t
 
     kfree_heap(path_copy);
 
-    if (node_out) *node_out = current_node;
-    if (handle_out) {
-        vfs_handle_t *handle = kmalloc_heap(sizeof(vfs_handle_t));
-        if (!handle) { return KERNELFS_FIND_NODE_ALLOC_FAILED; }
-        handle->type = current_node->type;
-        handle->read = kernelfs_read;
-        handle->write = kernelfs_write;
-        handle->seek = kernelfs_seek;
-        handle->close = kernelfs_close;
-        handle->func_args = (void *)current_node;
-
-        *handle_out = handle;
-    }
-
-    return 0;
-}
-
-ssize_t kernelfs_read(vfs_handle_t *f, void *buf, size_t len) {
-    kernelfs_node_t *node = (kernelfs_node_t *)f->func_args;
-
-    if (node && node->read) { return node->read(node, buf, len); }
-    return -1;
-}
-
-ssize_t kernelfs_write(vfs_handle_t *f, const void *buf, size_t len) {
-    kernelfs_node_t *node = (kernelfs_node_t *)f->func_args;
-
-    if (node && node->write) { return node->write(node, buf, len); }
-    return -1;
-}
-
-ssize_t kernelfs_seek(vfs_handle_t *f, ssize_t offset, vfs_seek_whence_t whence) {
-    kernelfs_node_t *node = (kernelfs_node_t *)f->func_args;
-
-    if (node && node->seek) { return node->seek(node, offset, whence); }
-    return -1;
-}
-
-vfs_handle_t *kernelfs_open(const char *path, const char *mode) {
-    vfs_handle_t *handle = NULL;
-
-    kernelfs_find_node_result_t res = kernelfs_find_node(path, NULL, &handle);
-
     return handle;
 }
 
@@ -126,40 +125,38 @@ void kernelfs_close(vfs_handle_t *f) {
     kfree_heap(f);
 }
 
-int kernelfs_create_node(const char *path, const char *name, vfs_node_type_t type,
+int kernelfs_create_node(kernelfs_node_t *parent_node, const char *name, uint8_t type,
+                         ssize_t (*open)(const char *path, const char *mode),
                          ssize_t (*read)(kernelfs_node_t *, void *, size_t),
                          ssize_t (*write)(kernelfs_node_t *, const void *, size_t),
                          ssize_t (*seek)(kernelfs_node_t *, ssize_t, vfs_seek_whence_t), void *func_args) {
-    printf("Creating kernelfs node %s at %s\n", name, path);
+    printf("Creating kernelfs node %s\n", name);
 
     kernelfs_node_t *parent_node = NULL;
 
-    kernelfs_find_node_result_t res = kernelfs_find_node(path, &parent_node, NULL);
-
-    if (!parent_node || res != 0) {
-        // kfree_heap(new_node);
-        printf("Failed to find parent node at %s (result %d)\n", path, res);
+    if (!parent_node) {
+        printf("Parent node can't be null!\n");
         return -1;
     }
 
-    if (parent_node->type != VFS_NODE_TYPE_DIR) {
-        // kfree_heap(new_node);
-        printf("Parent node at %s is not a directory\n", path);
+    if (parent_node->type != DT_DIR) {
+        printf("Parent node is not a directory!\n");
         return -2;
     }
 
     kernelfs_node_t *new_node = (kernelfs_node_t *)kmalloc_heap(sizeof(kernelfs_node_t));
 
     if (!new_node) {
-        printf("kernelfs_create_node: allocation failed for node %s at %s\n", name, path);
+        printf("kernelfs_create_node: allocation failed for node %s.\n", name);
         return -3;
     }
 
     memset(new_node, 0, sizeof(kernelfs_node_t));
 
-    strncpy(new_node->name, name, 256);
-    new_node->name[255] = '\0';
+    strncpy(new_node->name, name, NAME_MAX);
+    new_node->name[NAME_MAX] = '\0';
     new_node->type = type;
+    new_node->open = open;
     new_node->read = read;
     new_node->write = write;
     new_node->seek = seek;
@@ -192,6 +189,11 @@ void kernelfs_init() {
 
     memset(root_kernelfs_node, 0, sizeof(kernelfs_node_t));
 
-    root_kernelfs_node->type = VFS_NODE_TYPE_DIR;
+    root_kernelfs_node->type = DT_DIR;
     root_kernelfs_node->name[0] = 0;
+
+    kernelfs_create_node("/", "testfs", DT_DIR, NULL, NULL, NULL, NULL, NULL);
+
+    // kernelfs_open("/testfs", "r");
+    // kernelfs_open("/testfs/tmp", "r");
 }
