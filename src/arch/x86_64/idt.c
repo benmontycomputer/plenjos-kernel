@@ -173,15 +173,18 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
         // TODO: halt all threads
         hcf();
     } else {
-        uint64_t pid = cores_threads[get_curr_core()]->parent->pid;
-        uint64_t tid = cores_threads[get_curr_core()]->tid;
+        thread_t *thread = cores_threads[get_curr_core()];
+        if (thread) {
+            uint64_t pid = thread->parent->pid;
+            uint64_t tid = thread->tid;
 
-        printf("Faulting process: PID %p, TID %p\n", pid, tid);
-        printf("Killing offending process...\n");
+            printf("Faulting process: PID %p, TID %p\n", pid, tid);
+            printf("Killing offending process...\n");
 
-        process_exit(cores_threads[get_curr_core()]->parent);
+            process_exit(thread->parent);
 
-        cpu_scheduler_task();
+            cpu_scheduler_task();
+        }
     }
 }
 

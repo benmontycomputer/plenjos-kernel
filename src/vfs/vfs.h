@@ -10,6 +10,14 @@
 
 #include "plenjos/dirent.h"
 
+typedef struct fscache_node fscache_node_t;
+
+typedef ssize_t (*vfs_read_func_t)(vfs_handle_t *, void *, size_t);
+typedef ssize_t (*vfs_write_func_t)(vfs_handle_t *, const void *, size_t);
+typedef ssize_t (*vfs_seek_func_t)(vfs_handle_t *, ssize_t, vfs_seek_whence_t);
+typedef void (*vfs_close_func_t)(vfs_handle_t *);
+typedef ssize_t (*vfs_load_func_t)(fscache_node_t *node, const char *name, fscache_node_t *out);
+
 typedef enum vfs_seek_whence {
     VFS_SEEK_SET = 0,
     VFS_SEEK_CUR = 1,
@@ -20,15 +28,33 @@ typedef struct vfs_handle vfs_handle_t;
 
 struct vfs_handle {
     uint8_t type;
-    uint8_t reserved[7];
+
+    uid_t uid;
+    gid_t gid;
+    mode_t mode;
+
+    uint8_t reserved[5];
 
     // This doubles as the getdents function for directories
-    ssize_t (*read)(vfs_handle_t *, void *, size_t);
-    ssize_t (*write)(vfs_handle_t *, const void *, size_t);
-    ssize_t (*seek)(vfs_handle_t *, ssize_t, vfs_seek_whence_t);
-    void (*close)(vfs_handle_t *);
+    vfs_read_func_t read;
+    vfs_write_func_t write;
+    vfs_seek_func_t seek;
+    vfs_close_func_t close;
 
-    void *func_args;
+    // This is filesystem-specific
+    uint64_t internal_data[4];
+};
+
+typedef struct vfs_ops_block vfs_ops_block_t;
+
+struct vfs_ops_block {
+    char *fsname;
+
+    vfs_read_func_t read;
+    vfs_write_func_t write;
+    vfs_seek_func_t seek;
+    vfs_close_func_t close;
+    vfs_load_func_t load_node;
 };
 
 typedef struct vfs_filesystem {

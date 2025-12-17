@@ -1,10 +1,4 @@
-; from KeblaOS
-
-;
-; This Programe will set cpu with supplied registers_t cpu state 
-; This is building on before 26/02/2025
-; This code is also have some error handling
-; 
+; Heavily modified from KeblaOS
 
 ; Offsets for the registers_t structure
 %define SEG_REG_GS  8*0
@@ -59,117 +53,33 @@
     mov r15, [r15 + GEN_REG_R15]
 %endmacro
 
-global _load_task_page_tables
-_load_task_page_tables:
-    push rbp
-    mov rbp, rsp
-    ; extern paging_walk_page
-    ; call $+(paging_walk_page-$) ; rdi is virt; rax returns phys
-    mov cr3, rdi
-    pop rbp
-    ret
-
 global _finalize_task_switch
 _finalize_task_switch:
     cli
+    ; First, save the current location of the kernel stack pointer to the kernel gsbase:
     swapgs
-    ; mov rcx, 0xC0000101
-    ; rdmsr
-    ; shl rdx, 32
-    ; and rax, 0x00000000FFFFFFFF ; not needed because the upper 32 bits of rax and rdx are automatically cleared by readmsr
-    ; and rdx, 0x00000000FFFFFFFF
-    ; or rax, rdx
     mov [gs:0], rsp
     swapgs
+    ; Next, load the registers_t struct into r15:
     mov r15, rdi
-    mov rdi, [r15 + CR_REG_CR3] ; task->ctx->cr3
-    mov rsp, [r15 + REG_IRET_RSP]
-    mov cr3, rdi ; I (Plenjamin) added this
+    mov rdi, [r15 + CR_REG_CR3]   ; Prepare for page table loading
+    mov rsp, [r15 + REG_IRET_RSP] ; Load new thread's stack
+
+    ; After loading the new thread's page table, we are still in ring 0, so we can access
+    ; kernel data structures that are mapped into the process's address space.
+    mov cr3, rdi ; Load new thread's page tables
     mov rbp, [r15 + GEN_REG_RBP]
     mov r14, [r15 + REG_IRET_RIP]
-    ; call $+(_load_task_page_tables-$)
-    xor rax, rax
-    mov ax, 0x23       ; user data segment; 0x20 | 0x3
+    xor rax, rax ; zeroes out the entire rax register; otherwise the topmost bits might be wrong when we push it to stack
+    mov ax, 0x23        ; user data segment; 0x20 | 0x3
     mov ds, ax
     mov es, ax
     push rax            ; push user data segment
-    lea rax, [rsp + 0x08]
+    lea rax, [rsp + 0x08] ; the offset is needed because we have already pushed user data segment to the stack
     push rax            ; push user stack
-    ; push rsp
-    sti
-    pushfq              ; push flags
-    cli
-    ; push qword [r15 + REG_IRET_RFLAGS]
+    push qword [r15 + REG_IRET_RFLAGS]
     push 0x1B           ; user code segment; 0x18 | 0x3
     push r14            ; push user instruction pointer
     load_task_general_registers
     .end:
     iretq
-
-
-.text
-global restore_cpu_state            ; use extern void restore_cpu_state(registers_t* registers); in c file
-
-restore_cpu_state:
-    cli                             ; Disable interrupts
-
-    mov rcx, rdi                    ; Save registers_t pointer in rcx
-
-    ; Restore segment registers
-    ; mov rax, [rcx + SEG_REG_GS]  
-    ; mov gs, ax            
-    ; mov rax, [rcx + SEG_REG_FS]  
-    ; mov fs, ax            
-    mov rax, [rcx + SEG_REG_ES]  
-    mov es, ax            
-    mov rax, [rcx + SEG_REG_DS]  
-    mov ds, ax            
-
-    ; Restore control registers
-    ; mov rax, [rcx + CR_REG_CR0]
-    ; mov cr0, rax
-    ; mov rax, [rcx + CR_REG_CR2]
-    ; mov cr2, rax
-    mov rax, [rcx + CR_REG_CR3]
-    mov cr3, rax
-    ; mov rax, [rcx + CR_REG_CR4]
-    ; mov cr4, rax
-
-    ; Restore general-purpose registers 
-    mov rax, [rcx + GEN_REG_RAX]
-    mov rbx, [rcx + GEN_REG_RBX]
-    ; mov rcx, [rcx + GEN_REG_RCX] ; The rcx will store at last
-    mov rdx, [rcx + GEN_REG_RDX]
-    mov rbp, [rcx + GEN_REG_RBP]
-    mov rdi, [rcx + GEN_REG_RDI]  
-    mov rsi, [rcx + GEN_REG_RSI]
-    mov r8,  [rcx + GEN_REG_R8 ]
-    mov r9,  [rcx + GEN_REG_R9 ]
-    mov r10, [rcx + GEN_REG_R10]
-    mov r11, [rcx + GEN_REG_R11]
-    mov r12, [rcx + GEN_REG_R12]
-    mov r13, [rcx + GEN_REG_R13]
-    mov r14, [rcx + GEN_REG_R14]
-    mov r15, [rcx + GEN_REG_R15]
-
-    ; Restore RSP from saved state
-    mov rsp, [rcx + REG_IRET_RSP]
-
-    ; Push iretq frame (RIP, CS, RFLAGS)
-    push qword [rcx + REG_IRET_SS ]
-    ; TODO: Should this next line be "push qword rsp"?
-    push qword [rcx + REG_IRET_RSP]
-    push qword [rcx + REG_IRET_RFLAGS]
-    or   qword [rsp], 0x200  ; Enable interrupts
-    push qword [rcx + REG_IRET_CS]
-    push qword [rcx + REG_IRET_RIP]
-
-    mov rcx, [rcx + GEN_REG_RCX]    ; Ultimately set rcx registers
-
-    sti                             ; Store interrupt 
-
-    iretq                           ; Return from interrupt
-    
-
-    
-    

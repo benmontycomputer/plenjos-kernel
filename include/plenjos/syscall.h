@@ -20,6 +20,8 @@ typedef enum {
     SYSCALL_GETDENTS,
 } syscalls_call;
 
+typedef uint8_t syscall_open_flags_t;
+
 #define SYSCALL_OPEN_FLAG_READ 0x1
 #define SYSCALL_OPEN_FLAG_WRITE 0x2
 #define SYSCALL_OPEN_FLAG_CREATE 0x4

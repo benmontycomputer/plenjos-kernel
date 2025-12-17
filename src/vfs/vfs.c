@@ -7,6 +7,8 @@
 #include "vfs/vfs.h"
 #include "vfs/kernelfs.h"
 
+#include "plenjos/syscall.h"
+
 void vfs_init() {
     kernelfs_init();
 }
@@ -34,4 +36,8 @@ ssize_t vfs_seek(vfs_handle_t *f, ssize_t offset, vfs_seek_whence_t whence) {
         return f->seek(f, offset, whence);
     }
     return -1;
+}
+
+vfs_handle_t vfs_open(const char *path, syscall_open_flags_t flags, uid_t uid, gid_t gid, mode_t mode) {
+    // First, find the fscache node
 }

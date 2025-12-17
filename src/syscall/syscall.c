@@ -3,6 +3,7 @@
 #include "syscall/syscall.h"
 #include "plenjos/dev/fb.h"
 #include "plenjos/syscall.h"
+#include "plenjos/errno.h"
 
 #include "memory/mm.h"
 #include "memory/mm_common.h"
@@ -93,7 +94,7 @@ registers_t *syscall_routine(registers_t *regs) {
         if (path)
             regs->rax = (uint64_t)syscall_routine_open((const char *)path, regs->rcx, regs->rdx);
         else
-            regs->rax = (uint64_t)-1;
+            regs->rax = (uint64_t)-EFAULT;
         break;
     case SYSCALL_CLOSE:
         regs->rax = (uint64_t)syscall_routine_close(regs->rbx);
@@ -210,7 +211,7 @@ registers_t *syscall_routine(registers_t *regs) {
             uint64_t frame = find_next_free_frame();
             if (!frame) {
                 printf("Failed to find free frame for vaddr %p\n", voffs);
-                regs->rax = (uint64_t)-1;
+                regs->rax = (uint64_t)-ENOMEM;
                 break;
             }
             memset((void *)phys_to_virt(frame), 0, PAGE_LEN);

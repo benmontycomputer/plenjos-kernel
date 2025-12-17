@@ -2,6 +2,7 @@
 #include <stddef.h>
 
 #include "kernel.h"
+#include "plenjos/errno.h"
 
 #include "memory/mm.h"
 #include "memory/kmalloc.h"
@@ -28,15 +29,15 @@ int copy_to_buf(void *dest, void *src, size_t count, pml4_t *current_pml4) {
         page_t *page = find_page(addr, false, current_pml4);
         if (!page || !(page->present)) {
             printf("check_buf: page not mapped at addr %p\n", addr);
-            return -1;
+            return -EFAULT;
         }
         if (!page->user) {
             printf("check_buf: permission denied (not user accessible) at addr %p\n", addr);
-            return -1;
+            return -EFAULT;
         }
         if (!page->rw) {
             printf("check_buf: permission denied (not writeable) at addr %p\n", addr);
-            return -1;
+            return -EFAULT;
         }
 
         if (offs == 0) {
@@ -54,6 +55,8 @@ int copy_to_buf(void *dest, void *src, size_t count, pml4_t *current_pml4) {
             offs += PAGE_LEN;
         }
     }
+
+    return 0;
 }
 
 ssize_t syscall_routine_read(size_t fd, void *buf, size_t count, pml4_t *current_pml4) {
@@ -63,6 +66,8 @@ ssize_t syscall_routine_read(size_t fd, void *buf, size_t count, pml4_t *current
 
     if (!proc) {
         printf("syscall_routine_read: failed to get current process!\n");
+
+        // TODO: handle this more gracefully (we might actually want to panic; this indicates a serious kernel issue)
         return -1;
     }
 
@@ -70,7 +75,7 @@ ssize_t syscall_routine_read(size_t fd, void *buf, size_t count, pml4_t *current
 
     if (!handle) {
         printf("syscall_routine_read: invalid fd %p for process %s (pid %p)\n", fd, proc->name, proc->pid);
-        return -1;
+        return -EINVAL;
     }
 
     void *buf_tmp = kmalloc_heap(count);
@@ -78,18 +83,19 @@ ssize_t syscall_routine_read(size_t fd, void *buf, size_t count, pml4_t *current
     if (!buf_tmp) {
         printf("syscall_routine_read: failed to allocate temporary buffer for read of %p bytes for process %s (pid %p)\n",
                count, proc->name, proc->pid);
-        return -1;
+        return -ENOMEM;
     }
 
+    // TODO: (SECURITY RISK) check that the final output buffer is valid before reading from the fs at all.
     ssize_t res = vfs_read(handle, buf_tmp, count);
 
     if (res > 0) {
         int check = copy_to_buf(buf, buf_tmp, res, current_pml4);
         if (check < 0) {
-            printf("syscall_routine_read: failed to copy data to user buffer %p for process %s (pid %p)\n", buf,
-                   proc->name, proc->pid);
+            printf("syscall_routine_read: failed to copy data to user buffer %p for process %s (pid %p), errno %d\n", buf,
+                   proc->name, proc->pid, check);
             kfree_heap(buf_tmp);
-            return -1;
+            return check;
         }
     }
 
@@ -103,6 +109,8 @@ ssize_t syscall_routine_write(size_t fd, const void *buf, size_t count, pml4_t *
 
     if (!proc) {
         printf("syscall_routine_write: failed to get current process!\n");
+
+        // TODO: handle this more gracefully (we might actually want to panic; this indicates a serious kernel issue)
         return -1;
     }
 
@@ -110,7 +118,7 @@ ssize_t syscall_routine_write(size_t fd, const void *buf, size_t count, pml4_t *
 
     if (!handle) {
         printf("syscall_routine_write: invalid fd %p for process %s (pid %p)\n", fd, proc->name, proc->pid);
-        return -1;
+        return -EINVAL;
     }
 
     return vfs_write(handle, buf, count);
@@ -120,22 +128,25 @@ ssize_t syscall_routine_open(const char *path, uint64_t flags, uint64_t mode) {
     proc_t *proc = _get_proc_kernel();
     if (!proc) {
         printf("syscall_routine_open: failed to get current process!\n");
+
+        // TODO: handle this more gracefully (we might actually want to panic; this indicates a serious kernel issue)
         return -1;
     }
 
     printf("Open syscall called with path %s and mode %o.\n", path, mode);
 
-    vfs_handle_t *handle = kernelfs_open(path, flags, mode, proc);
+    vfs_handle_t *handle = NULL;
+    ssize_t res = kernelfs_open(path, flags, mode, proc, &handle);
     if (!handle) {
         printf("syscall_routine_open: failed to open %s for process %s (pid %p)\n", path, proc->name, proc->pid);
-        return -1;
+        return -EINVAL;
     }
 
     ssize_t fd = proc_alloc_fd(proc, handle);
     if (fd == -1) {
         printf("syscall_routine_open: no available fd for process %s (pid %p)\n", proc->name, proc->pid);
         vfs_close(handle);
-        return -1;
+        return -EMFILE;
     }
 
     return fd;
@@ -146,13 +157,15 @@ int syscall_routine_close(size_t fd) {
 
     if (!proc) {
         printf("syscall_routine_close: failed to get current process!\n");
+
+        // TODO: handle this more gracefully (we might actually want to panic; this indicates a serious kernel issue)
         return -1;
     }
 
     vfs_handle_t *handle = proc_get_fd(proc, fd);
     if (!handle) {
         printf("syscall_routine_close: invalid fd %p for process %s (pid %p)\n", fd, proc->name, proc->pid);
-        return -1;
+        return -EINVAL;
     }
 
     proc_free_fd(proc, fd);

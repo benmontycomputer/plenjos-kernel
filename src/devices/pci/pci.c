@@ -234,7 +234,7 @@ static void pci_add_device_to_array(uint8_t bus, uint8_t device, uint8_t functio
     devaddr[strlen(PCI_DEV_PREFIX) + 3] = hex_to_char((pci_device_count) % 16);
     devaddr[strlen(PCI_DEV_PREFIX) + 4] = 0;
 
-    kernelfs_create_node("/dev/pci", devaddr, DT_DIR, NULL, pci_dev_file_read, NULL, NULL, &pci_devices[pci_device_count]);
+    // kernelfs_create_node("/dev/pci", devaddr, DT_DIR, NULL, pci_dev_file_read, NULL, NULL, &pci_devices[pci_device_count]);
 
     pci_device_count++;
 }
@@ -244,8 +244,8 @@ void pci_scan() {
     uint16_t bus;
     uint8_t device;
 
-    kernelfs_create_node("/", "dev", DT_DIR, NULL, NULL, NULL, NULL, NULL);
-    kernelfs_create_node("/dev", "pci", DT_DIR, NULL, NULL, NULL, NULL, NULL);
+    // kernelfs_create_node("/", "dev", DT_DIR, NULL, NULL, NULL, NULL, NULL);
+    // kernelfs_create_node("/dev", "pci", DT_DIR, NULL, NULL, NULL, NULL, NULL);
     // kernelfs_create_node("/dev/pci", "subftest", DT_DIR, NULL, NULL, NULL);
 
     for (bus = 0; bus < 256; bus++) {
