@@ -122,32 +122,52 @@ void kernelfs_close(vfs_handle_t *f) {
     kfree_heap(f);
 }
 
-int kernelfs_helper_mkdir(const char *parent, const char *name, uid_t uid, gid_t gid, mode_t mode) {
-    vfs_handle_t *parent_handle = NULL;
-    ssize_t res = vfs_open(parent, SYSCALL_OPEN_FLAG_DIRECTORY | SYSCALL_OPEN_FLAG_WRITE, 0, &parent_handle);
+int kernelfs_helper_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode) {
+    int res = 0;
+
+    vfs_handle_t *open_handle = NULL;
+    res = (int)vfs_open(path, SYSCALL_OPEN_FLAG_DIRECTORY | SYSCALL_OPEN_FLAG_WRITE, 0, &open_handle);
     if (res < 0) {
-        printf("kernelfs_helper_mkdir: failed to open parent directory %s, errno %d\n", parent, res);
-        return res;
+        printf("kernelfs_helper_mkdir: failed to open parent directory %s, errno %d\n", path, res);
+        goto cleanup;
+    } else if (res == FSCACHE_REQUEST_NODE_ONE_LEVEL_AWAY) {
+        const char *path_old = path;
+
+        char *last_token = (char *)path;
+        while (*path != '\0') {
+            if (*path == '/') { last_token = path + 1; }
+            path++;
+        }
+
+        path = path_old;
+
+        kernelfs_node_t *parent_node = kernelfs_get_node_from_handle(open_handle);
+        if (!parent_node) {
+            printf("kernelfs_helper_mkdir: failed to get kernelfs node from handle for parent directory (trying to "
+                   "create %s)\n",
+                   path);
+            res = -EIO;
+            goto cleanup;
+        }
+
+        kernelfs_node_t *new_node = NULL;
+        // TODO: implement some of these functions?
+        res = kernelfs_create_node(parent_node, last_token, DT_DIR, uid, gid, mode, NULL, NULL, NULL, NULL, NULL,
+                                   &new_node);
+        if (res < 0) {
+            printf("kernelfs_helper_mkdir: failed to create kernelfs node %s for directory %s, errno %d\n", last_token,
+                   path, res);
+            goto cleanup;
+        }
+    } else {
+        printf("kernelfs_helper_mkdir: directory %s already exists!\n", path);
+        res = -EEXIST;
+        goto cleanup;
     }
 
-    kernelfs_node_t *parent_node = kernelfs_get_node_from_handle(parent_handle);
-    if (!parent_node) {
-        printf("kernelfs_helper_mkdir: failed to get kernelfs node from handle for parent directory %s\n", parent);
-        vfs_close(parent_handle);
-        return -EIO;
-    }
-
-    kernelfs_node_t *new_node = NULL;
-    // TODO: implement some of these functions?
-    res = kernelfs_create_node(parent_node, name, DT_DIR, uid, gid, mode, NULL, NULL, NULL, NULL, NULL, &new_node);
-    if (res < 0) {
-        printf("kernelfs_helper_mkdir: failed to create kernelfs node %s under parent %s, errno %d\n", name, parent,
-               res);
-        vfs_close(parent_handle);
-        return res;
-    }
-
-    return 0;
+cleanup:
+    if (open_handle != NULL) vfs_close(open_handle);
+    return res;
 }
 
 int kernelfs_helper_create_file(const char *parent, const char *name, uint8_t type, uid_t uid, gid_t gid, mode_t mode,
@@ -183,6 +203,20 @@ int kernelfs_create_node(kernelfs_node_t *parent_node, const char *name, uint8_t
                          mode_t mode, kernelfs_open_func_t open, vfs_read_func_t read, vfs_write_func_t write,
                          vfs_seek_func_t seek, void *func_args, kernelfs_node_t **out) {
     printf("Creating kernelfs node %s\n", name);
+
+    if (!name || !parent_node || strlen(name) == 0) {
+        printf("kernelfs_create_node: name or parent_node is NULL or empty!\n");
+        return -EINVAL;
+    }
+
+    kernelfs_node_t *cur = parent_node->children;
+    while (cur) {
+        if (strncmp(cur->name, name, NAME_MAX + 1) == 0) {
+            printf("kernelfs_create_node: %s already exists under parent %s!\n", name, parent_node->name);
+            return -EEXIST;
+        }
+        cur = cur->next;
+    }
 
     if (!parent_node) {
         printf("Parent node can't be null!\n");
