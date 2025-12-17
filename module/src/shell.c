@@ -28,7 +28,7 @@ static int cmd_buffer_i = 0;
 static int toks_count = 0;
 
 static char pcipath[] = "/dev/pci/pci_dev_0x0002";
-static char pcimode[] = "rw";
+static char pcimode[] = "r";
 
 static void split_cmd(const char *cmd) {
     memset(toks[0], 0, CMD_BUFFER_MAX);
@@ -145,12 +145,15 @@ void main(int argc, char **argv) {
 
         char pcidev[1024];
         size_t res = fread((void *)&pcidev, 1, 1024, fd);
-
-        for (size_t i = 0; i < 36; i++) {
-            printf("%x\n", pcidev[i] & 0xFF);
-        }
-
         fclose(fd);
+
+        if (res == 0) {
+            printf("Failed to read from PCI device file\n");
+        } else {
+            for (size_t i = 0; i < 36; i++) {
+                printf("%x\n", pcidev[i] & 0xFF);
+            }
+        }
     }
 
     for (;;) {

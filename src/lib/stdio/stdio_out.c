@@ -129,6 +129,23 @@ void printf_int(int num) {
     }
 }
 
+void printf_uint(uint32_t num) {
+    uint32_t adj = num;
+
+    char vals[((8 * sizeof(uint32_t)) + 9) / 10] = { 0 };
+
+    int i = 0;
+
+    while (adj || !i) {
+        vals[i++] = hex_indices[adj % 10];
+        adj /= 10;
+    }
+
+    while (i) {
+        printf_ch(vals[--i]);
+    }
+}
+
 void printf_hex(uint32_t hex) {
     uint64_t adj = (uint64_t)hex;
 
@@ -172,6 +189,10 @@ int printf(const char *format, ...) {
             }
             case 'i': {
                 printf_int(va_arg(list, int));
+                break;
+            }
+            case 'u': {
+                printf_uint((uint32_t)va_arg(list, uint32_t));
                 break;
             }
             case 'b': {

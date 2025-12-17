@@ -19,4 +19,6 @@
 #define S_IWOTH 0b000000010 // Write permission, others
 #define S_IXOTH 0b000000001 // Execute/search permission, others
 
+#define S_DFLT 0b111101101 // Default mode for new files/directories: rwxr-xr-x
+
 #endif /* _PLENJOS_STAT_H */

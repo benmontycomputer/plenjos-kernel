@@ -27,7 +27,6 @@ typedef struct proc proc_t;
 struct proc {
     proc_t *parent;
     size_t pid;
-    size_t uid;
     char name[PROCESS_THREAD_NAME_LEN];
     
     volatile proc_thread_state_t state;
@@ -43,6 +42,9 @@ struct proc {
     volatile proc_t *first_child;
     volatile proc_t *prev_sibling;
     volatile proc_t *next_sibling;
+
+    size_t uid;
+    // TODO: implement groups
 };
 
 proc_t *create_proc(const char *name, proc_t *parent);

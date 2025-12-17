@@ -6,8 +6,32 @@
 #include "stdlib.h"
 #include "common.h"
 
-FILE *fopen(const char *filename, const char *mode) {
-    ssize_t fd_res = syscall_open(filename, mode);
+// TODO: implement errno
+
+syscall_open_flags_t parse_mode(const char *mode_str) {
+    syscall_open_flags_t flags = 0;
+
+    if (mode_str[0] == 'r') {
+        flags |= SYSCALL_OPEN_FLAG_READ;
+    }
+    if (mode_str[0] == 'w') {
+        flags |= SYSCALL_OPEN_FLAG_WRITE | SYSCALL_OPEN_FLAG_CREATE;
+    }
+    // Append not yet supported
+    // TODO: implement append
+    /* if (mode_str[0] == 'a') {
+        flags |= SYSCALL_OPEN_FLAG_APPEND | SYSCALL_OPEN_FLAG_CREATE;
+    } */
+
+    if (mode_str[0] != '\0' && mode_str[1] == '+') {
+        flags |=  SYSCALL_OPEN_FLAG_READ | SYSCALL_OPEN_FLAG_WRITE;
+    }
+
+    return flags;
+}
+
+FILE *fopen(const char *filename, const char *mode_str) {
+    ssize_t fd_res = syscall_open(filename, parse_mode(mode_str));
 
     if (fd_res >= 0) {
         FILE *file = (FILE *)malloc(sizeof(FILE));
@@ -34,7 +58,10 @@ int fclose(FILE *stream) {
 
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
     ssize_t res = syscall_read(stream->fd, ptr, size * nmemb);
-    if (res < 0) return 0;
+    if (res < 0) {
+        printf("fread: read error on fd %d, errno %d\n", (int)stream->fd, (int)res);
+        return 0;
+    }
 
     return (size_t)(res / size);
 }

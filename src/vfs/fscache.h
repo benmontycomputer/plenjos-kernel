@@ -20,6 +20,9 @@
 
 #define FSCACHE_INIT_NODES 4096
 
+// This should be returned as positive, not negative
+#define FSCACHE_REQUEST_NODE_ONE_LEVEL_AWAY 1
+
 typedef uint16_t fscache_flags_t;
 
 typedef struct fscache_node fscache_node_t;
@@ -30,7 +33,7 @@ struct fscache_node {
 
     char name[NAME_MAX + 1];
 
-    // This is used to stop this from being freed while it is still in use.
+    // This is used to stop this from being freed while it is still in use. You must acquire read_lock (NOT write_lock) before incrementing this.
     atomic_int ref_count;
 
     rw_lock_t rwlock;
@@ -46,10 +49,10 @@ struct fscache_node {
 
     vfs_ops_block_t *fsops;
 
-    fscache_node_t *parent;
-    fscache_node_t *children;
-    fscache_node_t *prev;
-    fscache_node_t *next;
+    _Atomic(fscache_node_t *) parent_node;
+    _Atomic(fscache_node_t *) first_child;
+    _Atomic(fscache_node_t *) prev_sibling;
+    _Atomic(fscache_node_t *) next_sibling;
 
     uint64_t internal_data[4];
 } __attribute__((packed));
@@ -62,3 +65,13 @@ struct fscache_block_header {
     fscache_block_header_t *prev;
     fscache_block_header_t *next;
 } __attribute__((packed));
+
+int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out);
+
+void _fscache_wait_for_node_readable(fscache_node_t *node);
+void _fscache_release_node_readable(fscache_node_t *node);
+void _fscache_wait_for_node_modifiable(fscache_node_t *node);
+void _fscache_release_node_modifiable(fscache_node_t *node);
+
+// This must be called after kernelfs_init()
+int fscache_init();

@@ -3,10 +3,12 @@
 #include "lib/stdio.h"
 #include "lib/string.h"
 
-#include "vfs/vfs.h"
-#include "vfs/kernelfs.h"
-#include "memory/kmalloc.h"
 #include "devices/io/ports.h"
+#include "memory/kmalloc.h"
+#include "vfs/kernelfs.h"
+#include "vfs/vfs.h"
+
+#include "plenjos/errno.h"
 
 pci_device_t pci_devices[PCI_MAX_DEVICES];
 uint32_t pci_device_count = 0;
@@ -35,82 +37,143 @@ uint8_t pci_get_header_type(uint8_t bus, uint8_t device, uint8_t function) {
 
 const char *get_vendor_pretty(pci_vendor_t vendor) {
     switch (vendor) {
-        case PCI_VENDOR_INTEL: return "Intel";
-        case PCI_VENDOR_REALTEK: return "Realtek";
-        case PCI_VENDOR_BROADCOM: return "Broadcom";
-        case PCI_VENDOR_AMD: return "AMD";
-        case PCI_VENDOR_NVIDIA: return "NVIDIA";
-        case PCI_VENDOR_VIA: return "VIA";
-        case PCI_VENDOR_ATT: return "AT&T";
-        case PCI_VENDOR_QUALCOMM: return "Qualcomm";
-        case PCI_VENDOR_AQUANTIA: return "Aquantia";
-        case PCI_VENDOR_MELLANOX: return "Mellanox";
-        case PCI_VENDOR_VMWARE: return "VMware";
-        case PCI_VENDOR_VIRTIO: return "Virtio";
-        case PCI_VENDOR_QEMU: return "QEMU";
-        default: return "Unknown Vendor";
+    case PCI_VENDOR_INTEL:
+        return "Intel";
+    case PCI_VENDOR_REALTEK:
+        return "Realtek";
+    case PCI_VENDOR_BROADCOM:
+        return "Broadcom";
+    case PCI_VENDOR_AMD:
+        return "AMD";
+    case PCI_VENDOR_NVIDIA:
+        return "NVIDIA";
+    case PCI_VENDOR_VIA:
+        return "VIA";
+    case PCI_VENDOR_ATT:
+        return "AT&T";
+    case PCI_VENDOR_QUALCOMM:
+        return "Qualcomm";
+    case PCI_VENDOR_AQUANTIA:
+        return "Aquantia";
+    case PCI_VENDOR_MELLANOX:
+        return "Mellanox";
+    case PCI_VENDOR_VMWARE:
+        return "VMware";
+    case PCI_VENDOR_VIRTIO:
+        return "Virtio";
+    case PCI_VENDOR_QEMU:
+        return "QEMU";
+    default:
+        return "Unknown Vendor";
     }
 }
 
 const char *get_class_pretty(pci_class_t class) {
     switch (class) {
-        case PCI_CLASS_UNCLASSIFIED: return "Unclassified";
-        case PCI_CLASS_MASS_STORAGE: return "Mass Storage Controller";
-        case PCI_CLASS_NETWORK: return "Network Controller";
-        case PCI_CLASS_DISPLAY: return "Display Controller";
-        case PCI_CLASS_MULTIMEDIA: return "Multimedia Controller";
-        case PCI_CLASS_MEMORY: return "Memory Controller";
-        case PCI_CLASS_BRIDGE: return "Bridge Device";
-        case PCI_CLASS_SIMPLE_COMM: return "Simple Communication Controller";
-        case PCI_CLASS_BASE_SYSTEM_PERIPH: return "Base System Peripheral";
-        case PCI_CLASS_INPUT_DEVICE: return "Input Device Controller";
-        case PCI_CLASS_DOCKING_STATION: return "Docking Station";
-        case PCI_CLASS_PROCESSOR: return "Processor";
-        case PCI_CLASS_SERIAL_BUS: return "Serial Bus Controller";
-        case PCI_CLASS_WIRELESS: return "Wireless Controller";
-        case PCI_CLASS_INTELLIGENT_IO: return "Intelligent I/O Controller";
-        case PCI_CLASS_SATELLITE: return "Satellite Communication Controller";
-        case PCI_CLASS_ENCRYPTION: return "Encryption/Decryption Controller";
-        case PCI_CLASS_SIGNAL_PROCESSING: return "Signal Processing Controller";
-        case PCI_CLASS_PROCESSING_ACCEL: return "Processing Accelerator";
-        case PCI_CLASS_NON_ESSENTIAL_INSTR: return "Non-Essential Instrumentation";
-        case PCI_CLASS_CO_PROCESSOR: return "Co-Processor";
-        case PCI_CLASS_VENDOR_SPECIFIC: return "Vendor-Specific Device";
-        default: return "Unknown Class";
+    case PCI_CLASS_UNCLASSIFIED:
+        return "Unclassified";
+    case PCI_CLASS_MASS_STORAGE:
+        return "Mass Storage Controller";
+    case PCI_CLASS_NETWORK:
+        return "Network Controller";
+    case PCI_CLASS_DISPLAY:
+        return "Display Controller";
+    case PCI_CLASS_MULTIMEDIA:
+        return "Multimedia Controller";
+    case PCI_CLASS_MEMORY:
+        return "Memory Controller";
+    case PCI_CLASS_BRIDGE:
+        return "Bridge Device";
+    case PCI_CLASS_SIMPLE_COMM:
+        return "Simple Communication Controller";
+    case PCI_CLASS_BASE_SYSTEM_PERIPH:
+        return "Base System Peripheral";
+    case PCI_CLASS_INPUT_DEVICE:
+        return "Input Device Controller";
+    case PCI_CLASS_DOCKING_STATION:
+        return "Docking Station";
+    case PCI_CLASS_PROCESSOR:
+        return "Processor";
+    case PCI_CLASS_SERIAL_BUS:
+        return "Serial Bus Controller";
+    case PCI_CLASS_WIRELESS:
+        return "Wireless Controller";
+    case PCI_CLASS_INTELLIGENT_IO:
+        return "Intelligent I/O Controller";
+    case PCI_CLASS_SATELLITE:
+        return "Satellite Communication Controller";
+    case PCI_CLASS_ENCRYPTION:
+        return "Encryption/Decryption Controller";
+    case PCI_CLASS_SIGNAL_PROCESSING:
+        return "Signal Processing Controller";
+    case PCI_CLASS_PROCESSING_ACCEL:
+        return "Processing Accelerator";
+    case PCI_CLASS_NON_ESSENTIAL_INSTR:
+        return "Non-Essential Instrumentation";
+    case PCI_CLASS_CO_PROCESSOR:
+        return "Co-Processor";
+    case PCI_CLASS_VENDOR_SPECIFIC:
+        return "Vendor-Specific Device";
+    default:
+        return "Unknown Class";
     }
 }
 
 const char *get_mass_storage_subclass_pretty(pci_subclass_mass_storage_t subclass) {
     switch (subclass) {
-        case PCI_SUBCLASS_SCSI: return "SCSI Bus Controller";
-        case PCI_SUBCLASS_IDE: return "IDE Controller";
-        case PCI_SUBCLASS_FLOPPY: return "Floppy Disk Controller";
-        case PCI_SUBCLASS_IPI: return "IPI Bus Controller";
-        case PCI_SUBCLASS_RAID: return "RAID Controller";
-        case PCI_SUBCLASS_ATA: return "ATA Controller";
-        case PCI_SUBCLASS_SERIAL_ATA: return "Serial ATA Controller";
-        case PCI_SUBCLASS_SAS: return "SAS Controller";
-        case PCI_SUBCLASS_NVM: return "Non-Volatile Memory Controller";
-        case PCI_SUBCLASS_OTHER: return "Other Mass Storage Controller";
-        default: return "Unknown Mass Storage Subclass";
+    case PCI_SUBCLASS_SCSI:
+        return "SCSI Bus Controller";
+    case PCI_SUBCLASS_IDE:
+        return "IDE Controller";
+    case PCI_SUBCLASS_FLOPPY:
+        return "Floppy Disk Controller";
+    case PCI_SUBCLASS_IPI:
+        return "IPI Bus Controller";
+    case PCI_SUBCLASS_RAID:
+        return "RAID Controller";
+    case PCI_SUBCLASS_ATA:
+        return "ATA Controller";
+    case PCI_SUBCLASS_SERIAL_ATA:
+        return "Serial ATA Controller";
+    case PCI_SUBCLASS_SAS:
+        return "SAS Controller";
+    case PCI_SUBCLASS_NVM:
+        return "Non-Volatile Memory Controller";
+    case PCI_SUBCLASS_OTHER:
+        return "Other Mass Storage Controller";
+    default:
+        return "Unknown Mass Storage Subclass";
     }
 }
 
 const char *get_bridge_subclass_pretty(pci_subclass_bridge_t subclass) {
     switch (subclass) {
-        case PCI_SUBCLASS_BRIDGE_HOST: return "Host Bridge";
-        case PCI_SUBCLASS_BRIDGE_ISA: return "ISA Bridge";
-        case PCI_SUBCLASS_BRIDGE_EISA: return "EISA Bridge";
-        case PCI_SUBCLASS_BRIDGE_MCA: return "MCA Bridge";
-        case PCI_SUBCLASS_BRIDGE_PCI_TO_PCI: return "PCI-to-PCI Bridge";
-        case PCI_SUBCLASS_BRIDGE_PCMCIA: return "PCMCIA Bridge";
-        case PCI_SUBCLASS_BRIDGE_NUBUS: return "NuBus Bridge";
-        case PCI_SUBCLASS_BRIDGE_CARDBUS: return "CardBus Bridge";
-        case PCI_SUBCLASS_BRIDGE_RACEWAY: return "RACEway Bridge";
-        case PCI_SUBCLASS_BRIDGE_PCI_TO_PCI_ALT: return "Semi-Transparent PCI-to-PCI Bridge";
-        case PCI_SUBCLASS_BRIDGE_INFINIBAND_PCI: return "InfiniBand to PCI Host Bridge";
-        case PCI_SUBCLASS_BRIDGE_OTHER: return "Other Bridge Device";
-        default: return "Unknown Bridge Subclass";
+    case PCI_SUBCLASS_BRIDGE_HOST:
+        return "Host Bridge";
+    case PCI_SUBCLASS_BRIDGE_ISA:
+        return "ISA Bridge";
+    case PCI_SUBCLASS_BRIDGE_EISA:
+        return "EISA Bridge";
+    case PCI_SUBCLASS_BRIDGE_MCA:
+        return "MCA Bridge";
+    case PCI_SUBCLASS_BRIDGE_PCI_TO_PCI:
+        return "PCI-to-PCI Bridge";
+    case PCI_SUBCLASS_BRIDGE_PCMCIA:
+        return "PCMCIA Bridge";
+    case PCI_SUBCLASS_BRIDGE_NUBUS:
+        return "NuBus Bridge";
+    case PCI_SUBCLASS_BRIDGE_CARDBUS:
+        return "CardBus Bridge";
+    case PCI_SUBCLASS_BRIDGE_RACEWAY:
+        return "RACEway Bridge";
+    case PCI_SUBCLASS_BRIDGE_PCI_TO_PCI_ALT:
+        return "Semi-Transparent PCI-to-PCI Bridge";
+    case PCI_SUBCLASS_BRIDGE_INFINIBAND_PCI:
+        return "InfiniBand to PCI Host Bridge";
+    case PCI_SUBCLASS_BRIDGE_OTHER:
+        return "Other Bridge Device";
+    default:
+        return "Unknown Bridge Subclass";
     }
 }
 
@@ -180,16 +243,16 @@ pci_device_t pci_check_device(uint8_t bus, uint8_t device, uint8_t function) {
     pci_print_device_info(&dev);
 
     switch (dev.class_code) {
-        case PCI_CLASS_MASS_STORAGE:
-            if (pci_mass_storage_controller_count < PCI_MAX_MASS_STORAGE_CONTROLLERS) {
-                pci_mass_storage_controllers[pci_mass_storage_controller_count] = dev;
-                pci_mass_storage_controller_count++;
-            } else {
-                printf("Mass storage controller array full, cannot record more controllers.\n");
-            }
-            break;
-        default:
-            break;
+    case PCI_CLASS_MASS_STORAGE:
+        if (pci_mass_storage_controller_count < PCI_MAX_MASS_STORAGE_CONTROLLERS) {
+            pci_mass_storage_controllers[pci_mass_storage_controller_count] = dev;
+            pci_mass_storage_controller_count++;
+        } else {
+            printf("Mass storage controller array full, cannot record more controllers.\n");
+        }
+        break;
+    default:
+        break;
     }
 
     return dev;
@@ -210,7 +273,9 @@ static uint8_t char_to_hex(char c) {
 
 #define PCI_DEV_PREFIX "pci_dev_0x"
 
-ssize_t pci_dev_file_read(kernelfs_node_t *node, void *buf, size_t len) {
+ssize_t pci_dev_file_read(vfs_handle_t *handle, void *buf, size_t len) {
+    kernelfs_node_t *node = kernelfs_get_node_from_handle(handle);
+    if (!node || !node->func_args) { return -EIO; }
     pci_device_t *dev = (pci_device_t *)node->func_args;
 
     // For simplicity, just copy the pci_device_t structure into the buffer
@@ -219,6 +284,9 @@ ssize_t pci_dev_file_read(kernelfs_node_t *node, void *buf, size_t len) {
 
     return copylen;
 }
+
+#define PCI_DEV_FS_MODE 0644
+#define PCI_DEV_FS_TYPE DT_REG
 
 static void pci_add_device_to_array(uint8_t bus, uint8_t device, uint8_t function) {
     pci_devices[pci_device_count] = pci_check_device(bus, device, function);
@@ -234,7 +302,11 @@ static void pci_add_device_to_array(uint8_t bus, uint8_t device, uint8_t functio
     devaddr[strlen(PCI_DEV_PREFIX) + 3] = hex_to_char((pci_device_count) % 16);
     devaddr[strlen(PCI_DEV_PREFIX) + 4] = 0;
 
-    // kernelfs_create_node("/dev/pci", devaddr, DT_DIR, NULL, pci_dev_file_read, NULL, NULL, &pci_devices[pci_device_count]);
+    // This probably can't go through fscache for creation, as it's not a regular file?
+    kernelfs_helper_create_file("/dev/pci", devaddr, PCI_DEV_FS_TYPE, 0, 0, PCI_DEV_FS_MODE, pci_dev_file_read, NULL,
+                                NULL, &pci_devices[pci_device_count]);
+    // kernelfs_create_node("/dev/pci", devaddr, DT_DIR, NULL, pci_dev_file_read, NULL, NULL,
+    // &pci_devices[pci_device_count]);
 
     pci_device_count++;
 }
@@ -244,9 +316,10 @@ void pci_scan() {
     uint16_t bus;
     uint8_t device;
 
-    // kernelfs_create_node("/", "dev", DT_DIR, NULL, NULL, NULL, NULL, NULL);
-    // kernelfs_create_node("/dev", "pci", DT_DIR, NULL, NULL, NULL, NULL, NULL);
-    // kernelfs_create_node("/dev/pci", "subftest", DT_DIR, NULL, NULL, NULL);
+    // TODO: transition these to go through fscache?
+    kernelfs_helper_mkdir("/", "dev", 0, 0, 0755);
+    kernelfs_helper_mkdir("/dev", "pci", 0, 0, 0755);
+    kernelfs_helper_mkdir("/dev/pci", "subftest", 0, 0, 0755);
 
     for (bus = 0; bus < 256; bus++) {
         for (device = 0; device < 32; device++) {

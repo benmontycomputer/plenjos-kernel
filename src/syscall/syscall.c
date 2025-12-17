@@ -92,7 +92,7 @@ registers_t *syscall_routine(registers_t *regs) {
         printf("trying...\n\n");
         _syscall_helper_check_str_ptr_perms(current_pml4, regs->rbx, &path);
         if (path)
-            regs->rax = (uint64_t)syscall_routine_open((const char *)path, regs->rcx, regs->rdx);
+            regs->rax = (uint64_t)syscall_routine_open((const char *)path, regs->rcx);
         else
             regs->rax = (uint64_t)-EFAULT;
         break;

@@ -13,9 +13,12 @@
 
 // I/O errors
 #define ENOENT      2   // No such file or directory
+#define EIO         5   // I/O error
 #define EBADF       9   // Bad file descriptor
 #define EACCES      13  // Permission denied
 #define EEXIST      17  // File exists
+#define ENOTDIR     20  // Not a directory
+#define EISDIR      21  // Is a directory
 #define EMFILE      24  // Too many open files
 
 #endif /* _PLENJOS_ERRNO_H */

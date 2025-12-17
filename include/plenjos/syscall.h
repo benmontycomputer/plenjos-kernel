@@ -1,4 +1,7 @@
-#pragma once
+#ifndef _PLENJOS_SYSCALL_H
+#define _PLENJOS_SYSCALL_H 1
+
+#include <stdint.h>
 
 typedef enum {
     SYSCALL_READ,
@@ -22,7 +25,10 @@ typedef enum {
 
 typedef uint8_t syscall_open_flags_t;
 
-#define SYSCALL_OPEN_FLAG_READ 0x1
+#define SYSCALL_OPEN_FLAG_EX 0x1
 #define SYSCALL_OPEN_FLAG_WRITE 0x2
-#define SYSCALL_OPEN_FLAG_CREATE 0x4
-#define SYSCALL_OPEN_FLAG_DIRECTORY 0x8
+#define SYSCALL_OPEN_FLAG_READ 0x4
+#define SYSCALL_OPEN_FLAG_CREATE 0x8
+#define SYSCALL_OPEN_FLAG_DIRECTORY 0x16
+
+#endif /* _PLENJOS_SYSCALL_H */

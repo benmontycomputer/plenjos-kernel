@@ -25,8 +25,8 @@ uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_
     return out;
 }
 
-ssize_t syscall_open(const char *path, const char *mode) {
-    return (ssize_t)syscall(SYSCALL_OPEN, (uint64_t)path, (uint64_t)mode, 0, 0, 0);
+ssize_t syscall_open(const char *path, syscall_open_flags_t flags) {
+    return (ssize_t)syscall(SYSCALL_OPEN, (uint64_t)path, (uint64_t)flags, 0, 0, 0);
 }
 
 ssize_t syscall_read(size_t fd, void *buf, size_t count) {
