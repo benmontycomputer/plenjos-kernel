@@ -5,6 +5,7 @@
 #include "types.h"
 
 #include "plenjos/syscall.h"
+#include "plenjos/types.h"
 
 uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_t rsi, uint64_t rdi) {
     uint64_t out;
@@ -25,12 +26,24 @@ uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_
     return out;
 }
 
-ssize_t syscall_open(const char *path, syscall_open_flags_t flags) {
-    return (ssize_t)syscall(SYSCALL_OPEN, (uint64_t)path, (uint64_t)flags, 0, 0, 0);
+ssize_t syscall_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_create) {
+    return (ssize_t)syscall(SYSCALL_OPEN, (uint64_t)path, (uint64_t)flags, (uint64_t)mode_if_create, 0, 0);
 }
 
 ssize_t syscall_read(size_t fd, void *buf, size_t count) {
     return (ssize_t)syscall(SYSCALL_READ, (uint64_t)fd, (uint64_t)buf, (uint64_t)count, 0, 0);
+}
+
+ssize_t syscall_write(size_t fd, const void *buf, size_t count) {
+    return (ssize_t)syscall(SYSCALL_WRITE, (uint64_t)fd, (uint64_t)buf, (uint64_t)count, 0, 0);
+}
+
+ssize_t syscall_getdents(size_t fd, struct plenjos_dirent *buf, size_t nbytes) {
+    return (ssize_t)syscall(SYSCALL_GETDENTS, (uint64_t)fd, (uint64_t)buf, (uint64_t)nbytes, 0, 0);
+}
+
+ssize_t syscall_lseek(size_t fd, ssize_t offset, int whence) {
+    return (ssize_t)syscall(SYSCALL_LSEEK, (uint64_t)fd, (uint64_t)offset, (uint64_t)whence, 0, 0);
 }
 
 int syscall_close(size_t fd) {
@@ -51,4 +64,8 @@ int syscall_memmap(void *addr, size_t length) {
 
 void syscall_sleep(uint32_t ms) {
     syscall(SYSCALL_SLEEP, (uint64_t)ms, 0, 0, 0, 0);
+}
+
+int syscall_print(const char *str) {
+    return (int)syscall(SYSCALL_PRINT, (uint64_t)str, 0, 0, 0, 0);
 }

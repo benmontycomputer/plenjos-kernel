@@ -1,19 +1,23 @@
 #ifndef _LIBC_SYSCALL_H
 #define _LIBC_SYSCALL_H 1
 
-#include <stdint.h>
 #include "types.h"
+#include <stdint.h>
 
-#include "plenjos/syscall.h"
 #include "plenjos/dev/fb.h"
 #include "plenjos/dev/kbd.h"
+#include "plenjos/syscall.h"
+#include "plenjos/types.h"
+#include "plenjos/dirent.h"
 
 uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_t rsi, uint64_t rdi);
 
-ssize_t syscall_open(const char *path, syscall_open_flags_t flags);
+ssize_t syscall_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_create);
 ssize_t syscall_read(size_t fd, void *buf, size_t count);
 ssize_t syscall_write(size_t fd, const void *buf, size_t count);
 ssize_t syscall_lseek(size_t fd, ssize_t offset, int whence);
+
+ssize_t syscall_getdents(size_t fd, struct plenjos_dirent *buf, size_t nbytes);
 
 int syscall_close(size_t fd);
 
@@ -23,5 +27,7 @@ kbd_buffer_state_t *syscall_get_kb();
 int syscall_memmap(void *addr, size_t length);
 
 void syscall_sleep(uint32_t ms);
+
+int syscall_print(const char *str);
 
 #endif /* _LIBC_SYSCALL_H */
