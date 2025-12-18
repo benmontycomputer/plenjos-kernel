@@ -1,4 +1,4 @@
-#include <stddef.h>
+#include "stddef.h"
 #include <stdint.h>
 
 #include "plenjos/dev/fb.h"
@@ -10,6 +10,8 @@
 #include "keyboard.h"
 #include "uconsole.h"
 
+#include "libshell/libshell.h"
+
 #include "sys/syscall.h"
 
 #include "graphics/draw.h"
@@ -17,10 +19,6 @@
 // __attribute__((section(".data")))
 const char teststr_shell[] = "\ntest!!!\n\n\0";
 // char buffer[3];
-
-#define SHELL_PROMPT "kernel_shell >> "
-#define CMD_BUFFER_MAX 256
-#define CMD_TOKS_MAX 64
 
 static char cmdbuffer[CMD_BUFFER_MAX];
 static char toks[CMD_TOKS_MAX][CMD_BUFFER_MAX] = { "" };
@@ -108,6 +106,7 @@ static bool process_cmd(const char *cmd) {
         printf("  echo [args...] - Print arguments to the console\n");
         printf("  clear          - Clear the console screen\n");
         printf("  tetris         - Start the Tetris game\n");
+        printf("  print [string] - Print a string to the kernel debug console using syscall_print\n");
         printf("  help           - Show this help message\n");
         printf("  exit           - Exit the shell\n");
     } else if (!strcmp(toks[0], "tetris")) {
@@ -117,7 +116,40 @@ static bool process_cmd(const char *cmd) {
         printf("Exiting shell...\n");
         setcursor(false);
         return true;
-    } else if (toks[0][0] != 0) {
+    } else if (!strcmp(toks[0], "print")) {
+        if (toks_count < 2) {
+            printf("Usage: print [string]\n");
+            return false;
+        }
+        syscall_print(toks[1]);
+    } else if (!strcmp(toks[0], "ls")) {
+        if (toks_count < 2) {
+            printf("Usage: ls [directory]\n");
+            return false;
+        }
+        ls_cmd(toks_count, toks);
+    } else if (!strcmp(toks[0], "mkdir")) {
+        if (toks_count < 2) {
+            printf("Usage: mkdir [directory]\n");
+            return false;
+        }
+        printf("mkdir command not implemented yet.\n");
+        // mkdir_cmd(toks_count, toks);
+    } else if (!strcmp(toks[0], "rm")) {
+        if (toks_count < 2) {
+            printf("Usage: rm [file/directory]\n");
+            return false;
+        }
+        printf("rm command not implemented yet.\n");
+        // rm_cmd(toks_count, toks);
+    } else if (!strcmp(toks[0], "readfile")) {
+        if (toks_count < 2) {
+            printf("Usage: readfile [file]\n");
+            return false;
+        }
+        readfile_cmd(toks_count, toks);
+    }
+    else if (toks[0][0] != 0) {
         printf("Unknown command: %s\n", toks[0]);
     }
 
