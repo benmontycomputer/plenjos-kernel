@@ -149,7 +149,7 @@ obj/%.psf.o: %.psf GNUmakefile
 # Remove object files and the final executable.
 .PHONY: clean
 clean:
-	rm -rf bin obj
+	rm -rf bin obj module/bin module/obj
 
 uefi_run:
 	qemu-system-x86_64 \
