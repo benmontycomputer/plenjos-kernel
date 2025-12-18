@@ -3,7 +3,9 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include <stddef.h>
+#include "stddef.h"
+
+#include "plenjos/limits.h"
 
 /* Types */
 
@@ -23,9 +25,11 @@ typedef struct {
 #define EOF (-1)
 #define FOPEN_MAX 20
 // TODO: should this be larger?
+// This INCLUDES the null terminator (i.e., max filename strlen is FILENAME_MAX - 1)
 #define FILENAME_MAX 256
 #define L_tmpnam 20
 
+// TODO: do we want to move these to kernel headers?
 #define SEEK_CUR 1
 #define SEEK_END 2
 #define SEEK_SET 0
@@ -41,6 +45,8 @@ extern FILE *stdout;
 /* Console & Basic I/O */
 
 int printf(const char *format, ...);
+int putchar(int charc);
+int puts(const char *str);
 
 char *gets(char *str);
 int backs();
@@ -55,5 +61,6 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream);
 int fseek(FILE *stream, long offset, int whence);
 long ftell(FILE *stream);
+int fgetc(FILE *stream);
 
 #endif /* _STDIO_H */
