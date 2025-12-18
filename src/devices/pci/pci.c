@@ -278,9 +278,18 @@ ssize_t pci_dev_file_read(vfs_handle_t *handle, void *buf, size_t len) {
     if (!node || !node->func_args) { return -EIO; }
     pci_device_t *dev = (pci_device_t *)node->func_args;
 
+    // Calculate current offset
+    void *dev_offset = (void *)((uintptr_t)dev + ((kernelfs_handle_instance_data_t *)handle->instance_data)->pos);
+
     // For simplicity, just copy the pci_device_t structure into the buffer
-    size_t copylen = (len > sizeof(pci_device_t)) ? sizeof(pci_device_t) : len;
-    memcpy(buf, dev, copylen);
+    size_t copylen = sizeof(pci_device_t) - ((uintptr_t)dev_offset - (uintptr_t)dev);
+    if (copylen > len) {
+        copylen = len;
+    }
+
+    memcpy(buf, dev_offset, copylen);
+
+    ((kernelfs_handle_instance_data_t *)handle->instance_data)->pos += copylen;
 
     return copylen;
 }
