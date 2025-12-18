@@ -112,7 +112,7 @@ void kputchar(
     /* foreground and background colors, say 0xFFFFFF and 0x000000 */
     uint32_t fg, uint32_t bg)
 {
-    if((cx+1)>=(fb_width/FONT_W)) return;
+    if((cx)>=(fb_width/FONT_W)) return;
 
     /* cast the address to PSF header struct */
     PSF1_Header *font = (PSF1_Header*)&_binary_src_fonts_ter_v16b_psf_start;
@@ -126,9 +126,18 @@ void kputchar(
     /* get the glyph for the character. If there's no
        glyph for a given character, we'll display the first glyph. */
     unsigned char *glyph =
-     (unsigned char*)&_binary_src_fonts_ter_v16b_psf_start +
+     (unsigned char*)font +
      4 +
      (c)*font->characterSize;
+    
+    // Make sure the character is within bounds
+    // TODO: cache this value to avoid constant recalculation
+    if ((int)c >= ((font->fontMode & 0x1) ? 512 : 256)) {
+        glyph =
+         (unsigned char*)font +
+         4 +
+         (0)*font->characterSize;
+    }
     /* calculate the upper left corner on screen where we want to display.
        we only do this once, and adjust the offset later. This is faster. */
     int offs =
