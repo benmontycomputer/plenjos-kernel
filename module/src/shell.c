@@ -28,6 +28,7 @@ static int toks_count = 0;
 static char pcipath[] = "/dev/pci/pci_dev_0x0002";
 static char pcimode[] = "r";
 
+// TODO: handle quotes
 static void split_cmd(const char *cmd) {
     memset(toks[0], 0, CMD_BUFFER_MAX);
 
@@ -36,8 +37,11 @@ static void split_cmd(const char *cmd) {
 
     for (size_t i = 0; *cmd; cmd++ /* i is incremented within the loop */) {
         if (*cmd == ' ') {
-            if (i == 0 || *(cmd - 1) == '\\' || *(cmd - 1) == ' ') {
+            if (i == 0 || *(cmd - 1) == '\\') {
                 toks[tok][i_tok] = *cmd;
+            } else if (*(cmd - 1) == ' ') {
+                // Skip multiple spaces
+                --i_tok;
             } else {
                 memset(toks[++tok], 0, CMD_BUFFER_MAX);
                 i_tok = -1;
@@ -51,6 +55,11 @@ static void split_cmd(const char *cmd) {
     }
 
     toks_count = ++tok;
+
+    // Make sure the last token isn't blank (e.g., trailing spaces)
+    if (toks[tok - 1][0] == 0) {
+        toks_count--;
+    }
 }
 
 void draw_terminal_window() {
