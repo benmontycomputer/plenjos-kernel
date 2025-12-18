@@ -158,35 +158,9 @@ static bool process_cmd(const char *cmd) {
 
 // __attribute__((section(".text")))
 void main(int argc, char **argv) {
-    // TODO: handle errors in these syscalls
-
-    // syscall(SYSCALL_PRINT, (uint64_t)teststr_shell, 0, 0, 0, 0);
-
-    // clear();
     setcursor(true);
 
     printf("%s", SHELL_PROMPT);
-
-    // draw_terminal_window();
-
-    FILE *fd = fopen(pcipath, pcimode);
-    if (fd == NULL) {
-        printf("Failed to open PCI device file at %s\n", pcipath);
-    } else {
-        printf("Opened PCI device file at %s with fd %d\nResult: ", pcipath, (int)fd);
-
-        char pcidev[1024];
-        size_t res = fread((void *)&pcidev, 1, 1024, fd);
-        fclose(fd);
-
-        if (res == 0) {
-            printf("Failed to read from PCI device file\n");
-        } else {
-            for (size_t i = 0; i < 36; i++) {
-                printf("%x\n", pcidev[i] & 0xFF);
-            }
-        }
-    }
 
     for (;;) {
         while (kbd_buffer_empty()) {
