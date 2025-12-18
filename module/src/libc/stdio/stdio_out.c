@@ -260,4 +260,25 @@ int clear() {
     return 0;
 }
 
+int putchar(int charc) {
+    request_console();
+
+    printf_ch((char)charc);
+
+    release_console();
+
+    return charc;
+}
+
+int puts(const char *str) {
+    request_console();
+
+    printf_str(str);
+    printf_ch('\n');
+
+    release_console();
+
+    return 0;
+}
+
 // #pragma GCC pop_options
