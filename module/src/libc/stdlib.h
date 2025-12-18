@@ -3,7 +3,7 @@
 #ifndef _STDLIB_H
 #define _STDLIB_H 1
 
-#include <stddef.h>
+#include "stddef.h"
 
 typedef struct {
     int quot;
@@ -45,6 +45,8 @@ void *aligned_alloc(size_t alignment, size_t size);
 void *calloc(size_t nmemb, size_t size);
 void free(void *ptr);
 void *malloc(size_t size);
+// Currently, realloc doesn't shrink the allocation or reduce memory usage if the new size is smaller than the current size
+void *realloc(void *ptr, size_t size);
 
 /* Communications with the environment */
 _Noreturn void abort(void);

@@ -3,7 +3,7 @@
 
 // Based on the C11 standard
 
-#include <stddef.h>
+#include "stddef.h"
 
 /* Copying functions */
 void *memcpy(void *dest, const void *src, size_t n);
