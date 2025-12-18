@@ -1,24 +1,37 @@
 #ifndef _PLENJOS_STAT_H
 #define _PLENJOS_STAT_H 1
 
+#include "plenjos/types.h"
+
 #include <stdint.h>
 
 /* #define S_IFMT  0xF000 // File type mask
 #define S_IFREG 0x8000 // Regular file
 #define S_IFDIR 0x4000 // Directory */
 
-#define S_IRUSR 0b100000000 // Read permission, owner
-#define S_IWUSR 0b010000000 // Write permission, owner
-#define S_IXUSR 0b001000000 // Execute/search permission, owner
+#define S_IRUSR 00400 // Read permission, owner
+#define S_IWUSR 00200 // Write permission, owner
+#define S_IXUSR 00100 // Execute/search permission, owner
 
-#define S_IRGRP 0b000100000 // Read permission, group
-#define S_IWGRP 0b000010000 // Write permission, group
-#define S_IXGRP 0b000001000 // Execute/search permission, group
+#define S_IRGRP 00040 // Read permission, group
+#define S_IWGRP 00020 // Write permission, group
+#define S_IXGRP 00010 // Execute/search permission, group
 
-#define S_IROTH 0b000000100 // Read permission, others
-#define S_IWOTH 0b000000010 // Write permission, others
-#define S_IXOTH 0b000000001 // Execute/search permission, others
+#define S_IROTH 00004 // Read permission, others
+#define S_IWOTH 00002 // Write permission, others
+#define S_IXOTH 00001 // Execute/search permission, others
 
-#define S_DFLT 0b111101101 // Default mode for new files/directories: rwxr-xr-x
+#define S_ISUID 04000 // Set user ID on execution
+#define S_ISGID 02000 // Set group ID on execution
+#define S_ISVTX 01000 // Sticky bit
+
+#define S_DFLT 0755 // Default mode for new files/directories: rwxr-xr-x
+
+// To be filled out more later
+struct stat {
+    mode_t mode;
+    uid_t uid;
+    gid_t gid;
+};
 
 #endif /* _PLENJOS_STAT_H */

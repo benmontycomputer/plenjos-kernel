@@ -3,7 +3,11 @@
 
 #include <stdint.h>
 
+#define SYSCALL_FS_FIRST 0
+#define SYSCALL_FS_LAST 0x3F
+
 typedef enum {
+    // Filesystem
     SYSCALL_READ,
     SYSCALL_WRITE,
     SYSCALL_OPEN,
@@ -13,14 +17,32 @@ typedef enum {
     SYSCALL_LSTAT,
     SYSCALL_POLL,
     SYSCALL_LSEEK,
-    SYSCALL_MEMMAP,
+    SYSCALL_GETDENTS,
+    SYSCALL_MKDIR,
+    SYSCALL_RMDIR,
+    SYSCALL_RENAME,
+    SYSCALL_CHMOD,
+    SYSCALL_FCHMOD,
+    SYSCALL_CHOWN,
+    SYSCALL_FCHOWN,
+    SYSCALL_LCHOWN,
+    // TODO: modify file's groups
+    SYSCALL_GETCWD,
+    SYSCALL_CHDIR,
+    SYSCALL_FCHDIR,
+    SYSCALL_LINK,
+    SYSCALL_UNLINK,
+    SYSCALL_SYMLINK,
+    SYSCALL_READLINK,
+
+    // Other
+    SYSCALL_MEMMAP = 0x40,
     SYSCALL_GET_FB,
     SYSCALL_GET_KB,
     SYSCALL_PRINT,
     SYSCALL_PRINT_PTR,
     SYSCALL_KB_READ,
     SYSCALL_SLEEP,
-    SYSCALL_GETDENTS,
 } syscalls_call;
 
 typedef uint8_t syscall_open_flags_t;
@@ -29,6 +51,7 @@ typedef uint8_t syscall_open_flags_t;
 #define SYSCALL_OPEN_FLAG_WRITE 0x2
 #define SYSCALL_OPEN_FLAG_READ 0x4
 #define SYSCALL_OPEN_FLAG_CREATE 0x8
-#define SYSCALL_OPEN_FLAG_DIRECTORY 0x16
+#define SYSCALL_OPEN_FLAG_EXCL 0x10
+#define SYSCALL_OPEN_FLAG_DIRECTORY 0x20
 
 #endif /* _PLENJOS_SYSCALL_H */
