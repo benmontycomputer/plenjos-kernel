@@ -1,10 +1,14 @@
 #include <stdint.h>
 
 #include "syscall/syscall.h"
-#include "plenjos/dev/fb.h"
-#include "plenjos/syscall.h"
-#include "plenjos/errno.h"
+#include "syscall/syscall_helpers.h"
+#include "syscall/fs/syscall_fs.h"
 
+#include "plenjos/dev/fb.h"
+#include "plenjos/errno.h"
+#include "plenjos/syscall.h"
+
+#include "memory/kmalloc.h"
 #include "memory/mm.h"
 #include "memory/mm_common.h"
 
@@ -12,6 +16,8 @@
 
 #include "lib/stdio.h"
 #include "lib/string.h"
+
+#include "proc/proc.h"
 
 #include "arch/x86_64/irq.h"
 
@@ -46,7 +52,7 @@ extern char *fb;
 extern int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
 
 // TODO: how do we handle the string being a non-contiguous set of pages?
-bool _syscall_helper_check_str_ptr_perms(pml4_t *current_pml4, uint64_t user_ptr, char **out) {
+/* bool _syscall_helper_check_str_ptr_perms(pml4_t *current_pml4, uint64_t user_ptr, char **out) {
     uint64_t str_ptr = phys_to_virt(get_physaddr(user_ptr, current_pml4));
     uint64_t end = user_ptr + strlen((char *)str_ptr) + 1;
 
@@ -68,61 +74,43 @@ bool _syscall_helper_check_str_ptr_perms(pml4_t *current_pml4, uint64_t user_ptr
     if (out) *out = (char *)str_ptr;
 
     return true;
-}
+} */
 
 registers_t *syscall_routine(registers_t *regs) {
     uint64_t call = regs->rax;
+    printf("syscall %d\n", (int)call);
 
-    pml4_t *current_pml4;
+    // TODO: would we rather use this or the one from the proc struct? They should ALWAYS be the same, right?
+    pml4_t *current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
 
-    bool valid;
+    proc_t *proc = _get_proc_kernel();
+
+    if (!proc) {
+        printf("syscall: failed to get current process!\n");
+
+        // TODO: handle this more gracefully (we might actually want to panic; this indicates a serious kernel issue)
+        // TODO: is this the correct errno?
+        regs->rax = (uint64_t)-1;
+        return regs;
+    }
+
+    if (call >= SYSCALL_FS_FIRST && call <= SYSCALL_FS_LAST) {
+        syscall_handle_fs_call(regs, proc, current_pml4);
+        return regs;
+    }
 
     switch (call) {
-    case SYSCALL_READ:
-        current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
-        regs->rax = (uint64_t)syscall_routine_read(regs->rbx, (void *)regs->rcx, (size_t)regs->rdx, current_pml4);
-        break;
-    case SYSCALL_WRITE:
-        current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
-        regs->rax = (uint64_t)syscall_routine_write(regs->rbx, (const void *)regs->rcx, (size_t)regs->rdx, current_pml4);
-        break;
-    case SYSCALL_OPEN:
-        current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
-        char *path = NULL;
-        printf("trying...\n\n");
-        _syscall_helper_check_str_ptr_perms(current_pml4, regs->rbx, &path);
-        if (path)
-            regs->rax = (uint64_t)syscall_routine_open((const char *)path, regs->rcx);
-        else
-            regs->rax = (uint64_t)-EFAULT;
-        break;
-    case SYSCALL_CLOSE:
-        regs->rax = (uint64_t)syscall_routine_close(regs->rbx);
-        break;
-    case SYSCALL_STAT:
-        break;
-    case SYSCALL_FSTAT:
-        break;
-    case SYSCALL_LSTAT:
-        break;
-    case SYSCALL_POLL:
-        break;
-    case SYSCALL_LSEEK:
-        break;
-    case SYSCALL_GETDENTS:
-        break;
-    case SYSCALL_GET_FB:
+    case SYSCALL_GET_FB: {
         // rbx: pointer to struct for framebuffer data
         // Map the framebuffer into the currently loaded page table
         // current_pml4 = (pml4_t *)get_cr3_addr();
         // TODO: check if framebuffer is in use
-        current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
         // printf("phys %p %p\n", kernel_pml4, get_physaddr((uint64_t)fb, kernel_pml4));
         map_virtual_memory_using_alloc(
             virt_to_phys((uint64_t)fb), (uint64_t)fb, (uint64_t)fb_scanline * (uint64_t)fb_height,
             PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node, current_pml4);
 
-        valid = true;
+        bool valid = true;
 
         uint64_t rbx = regs->rbx;
 
@@ -163,8 +151,8 @@ registers_t *syscall_routine(registers_t *regs) {
             regs->rax = 0;
         }
         break;
-    case SYSCALL_GET_KB:
-        current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
+    }
+    case SYSCALL_GET_KB: {
         // printf("phys %p %p\n", kernel_pml4, get_physaddr((uint64_t)fb, kernel_pml4));
         // VERY IMPORTANT CRITICAL TODO: don't allow random processes to modify the resulting buffer (some sort of
         // access control is needed)
@@ -179,22 +167,24 @@ registers_t *syscall_routine(registers_t *regs) {
                 regs->rax = 0;
             } else {
                 // Re-map to set proper permissions
-                map_virtual_memory_using_alloc(
-                    get_physaddr((uint64_t)&kbd_buffer_state, kernel_pml4), (uint64_t)&kbd_buffer_state, sizeof(kbd_buffer_state_t),
-                    PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node, current_pml4);
+                map_virtual_memory_using_alloc(get_physaddr((uint64_t)&kbd_buffer_state, kernel_pml4),
+                                               (uint64_t)&kbd_buffer_state, sizeof(kbd_buffer_state_t),
+                                               PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node,
+                                               current_pml4);
                 regs->rax = (uint64_t)&kbd_buffer_state;
             }
         } else {
-            map_virtual_memory_using_alloc(
-                get_physaddr((uint64_t)&kbd_buffer_state, kernel_pml4), (uint64_t)&kbd_buffer_state, sizeof(kbd_buffer_state_t),
-                PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node, current_pml4);
+            map_virtual_memory_using_alloc(get_physaddr((uint64_t)&kbd_buffer_state, kernel_pml4),
+                                           (uint64_t)&kbd_buffer_state, sizeof(kbd_buffer_state_t),
+                                           PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node,
+                                           current_pml4);
             regs->rax = (uint64_t)&kbd_buffer_state;
         }
         break;
-    case SYSCALL_MEMMAP:
+    }
+    case SYSCALL_MEMMAP: {
         // TODO: have some way of tracking what has been mapped so we can unmap it if the process doesn't unmap on exit
         // TODO: we also need a way of unmapping this
-        current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
         regs->rax = 0;
 
         uint64_t virt = regs->rbx;
@@ -215,31 +205,28 @@ registers_t *syscall_routine(registers_t *regs) {
                 break;
             }
             memset((void *)phys_to_virt(frame), 0, PAGE_LEN);
-            map_virtual_memory_using_alloc(frame, voffs, PAGE_LEN,
-                                           PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node,
-                                           current_pml4);
+            map_virtual_memory_using_alloc(frame, voffs, PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE,
+                                           alloc_paging_node, current_pml4);
         }
 
         break;
-    case SYSCALL_PRINT:
-        // map_virtual_memory(virt_to_phys((uint64_t)fb), fb_scanline * fb_height, PAGE_FLAG_PRESENT | PAGE_FLAG_USER |
-        // PAGE_FLAG_WRITE, current_pml4);
-        current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
+    }
+    case SYSCALL_PRINT: {
+        const char *str_ptr = NULL;
+        regs->rax = handle_string_arg(current_pml4, regs->rbx, &str_ptr);
 
-        // uint64_t str_ptr = phys_to_virt(get_physaddr(regs->rbx, current_pml4));
-        char *str_ptr = NULL;
-
-        valid = _syscall_helper_check_str_ptr_perms(current_pml4, regs->rbx, &str_ptr);
-
-        // printf("str virt: %p, str len: %p, kernel pml4 virt: %p; current pml4 virt: %p\n", str_ptr, len, kernel_pml4,
-        // current_pml4);
-
-        if (valid) { printf("%s", str_ptr); }
+        if (str_ptr) {
+            printf("%s", str_ptr);
+            kfree_heap((void *)str_ptr);
+            regs->rax = 0;
+        }
         break;
-    case SYSCALL_PRINT_PTR:
+    }
+    case SYSCALL_PRINT_PTR: {
         printf("%p", regs->rbx);
         break;
-    case SYSCALL_KB_READ:
+    }
+    case SYSCALL_KB_READ: {
         while (kbd_buffer_empty()) {
             asm volatile("sti");
             // printf("empty\n");
@@ -253,10 +240,12 @@ registers_t *syscall_routine(registers_t *regs) {
         regs->rax = (uint64_t)ch;
 
         break;
-    case SYSCALL_SLEEP:
+    }
+    case SYSCALL_SLEEP: {
         asm volatile("sti");
         pit_sleep((uint32_t)regs->rbx);
         break;
+    }
     default:
         break;
     }
