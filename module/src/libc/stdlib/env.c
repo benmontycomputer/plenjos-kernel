@@ -1,12 +1,15 @@
 #include "stdlib.h"
 #include "stdio.h"
 #include "common.h"
+#include "errno.h"
 
 #include "sys/syscall.h"
 #include "plenjos/dev/fb.h"
 #include "plenjos/dev/kbd.h"
 
 #include "stdlib_internal.h"
+
+int errno = 0;
 
 __attribute__((aligned(0x1000))) //
 fb_info_t fb_info;
