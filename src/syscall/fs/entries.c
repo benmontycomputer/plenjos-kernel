@@ -38,5 +38,14 @@ ssize_t syscall_routine_getdents(size_t fd, void *buf, size_t count, proc_t *pro
     return res;
 }
 
-ssize_t syscall_routine_mkdir(const char *restrict path, mode_t mode, proc_t *proc);
-ssize_t syscall_routine_rmdir(const char *restrict path, proc_t *proc);
+ssize_t syscall_routine_mkdir(const char *restrict path, mode_t mode, proc_t *proc) {
+    if (!path) {
+        return -EINVAL;
+    }
+
+    return vfs_mkdir(path, mode, proc->uid);
+}
+
+ssize_t syscall_routine_rmdir(const char *restrict path, proc_t *proc) {
+    return -ENOSYS;
+}

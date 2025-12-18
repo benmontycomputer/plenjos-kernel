@@ -79,7 +79,11 @@ void syscall_routine_lchown();
 void syscall_routine_getcwd();
 void syscall_routine_chdir();
 void syscall_routine_fchdir();
+// Hard links CANNOT point to directories
 void syscall_routine_link();
+// This handles deletion of non-directories
 void syscall_routine_unlink();
+// TODO: if unlinkat() is implemented, it should have a flag to allow deletion of directories (but unlink() should not)
+
 void syscall_routine_symlink();
 void syscall_routine_readlink();
