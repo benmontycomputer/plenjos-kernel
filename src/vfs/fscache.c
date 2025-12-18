@@ -31,8 +31,6 @@ fscache_block_header_t *fscache_tail = NULL;
 
 fscache_node_t *fscache_root_node = NULL;
 
-static fscache_node_t *fscache_allocate_node();
-
 void _fscache_wait_for_node_readable(fscache_node_t *node) {
     rw_lock_read_lock(&node->rwlock);
 }
@@ -113,7 +111,8 @@ static void _fscache_link_node(fscache_node_t *parent, fscache_node_t *child) {
 
 // During traversal, we must ALWAYS hold a read or modify lock on either the current node, its parent, or both.
 // This prevents external eviction while traversing.
-// IMPORTANT: out is updated to be the last successfully found node (read-locked).
+// IMPORTANT: out is updated to be the last successfully found node (read-locked). The read-lock is released
+// automatically if NULL is passed.
 int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
     if (!path) { return -EINVAL; }
 
@@ -156,21 +155,23 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
         if (token_len == 0) break;
 
         switch (cur->type) {
-            case DT_DIR:
+        case DT_DIR:
+            // OK
+            access_t mode = access_check(cur->mode, cur->uid, cur->gid, uid);
+            if (mode & ACCESS_EXECUTE) {
                 // OK
-                access_t mode = access_check(cur->mode, cur->uid, cur->gid, uid);
-                if (mode & ACCESS_EXECUTE) {
-                    // OK
-                } else {
-                    printf("fscache_request_node: execute access denied on directory %s for uid %u; directory mode %B, calculated effective mode %B\n", cur->name, uid, (uint64_t)cur->mode, (uint64_t)mode);
-                    res = -EACCES;
-                    goto res_set_and_return;
-                }
-                break;
-            default:
-                // Can't traverse through non-directories
-                res = -ENOTDIR;
+            } else {
+                printf("fscache_request_node: execute access denied on directory %s for uid %u; directory mode %B, "
+                       "calculated effective mode %B\n",
+                       cur->name, uid, (uint64_t)cur->mode, (uint64_t)mode);
+                res = -EACCES;
                 goto res_set_and_return;
+            }
+            break;
+        default:
+            // Can't traverse through non-directories
+            res = -ENOTDIR;
+            goto res_set_and_return;
         }
 
         // After this operation, current_node is read-locked if not NULL
@@ -230,7 +231,11 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
 
 // Put cur in out as-is
 res_set_and_return:
-    if (out != NULL) { *out = cur; }
+    if (out != NULL) {
+        *out = cur;
+    } else {
+        _fscache_release_node_readable(cur);
+    }
     kfree_heap(path_copy);
     return res;
 
@@ -280,7 +285,7 @@ fscache_block_header_t *fscache_create_block(size_t node_count) {
 // TODO: limit how many nodes can be cached; evict old nodes if necessary
 // TODO: ensure this node is properly read-locked so it can't be evicted immediately
 // This is guaranteed to return either NULL or a cleared, read-locked node with type set to DT_UNKNOWN
-static fscache_node_t *fscache_allocate_node() {
+fscache_node_t *fscache_allocate_node() {
     fscache_block_header_t *current_block = fscache_head;
 
     while (current_block) {

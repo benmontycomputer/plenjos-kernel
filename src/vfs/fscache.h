@@ -27,6 +27,8 @@ typedef uint16_t fscache_flags_t;
 
 typedef struct fscache_node fscache_node_t;
 
+// Don't pack?
+// TODO: if we pack, ensure alignment is correct, especially for internal_data?
 struct fscache_node {
     // This is at the beginning to make it easy to use memset to clear a node without unsetting type (allowing us to keep it reserved)
     dirent_type_t type;
@@ -55,7 +57,7 @@ struct fscache_node {
     _Atomic(fscache_node_t *) next_sibling;
 
     uint64_t internal_data[4];
-} __attribute__((packed));
+};
 
 typedef struct fscache_block_header fscache_block_header_t;
 
@@ -75,3 +77,5 @@ void _fscache_release_node_modifiable(fscache_node_t *node);
 
 // This must be called after kernelfs_init()
 int fscache_init();
+
+fscache_node_t *fscache_allocate_node();

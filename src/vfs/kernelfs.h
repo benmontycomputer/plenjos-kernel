@@ -3,9 +3,9 @@
 #include "plenjos/limits.h"
 #include "plenjos/syscall.h"
 
+#include "proc/proc.h"
 #include "vfs/fscache.h"
 #include "vfs/vfs.h"
-#include "proc/proc.h"
 
 #include <stdint.h>
 
@@ -53,11 +53,13 @@ kernelfs_node_t *kernelfs_get_node_from_handle(vfs_handle_t *handle);
 
 void kernelfs_init();
 // ssize_t kernelfs_open(const char *path, uint64_t flags, uint64_t mode, proc_t *proc, kernelfs_node_t **out);
-void kernelfs_close(vfs_handle_t *f);
+int kernelfs_close(vfs_handle_t *f);
+ssize_t kernelfs_create_child(fscache_node_t *parent, const char *name, dirent_type_t type, uid_t uid, gid_t gid,
+                              mode_t mode, fscache_node_t *node);
 
 int kernelfs_helper_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode);
 int kernelfs_helper_create_file(const char *parent, const char *name, uint8_t type, uid_t uid, gid_t gid, mode_t mode,
-                                 vfs_read_func_t read, vfs_write_func_t write, vfs_seek_func_t seek, void *func_args);
+                                vfs_read_func_t read, vfs_write_func_t write, vfs_seek_func_t seek, void *func_args);
 
 // Internal use only
 /* int kernelfs_create_node(kernelfs_node_t *parent_node, const char *name, uint8_t type, uid_t uid, gid_t gid,
