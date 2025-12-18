@@ -3,12 +3,13 @@
 
 #include "common.h"
 #include "sys/mman.h"
+#include "stdlib.h"
 #include "stdio.h"
 #include "string.h"
 
 #include <stdatomic.h>
 #include <stdbool.h>
-#include <stddef.h>
+#include "stddef.h"
 #include <stdint.h>
 
 uint64_t heap_start, heap_end;
@@ -172,6 +173,36 @@ void *calloc(size_t nmemb, size_t size) {
     memset(ptr, 0, total_size);
 
     return ptr;
+}
+
+// Currently, realloc doesn't shrink the allocation or reduce memory usage if the new size is smaller than the current size
+void *realloc(void *ptr, size_t size) {
+    if (ptr == NULL) {
+        return malloc(size);
+    }
+
+    if (size == 0) {
+        free(ptr);
+        return NULL;
+    }
+
+    heap_segment_info_t *cur_seg = (heap_segment_info_t *)((uint64_t)ptr - HEAP_HEADER_LEN);
+
+    if (cur_seg->size >= size) {
+        // Current segment is already large enough
+        return ptr;
+    }
+
+    void *new_ptr = malloc(size);
+    if (new_ptr == NULL) {
+        return NULL;
+    }
+
+    memcpy(new_ptr, ptr, cur_seg->size);
+
+    free(ptr);
+
+    return new_ptr;
 }
 
 void free(void *ptr) {
