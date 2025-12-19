@@ -55,7 +55,7 @@ typedef ssize_t (*vfs_load_func_t)(fscache_node_t *node, const char *name, fscac
 
 // The stat function; doesn't require any permissions on the node, but all parent directories must be executable to
 // reach it This may be needed again if we implement any filesystems where stat can be changed without the knowledge of
-// the fscache_node_t typedef ssize_t (*vfs_stat_func_t)(fscache_node_t *node, struct stat *out_stat);
+// the fscache_node_t typedef ssize_t (*vfs_stat_func_t)(fscache_node_t *node, struct kstat *out_stat);
 
 // The access remains unchanged throughout the lifetime of the handle; it is only checked on file open.
 struct vfs_handle {

@@ -53,7 +53,7 @@ ssize_t syscall_routine_write(size_t fd, const void *buf, size_t count, proc_t *
 ssize_t syscall_routine_open(const char *restrict path, syscall_open_flags_t flags, mode_t mode, proc_t *proc);
 int syscall_routine_close(size_t fd, proc_t *proc);
 
-// These functions fill out_stat, which must be a user-space pointer to a struct stat
+// These functions fill out_stat, which must be a user-space pointer to a struct kstat
 ssize_t syscall_routine_stat(const char *restrict path, uint64_t out_stat_ptr, proc_t *proc, pml4_t *current_pml4);
 ssize_t syscall_routine_fstat(size_t fd, uint64_t out_stat_ptr, proc_t *proc, pml4_t *current_pml4);
 ssize_t syscall_routine_lstat(const char *restrict path, uint64_t out_stat_ptr, proc_t *proc, pml4_t *current_pml4);
