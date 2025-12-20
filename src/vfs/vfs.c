@@ -5,7 +5,6 @@
 #include "memory/kmalloc.h"
 #include "plenjos/errno.h"
 #include "plenjos/syscall.h"
-#include "proc/proc.h"
 #include "vfs/kernelfs.h"
 
 #include <stdint.h>
@@ -161,7 +160,7 @@ ssize_t vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_cr
 
             fscache_node_t *new_node = NULL;
             // This function properly masks the mode; we don't have to do that here.
-            res                      = vfs_creatat(node, last_slash, uid, mode_if_create, &new_node);
+            res                      = vfs_creatat(node, last_slash, uid, 0 /* TODO: use egid here */, mode_if_create, &new_node);
 
             if (res < 0) {
                 goto cleanup_and_return;
@@ -248,7 +247,7 @@ cleanup_and_return:
 
 // Unlike other functions, this actually handles allocation of the fscache_node_t.
 // If out isn't passed as NULL and the function succeeds, the resulting node is read-locked.
-ssize_t vfs_creatat(fscache_node_t *parent, const char *name, uid_t uid, mode_t mode, fscache_node_t **out) {
+ssize_t vfs_creatat(fscache_node_t *parent, const char *name, uid_t uid, gid_t gid, mode_t mode, fscache_node_t **out) {
     if (!parent || !name) {
         return -EINVAL;
     }
@@ -267,7 +266,7 @@ ssize_t vfs_creatat(fscache_node_t *parent, const char *name, uid_t uid, mode_t 
     mode_t masked_mode  = mode & ~022; // TODO: apply actual umask from process
     masked_mode        &= 0xFFF;       // Only lower 12 bits are honored
 
-    ssize_t res = parent->fsops->create_child(parent, name, DT_REG, uid, 0 /* TODO: use egid here */, mode, new_node);
+    ssize_t res = parent->fsops->create_child(parent, name, DT_REG, uid, gid, mode, new_node);
 
     if (res < 0) {
         _fscache_release_node_readable(new_node);
@@ -285,7 +284,7 @@ ssize_t vfs_creatat(fscache_node_t *parent, const char *name, uid_t uid, mode_t 
 
 // This honors the lower 10 (not 12) bits of mode (the rwxrwxrwx bits and the sticky bit).
 // Unlike vfs_creatat, this function does NOT honor the setuid and setgid bits, as they have no meaning on directories.
-ssize_t vfs_mkdir(const char *path, uid_t uid, mode_t mode) {
+ssize_t vfs_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode) {
     if (!path) {
         return -EINVAL;
     }
@@ -334,7 +333,7 @@ ssize_t vfs_mkdir(const char *path, uid_t uid, mode_t mode) {
 
         mode_t masked_mode = mode & ~022 & (0777 | S_ISVTX); // TODO: apply actual umask from process
 
-        res = parent->fsops->create_child(parent, last_slash, DT_DIR, uid, 0 /* TODO: use egid here */, masked_mode,
+        res = parent->fsops->create_child(parent, last_slash, DT_DIR, uid, gid, masked_mode,
                                           new_dir_node);
         _fscache_release_node_readable(new_dir_node);
         goto cleanup;

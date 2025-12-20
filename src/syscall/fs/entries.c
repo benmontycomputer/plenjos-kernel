@@ -50,7 +50,7 @@ ssize_t syscall_routine_mkdir(const char *restrict path, mode_t mode, proc_t *pr
         return res;
     }
 
-    return vfs_mkdir(path_abs, mode, proc->uid);
+    return vfs_mkdir(path_abs, proc->uid, 0 /* TODO: use egid here */, mode);
 }
 
 ssize_t syscall_routine_rmdir(const char *restrict path, proc_t *proc) {

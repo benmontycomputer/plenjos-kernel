@@ -326,9 +326,24 @@ void pci_scan() {
     uint8_t device;
 
     // TODO: transition these to go through fscache?
-    kernelfs_helper_mkdir("/dev", 0, 0, 0755);
+    /* kernelfs_helper_mkdir("/dev", 0, 0, 0755);
     kernelfs_helper_mkdir("/dev/pci", 0, 0, 0755);
-    kernelfs_helper_mkdir("/dev/pci/subftest", 0, 0, 0755);
+    kernelfs_helper_mkdir("/dev/pci/subftest", 0, 0, 0755); */
+    ssize_t res = vfs_mkdir("/dev", 0, 0, 0755);
+    if (res < 0) {
+        printf("pci_scan: failed to create /dev directory, errno %d\n", res);
+        return;
+    }
+    res = vfs_mkdir("/dev/pci", 0, 0, 0755);
+    if (res < 0) {
+        printf("pci_scan: failed to create /dev/pci directory, errno %d\n", res);
+        return;
+    }
+    res = vfs_mkdir("/dev/pci/subftest", 0, 0, 0755);
+    if (res < 0) {
+        printf("pci_scan: failed to create /dev/pci/subftest directory, errno %d\n", res);
+        return;
+    }
 
     for (bus = 0; bus < 256; bus++) {
         for (device = 0; device < 32; device++) {

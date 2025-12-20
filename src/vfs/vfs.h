@@ -109,9 +109,9 @@ ssize_t vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_cr
 // Creates a regular file. Only the lower 12 bits of mode are honored (the rwxrwxrwx and special bits).
 // Unlike other functions, this actually handles allocation of the fscache_node_t.
 // If out isn't passed as NULL and the function succeeds, the resulting node is read-locked.
-ssize_t vfs_creatat(fscache_node_t *parent, const char *name, uid_t uid, mode_t mode, fscache_node_t **out);
+ssize_t vfs_creatat(fscache_node_t *parent, const char *name, uid_t uid, gid_t gid, mode_t mode, fscache_node_t **out);
 
 // Absolute path only
-ssize_t vfs_mkdir(const char *path, uid_t uid, mode_t mode);
+ssize_t vfs_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode);
 
-ssize_t vfs_mkdirat(vfs_handle_t *parent_handle, const char *name, uid_t uid, mode_t mode);
+ssize_t vfs_mkdirat(vfs_handle_t *parent_handle, const char *name, uid_t uid, gid_t gid, mode_t mode);
