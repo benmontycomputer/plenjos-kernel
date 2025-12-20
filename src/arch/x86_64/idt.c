@@ -84,11 +84,33 @@ void gpf_handler(registers_t *regs) {
     printf("Error Code: %p\n", regs->err_code);
     printf("CS: %p, RIP : %p\n", regs->iret_cs, regs->iret_rip);
 
-    uint64_t *rsp = (uint64_t *)regs->iret_rsp;
-    printf("Stack (rsp = %p) Contents(First 26) :\n", (uint64_t)rsp);
+    if ((regs->iret_cs & CS_MASK) == KERNEL_CS) {
+        printf("Kernel mode GPF occurred at RIP: %p\n", regs->iret_rip);
 
-    for (int i = 0; i < 26; i++) {
-        printf("  [%p] = %p\n", (uint64_t)(rsp + i), rsp[i]);
+        uint64_t *rsp = (uint64_t *)regs->iret_rsp;
+        printf("Stack (rsp = %p) Contents(First 26) :\n", (uint64_t)rsp);
+
+        for (int i = 0; i < 26; i++) {
+            printf("  [%p] = %p\n", (uint64_t)(rsp + i), rsp[i]);
+        }
+    } else if ((regs->iret_cs & CS_MASK) == USER_CS) {
+        pml4_t *pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
+
+        printf("User mode GPF occurred at RIP: %p\n", regs->iret_rip);
+
+        uint64_t *rsp = (uint64_t *)regs->iret_rsp;
+        printf("Stack (rsp = %p) Contents(First 26) :\n", (uint64_t)rsp);
+
+        for (int i = 0; i < 26; i++) {
+            uint64_t stack_phys_addr = get_physaddr((uint64_t)(rsp + i), pml4);
+            if (stack_phys_addr == 0) {
+                printf("  [%p] = Invalid Address\n", (uint64_t)(rsp + i));
+            } else {
+                printf("  [%p] = %p\n", (uint64_t)(rsp + i), *(uint64_t *)phys_to_virt(stack_phys_addr));
+            }
+        }
+    } else {
+        printf("GPF occurred in unknown segment: CS: %p\n", regs->iret_cs);
     }
 
     // debug_error_code(regs->err_code);

@@ -8,6 +8,10 @@
 #define USER_DS 0x20
 #define TSS_SELECTOR 0x28
 
+// Masks to get the privilege level from a segment selector
+#define CS_MASK ~0x3
+#define DS_MASK ~0x3
+
 #define num_gdt_entries 7 // 1x null(64bit) + 2x kernel(64bit) + 2x user(64bit) + 1x TSS(128bit)
 
 union gdt_entry
