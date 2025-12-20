@@ -13,10 +13,11 @@
 #define EILSEQ 42 // Illegal byte sequence
 
 // General errors
-#define ENOMEM 12 // Out of memory
-#define EFAULT 14 // Bad address
-#define EINVAL 22 // Invalid argument
-#define ENOSYS 38 // Function not implemented
+#define ENOMEM    12 // Out of memory
+#define EFAULT    14 // Bad address
+#define EINVAL    22 // Invalid argument
+#define ENOSYS    38 // Function not implemented
+#define EOVERFLOW 75 // Value too large for defined data type
 
 // I/O errors
 #define ENOENT       2  // No such file or directory
