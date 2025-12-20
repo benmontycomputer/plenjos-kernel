@@ -79,7 +79,15 @@ void syscall_handle_fs_call(registers_t *regs, proc_t *proc, pml4_t *current_pml
         regs->rax = (uint64_t)syscall_routine_getdents(regs->rbx, (void *)regs->rcx, (size_t)regs->rdx, proc, current_pml4);
         break;
     }
-    case SYSCALL_MKDIR:
+    case SYSCALL_MKDIR: {
+        const char *path = NULL;
+        regs->rax = handle_string_arg(current_pml4, regs->rbx, &path);
+        if (path) {
+            regs->rax = (uint64_t)syscall_routine_mkdir(path, (mode_t)regs->rcx, proc);
+            kfree_heap((void *)path);
+        }
+        break;
+    }
     case SYSCALL_RMDIR:
     case SYSCALL_RENAME:
     case SYSCALL_CHMOD:
