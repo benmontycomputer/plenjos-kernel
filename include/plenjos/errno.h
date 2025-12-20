@@ -9,8 +9,8 @@
 
 // Required by C standard
 #define EDOM   39 // Device not managed
-#define EILSEQ 42 // Illegal byte sequence
 #define ERANGE 34 // Result too large
+#define EILSEQ 42 // Illegal byte sequence
 
 // General errors
 #define ENOMEM 12 // Out of memory
