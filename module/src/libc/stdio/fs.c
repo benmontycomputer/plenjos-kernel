@@ -90,7 +90,6 @@ int fgetc(FILE *stream) {
     unsigned char ch;
     ssize_t res = syscall_read(stream->fd, &ch, 1);
     if (res < 0) {
-        printf("fgetc: read error on fd %d, errno %d\n", (int)stream->fd, (int)res);
         errno = -res;
         return EOF;
     } else if (res == 0) {

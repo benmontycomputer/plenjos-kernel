@@ -147,3 +147,61 @@ int handle_relative_path(const char *rel, proc_t *proc, char out[PATH_MAX]) {
         return 0;
     }
 }
+
+int collapse_path(const char *path_in, char path_out[PATH_MAX]) {
+    if (!path_in || !path_out) {
+        return -EINVAL;
+    }
+
+    char temp[PATH_MAX];
+    size_t out_idx = 0;
+
+    size_t len = strlen(path_in);
+    for (size_t i = 0; i < len; ) {
+        // Skip multiple slashes
+        if (path_in[i] == '/') {
+            while (i < len && path_in[i] == '/') {
+                i++;
+            }
+            if (out_idx == 0 || temp[out_idx - 1] != '/') {
+                temp[out_idx++] = '/';
+            }
+            continue;
+        }
+
+        // Handle . and ..
+        if (path_in[i] == '.') {
+            if ((i + 1 == len) || (path_in[i + 1] == '/')) {
+                // Single dot
+                i++;
+                continue;
+            } else if ((i + 1 < len) && (path_in[i + 1] == '.') &&
+                       ((i + 2 == len) || (path_in[i + 2] == '/'))) {
+                // Double dot
+                i += 2;
+                if (out_idx > 1) {
+                    // Remove last component
+                    out_idx--;
+                    while (out_idx > 0 && temp[out_idx - 1] != '/') {
+                        out_idx--;
+                    }
+                }
+                continue;
+            }
+        }
+
+        // Copy normal character
+        while (i < len && path_in[i] != '/') {
+            temp[out_idx++] = path_in[i++];
+        }
+    }
+
+    // Remove trailing slash if not root
+    if (out_idx > 1 && temp[out_idx - 1] == '/') {
+        out_idx--;
+    }
+
+    temp[out_idx] = '\0';
+    strncpy(path_out, temp, PATH_MAX);
+    return 0;
+}

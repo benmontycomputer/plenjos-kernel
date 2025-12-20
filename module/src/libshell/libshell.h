@@ -9,3 +9,6 @@ int mkdir_cmd(int argc, char argv[][CMD_BUFFER_MAX]);
 int rm_cmd(int argc, char argv[][CMD_BUFFER_MAX]);
 
 int readfile_cmd(int argc, char argv[][CMD_BUFFER_MAX]);
+
+int cd_cmd(int argc, char argv[][CMD_BUFFER_MAX]);
+int pwd_cmd(int argc, char argv[][CMD_BUFFER_MAX]);

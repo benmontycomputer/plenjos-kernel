@@ -1,18 +1,15 @@
-#include <stdbool.h>
-#include <stdint.h>
-
-#include "devices/input/keyboard/keyboard.h"
 #include "devices/input/keyboard/ps2kbd.h"
-
-#include "kernel.h"
 
 #include "arch/x86_64/apic/apic.h"
 #include "arch/x86_64/common.h"
 #include "arch/x86_64/irq.h"
-
+#include "devices/input/keyboard/keyboard.h"
+#include "devices/io/ports.h"
+#include "kernel.h"
 #include "lib/stdio.h"
 
-#include "devices/io/ports.h"
+#include <stdbool.h>
+#include <stdint.h>
 
 const uint32_t lowercase[128]
     = { UNKNOWN, ESC,     '1',     '2',       '3',         '4',     '5',     '6',     '7',     '8',     '9',
@@ -47,7 +44,7 @@ bool in_console_mode = true;
 // The caps lock key triggers both a press and release event the moment it's pressed; it doesn't trigger anything on
 // release. Shift works like a normal key except it doesn't send repeated press events
 bool shift = false;
-bool caps = false;
+bool caps  = false;
 
 char process_ch(char ch) {
     if (ch >= NUM_1 && ch <= NUM_0) {
@@ -63,16 +60,18 @@ void process_mod(char ch, bool press) {
     switch (ch) {
     case LSHIFT: {
         shift = press;
-        caps = !caps;
+        caps  = !caps;
         break;
     }
     case RSHIFT: {
         shift = press;
-        caps = !caps;
+        caps  = !caps;
         break;
     }
     case CAPS_LOCK: {
-        if (press) { caps = !caps; }
+        if (press) {
+            caps = !caps;
+        }
         break;
     }
     default: {
@@ -95,7 +94,11 @@ void keyboard_irq_routine(registers_t *regs) {
 
     if (keystate && in_console_mode) {
         char ch = process_ch(scancode);
-        if (!(ch == scancode)) kbd_buffer_push(ch);
+        if (!(ch == scancode) && ch != (char)-1) kbd_buffer_push(ch);
+        else if (ch == (char)UP || ch == (char)DOWN || ch == (char)LEFT || ch == (char)RIGHT) {
+            kbd_buffer_push((char)-1);
+            kbd_buffer_push(ch);
+        }
         // printf("Key %c.\n", ch);
     }
 

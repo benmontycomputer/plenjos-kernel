@@ -1,5 +1,6 @@
 #include "lib/string.h"
 #include "syscall/fs/syscall_fs.h"
+#include "vfs/fscache.h"
 
 // TODO: do something to make sure the process can't be closed while we're changing its cwd
 int syscall_routine_chdir(const char *restrict path, proc_t *proc) {
@@ -12,6 +13,15 @@ int syscall_routine_chdir(const char *restrict path, proc_t *proc) {
         printf("syscall_routine_chdir: failed to handle relative path %s for process %s (pid %p), errno %d\n", path,
                proc->name, proc->pid, res);
         return res;
+    }
+
+    collapse_path(path_abs, path_abs);
+
+    res = fscache_request_node(path_abs, proc->uid, NULL);
+    if (res < 0) {
+        return res;
+    } else if (res == FSCACHE_REQUEST_NODE_ONE_LEVEL_AWAY) {
+        return -ENOENT;
     }
 
     memset(proc->cwd, 0, PATH_MAX);

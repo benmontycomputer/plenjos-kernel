@@ -4,7 +4,7 @@
 #include "sys/syscall.h"
 
 int mkdir(const char *pathname, mode_t mode) {
-    ssize_t res = syscall_mkdir(pathname, mode);
+    int res = syscall_mkdir(pathname, mode);
     if (res < 0) {
         errno = -res;
         return -1;

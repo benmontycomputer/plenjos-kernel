@@ -1,15 +1,12 @@
-#include "libshell/libshell.h"
-
 #include "dirent.h"
-
+#include "errno.h"
+#include "libshell/libshell.h"
 #include "stddef.h"
 #include "stdio.h"
 #include "stdlib.h"
-
 #include "sys/stat.h"
 #include "sys/types.h"
-
-#include "errno.h"
+#include "unistd.h"
 
 int ls_cmd(int argc, char argv[][CMD_BUFFER_MAX]) {
     if (argc < 2) {
@@ -110,12 +107,7 @@ void print_byte_binary(uint8_t byte) {
     }
 }
 
-typedef enum {
-    READFILE_MODE_TEXT,
-    READFILE_MODE_HEX,
-    READFILE_MODE_HEX_BYTES,
-    READFILE_MODE_BINARY
-} readfile_mode_t;
+typedef enum { READFILE_MODE_TEXT, READFILE_MODE_HEX, READFILE_MODE_HEX_BYTES, READFILE_MODE_BINARY } readfile_mode_t;
 
 int readfile_cmd(int argc, char argv[][CMD_BUFFER_MAX]) {
     if (argc < 2) {
@@ -126,7 +118,7 @@ int readfile_cmd(int argc, char argv[][CMD_BUFFER_MAX]) {
     }
 
     readfile_mode_t mode = READFILE_MODE_TEXT;
-    bool fname_is_arg2 = false;
+    bool fname_is_arg2   = false;
 
     if (argv[1][0] == '-') {
         fname_is_arg2 = true;
@@ -168,6 +160,7 @@ int readfile_cmd(int argc, char argv[][CMD_BUFFER_MAX]) {
         return -1;
     }
 
+    errno = 0;
     switch (mode) {
     case READFILE_MODE_HEX: {
         // Do we want to flip the endianness here?
@@ -175,7 +168,7 @@ int readfile_cmd(int argc, char argv[][CMD_BUFFER_MAX]) {
         int ch;
         while ((ch = fgetc(file)) != EOF) {
             print_byte_hex((uint8_t)ch);
-            space && putchar(' ');
+            space &&putchar(' ');
             space = !space;
         }
         break;
@@ -205,8 +198,60 @@ int readfile_cmd(int argc, char argv[][CMD_BUFFER_MAX]) {
     }
     }
 
+    switch (errno) {
+    case 0:
+        break;
+    case EBADF:
+        printf("readfile: file stream for %s is not valid.\n", fname);
+        fclose(file);
+        return -1;
+    default:
+        printf("readfile: error reading file %s (errno %d).\n", fname, errno);
+        fclose(file);
+        return -1;
+    }
+
     putchar('\n');
 
     fclose(file);
+    return 0;
+}
+
+int cd_cmd(int argc, char argv[][CMD_BUFFER_MAX]) {
+    if (argc < 2) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    int res = chdir(argv[1]);
+    if (res < 0) {
+        switch (errno) {
+        case ENOENT:
+            printf("cd: directory %s does not exist.\n", argv[1]);
+            break;
+        case ENOTDIR:
+            printf("cd: %s is not a directory.\n", argv[1]);
+            break;
+        case EACCES:
+            printf("cd: permission denied to access directory %s.\n", argv[1]);
+            break;
+        default:
+            printf("cd: failed to change directory to %s (errno %d).\n", argv[1], errno);
+            break;
+        }
+        return -1;
+    }
+
+    return 0;
+}
+
+int pwd_cmd(int argc, char argv[][CMD_BUFFER_MAX]) {
+    char cwd[PATH_MAX];
+    if (!getcwd(cwd, sizeof(cwd))) {
+        printf("pwd: failed to get current working directory (errno %d).\n", errno);
+        return -1;
+    }
+
+    printf("%s\n", cwd);
     return 0;
 }

@@ -16,3 +16,8 @@ int handle_string_arg(pml4_t *current_pml4, uint64_t user_ptr, const char **out)
 
 // Out must be at least PATH_MAX bytes
 int handle_relative_path(const char *rel, proc_t *proc, char out[PATH_MAX]);
+
+// Out must be at least PATH_MAX bytes
+// Simplifies the path by removing ., .., and extra / characters
+// It is safe to pass the same buffer for path_in and path_out
+int collapse_path(const char *path_in, char path_out[PATH_MAX]);
