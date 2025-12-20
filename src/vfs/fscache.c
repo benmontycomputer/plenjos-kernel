@@ -1,13 +1,11 @@
 #include "vfs/fscache.h"
-#include "vfs/vfs.h"
-
-#include "memory/kmalloc.h"
 
 #include "lib/mode.h"
 #include "lib/stdio.h"
 #include "lib/string.h"
-
+#include "memory/kmalloc.h"
 #include "plenjos/errno.h"
+#include "vfs/vfs.h"
 
 /**
  * Explanation of memory-locking model of the fscache:
@@ -58,7 +56,7 @@ void _fscache_downgrade_node_to_readable(fscache_node_t *node) {
 }
 
 bool _fscache_try_lock_node_for_eviction(fscache_node_t *node) {
-    if (atomic_compare_exchange_strong(&node->ref_count, &(int){ 0 }, -1)) {
+    if (atomic_compare_exchange_strong(&node->ref_count, &(int) { 0 }, -1)) {
         // Now, we must try to
     }
 }
@@ -88,7 +86,9 @@ static fscache_node_t *_fscache_find_in_children(fscache_node_t *parent_node, ch
 
 // This assumes that the write lock is already held on the parent node
 static void _fscache_link_node(fscache_node_t *parent, fscache_node_t *child) {
-    if (!parent || !child) { return; }
+    if (!parent || !child) {
+        return;
+    }
 
     fscache_node_t *first_child = atomic_load_explicit(&parent->first_child, memory_order_acquire);
 
@@ -114,7 +114,9 @@ static void _fscache_link_node(fscache_node_t *parent, fscache_node_t *child) {
 // IMPORTANT: out is updated to be the last successfully found node (read-locked). The read-lock is released
 // automatically if NULL is passed.
 int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
-    if (!path) { return -EINVAL; }
+    if (!path) {
+        return -EINVAL;
+    }
 
     int res = 0;
 
@@ -125,8 +127,10 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
     }
 
     size_t path_copy_len = strlen(path) + 1;
-    char *path_copy = kmalloc_heap(path_copy_len);
-    if (!path_copy) { return -ENOMEM; }
+    char *path_copy      = kmalloc_heap(path_copy_len);
+    if (!path_copy) {
+        return -ENOMEM;
+    }
 
     strncpy(path_copy, path, path_copy_len);
 
@@ -138,18 +142,18 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
         // current_node is read-locked here
 
         // Handle leading slashes
-        while (*token == '/')
-            token++;
+        while (*token == '/') token++;
 
         // Find next slash
         char *next_slash = token;
-        while (*next_slash != '/' && *next_slash != '\0')
-            next_slash++;
+        while (*next_slash != '/' && *next_slash != '\0') next_slash++;
         size_t token_len = next_slash - token;
 
         // Preserve whatever was here originally so we know whether to stop, etc.
+        // TODO: is this still necessary? (do we need to set it to '\0' in the first place? handling of "." and ".." can
+        // easily be done without it)
         char next_slash_char = *next_slash;
-        *next_slash = '\0';
+        *next_slash          = '\0';
 
         // Empty token (e.g. trailing slash, etc.)
         if (token_len == 0) break;
@@ -172,6 +176,36 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
             // Can't traverse through non-directories
             res = -ENOTDIR;
             goto res_set_and_return;
+        }
+
+        // Handle "." and ".." without ruining ".*" (!= "..") or "..*" names
+        if (token[0] == '.') {
+            if (token[1] == '.') {
+                if (token[2] == '\0') {
+                    // Parent directory
+                    fscache_node_t *parent = atomic_load_explicit(&cur->parent_node, memory_order_acquire);
+                    if (!parent) {
+                        // No parent; we are at root
+                        _fscache_release_node_readable(cur);
+                        res = -ENOENT;
+                        goto res_set_and_return;
+                    }
+
+                    // Acquire read lock on parent before releasing current node
+                    _fscache_wait_for_node_readable(parent);
+                    _fscache_release_node_readable(cur);
+                    cur = parent;
+
+                    *next_slash = next_slash_char;
+                    token       = next_slash;
+                    continue;
+                }
+            } else if (token[1] == '\0') {
+                // Current directory; no-op
+                *next_slash = next_slash_char;
+                token       = next_slash;
+                continue;
+            }
         }
 
         // After this operation, current_node is read-locked if not NULL
@@ -200,7 +234,9 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
                     // load_node indicated node doesn't exist
                     if (next_slash_char == '\0' && load_res == -ENOENT) {
                         // We are at the end; node not found — caller may want parent
-                        if (out) { *out = cur; }
+                        if (out) {
+                            *out = cur;
+                        }
                         // mark the allocated node as free again
                         res = FSCACHE_REQUEST_NODE_ONE_LEVEL_AWAY;
                         goto res_downgrade_and_set_and_return;
@@ -226,7 +262,7 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
             cur = child;
         }
         *next_slash = next_slash_char;
-        token = next_slash;
+        token       = next_slash;
     }
 
 // Put cur in out as-is
@@ -241,18 +277,22 @@ res_set_and_return:
 
 // Downgrades cur to readable before going through standard set_and_return
 res_downgrade_and_set_and_return:
-    if (cur) { _fscache_downgrade_node_to_readable(cur); }
+    if (cur) {
+        _fscache_downgrade_node_to_readable(cur);
+    }
     goto res_set_and_return;
 }
 
 // This is guaranteed to return either NULL or a cleared node with type set to DT_UNKNOWN and with an initialized rwlock
 fscache_node_t *find_next_available_node_in_block(fscache_block_header_t *block) {
-    if (!block) { return NULL; }
+    if (!block) {
+        return NULL;
+    }
 
     fscache_node_t *nodes = (fscache_node_t *)(block + 1);
 
     for (size_t i = 0; i < block->node_count; i++) {
-        if (atomic_compare_exchange_strong(&nodes[i].type, &(uint8_t){ 0 }, DT_UNKNOWN)) {
+        if (atomic_compare_exchange_strong(&nodes[i].type, &(uint8_t) { 0 }, DT_UNKNOWN)) {
             memset((uint8_t *)&nodes[i] + sizeof(dirent_type_t), 0, sizeof(fscache_node_t) - sizeof(dirent_type_t));
             rw_lock_init(&nodes[i].rwlock);
             return &nodes[i];
@@ -266,18 +306,24 @@ fscache_block_header_t *fscache_create_block(size_t node_count) {
     fscache_block_header_t *new_block
         = (fscache_block_header_t *)kmalloc_heap(sizeof(fscache_block_header_t) + node_count * sizeof(fscache_node_t));
 
-    if (!new_block) { return NULL; }
+    if (!new_block) {
+        return NULL;
+    }
 
     memset(new_block, 0, sizeof(fscache_block_header_t) + node_count * sizeof(fscache_node_t));
 
     new_block->node_count = node_count;
-    new_block->prev = fscache_tail;
-    new_block->next = NULL;
+    new_block->prev       = fscache_tail;
+    new_block->next       = NULL;
 
-    if (fscache_tail) { fscache_tail->next = new_block; }
+    if (fscache_tail) {
+        fscache_tail->next = new_block;
+    }
     fscache_tail = new_block;
 
-    if (!fscache_head) { fscache_head = new_block; }
+    if (!fscache_head) {
+        fscache_head = new_block;
+    }
 
     return new_block;
 }
@@ -300,10 +346,14 @@ fscache_node_t *fscache_allocate_node() {
 
     // No available nodes; create a new block
     current_block = fscache_create_block(FSCACHE_INIT_NODES);
-    if (!current_block) { return NULL; }
+    if (!current_block) {
+        return NULL;
+    }
 
     fscache_node_t *node = find_next_available_node_in_block(current_block);
-    if (node) { _fscache_wait_for_node_readable(node); }
+    if (node) {
+        _fscache_wait_for_node_readable(node);
+    }
     return node;
 }
 
