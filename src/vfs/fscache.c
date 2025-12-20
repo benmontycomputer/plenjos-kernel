@@ -118,6 +118,11 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
         return -EINVAL;
     }
 
+    size_t path_len = strlen(path);
+    if (path_len == 0) {
+        return -EINVAL;
+    }
+
     int res = 0;
 
     fscache_node_t *cur = fscache_root_node;
@@ -126,7 +131,7 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
         return -EIO;
     }
 
-    size_t path_copy_len = strlen(path) + 1;
+    size_t path_copy_len = path_len + 1;
     char *path_copy      = kmalloc_heap(path_copy_len);
     if (!path_copy) {
         return -ENOMEM;
@@ -267,6 +272,14 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
 
 // Put cur in out as-is
 res_set_and_return:
+    if (res == 0) {
+        if (cur->type != DT_DIR) {
+            if (path[path_len - 1] == '/') {
+                // Pathname ended with a slash, but the final node is not a directory
+                res = -ENOTDIR;
+            }
+        }
+    }
     if (out != NULL) {
         *out = cur;
     } else {
