@@ -6,6 +6,9 @@
 #include "stdio.h"
 #include "stdlib.h"
 
+#include "sys/stat.h"
+#include "sys/types.h"
+
 #include "errno.h"
 
 int ls_cmd(int argc, char argv[][CMD_BUFFER_MAX]) {
@@ -39,6 +42,34 @@ int ls_cmd(int argc, char argv[][CMD_BUFFER_MAX]) {
     }
 
     closedir(dir);
+    return 0;
+}
+
+int mkdir_cmd(int argc, char argv[][CMD_BUFFER_MAX]) {
+    if (argc < 2) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    int res = mkdir(argv[1], 0755);
+    if (res < 0) {
+        switch (errno) {
+        case EEXIST:
+            printf("mkdir: directory %s already exists.\n", argv[1]);
+            break;
+        case ENOENT:
+            printf("mkdir: parent directory of %s does not exist.\n", argv[1]);
+            break;
+        case EACCES:
+            printf("mkdir: permission denied to create directory %s.\n", argv[1]);
+            break;
+        default:
+            printf("mkdir: failed to create directory %s (errno %d).\n", argv[1], errno);
+            break;
+        }
+        return -1;
+    }
+
     return 0;
 }
 

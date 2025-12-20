@@ -30,4 +30,6 @@ void syscall_sleep(uint32_t ms);
 
 int syscall_print(const char *str);
 
+ssize_t syscall_mkdir(const char *path, mode_t mode);
+
 #endif /* _LIBC_SYSCALL_H */

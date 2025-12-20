@@ -69,3 +69,7 @@ void syscall_sleep(uint32_t ms) {
 int syscall_print(const char *str) {
     return (int)syscall(SYSCALL_PRINT, (uint64_t)str, 0, 0, 0, 0);
 }
+
+ssize_t syscall_mkdir(const char *path, mode_t mode) {
+    return (ssize_t)syscall(SYSCALL_MKDIR, (uint64_t)path, (uint64_t)mode, 0, 0, 0);
+}
