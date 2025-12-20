@@ -68,6 +68,7 @@ int stat(const char *path, struct stat *buf);
 int futimens(int fd, const struct timespec times[2]);
 int utimensat(int dirfd, const char *pathname, const struct timespec times[2], int flags);
 
+/* The file permission bits and sticky bit are honored; all other bits in mode are ignored. */
 int mkdir(const char *pathname, mode_t mode);
 int mkdirat(int dirfd, const char *pathname, mode_t mode);
 
