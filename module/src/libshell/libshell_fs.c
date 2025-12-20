@@ -13,8 +13,8 @@
 
 int ls_cmd(int argc, char argv[][CMD_BUFFER_MAX]) {
     if (argc < 2) {
-        errno = EINVAL;
-        return -1;
+        argv[1][0] = '.';
+        argv[1][1] = '\0';
     }
 
     DIR *dir = opendir(argv[1]);
@@ -36,9 +36,23 @@ int ls_cmd(int argc, char argv[][CMD_BUFFER_MAX]) {
         return -1;
     }
 
+    errno = 0;
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
         printf("%s\n", entry->d_name);
+    }
+
+    switch (errno) {
+    case 0:
+        break;
+    case EBADF:
+        printf("ls: directory stream for %s is not valid.\n", argv[1]);
+        closedir(dir);
+        return -1;
+    default:
+        printf("ls: error reading directory %s (errno %d).\n", argv[1], errno);
+        closedir(dir);
+        return -1;
     }
 
     closedir(dir);

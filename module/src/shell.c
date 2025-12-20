@@ -132,10 +132,6 @@ static bool process_cmd(const char *cmd) {
         }
         syscall_print(toks[1]);
     } else if (!strcmp(toks[0], "ls")) {
-        if (toks_count < 2) {
-            printf("Usage: ls [directory]\n");
-            return false;
-        }
         ls_cmd(toks_count, toks);
     } else if (!strcmp(toks[0], "mkdir")) {
         if (toks_count < 2) {
