@@ -39,11 +39,18 @@ ssize_t syscall_routine_getdents(size_t fd, void *buf, size_t count, proc_t *pro
 }
 
 ssize_t syscall_routine_mkdir(const char *restrict path, mode_t mode, proc_t *proc) {
-    if (!path) {
-        return -EINVAL;
+    ssize_t res = 0;
+
+    char path_abs[PATH_MAX] = { 0 };
+
+    res = (ssize_t)handle_relative_path(path, proc, path_abs);
+    if (res < 0) {
+        printf("syscall_routine_mkdir: failed to handle relative path %s for process %s (pid %p), errno %d\n", path,
+               proc->name, proc->pid, res);
+        return res;
     }
 
-    return vfs_mkdir(path, mode, proc->uid);
+    return vfs_mkdir(path_abs, mode, proc->uid);
 }
 
 ssize_t syscall_routine_rmdir(const char *restrict path, proc_t *proc) {

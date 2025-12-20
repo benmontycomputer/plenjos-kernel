@@ -57,6 +57,7 @@ int kernelfs_close(vfs_handle_t *f);
 ssize_t kernelfs_create_child(fscache_node_t *parent, const char *name, dirent_type_t type, uid_t uid, gid_t gid,
                               mode_t mode, fscache_node_t *node);
 
+// WARN: only use absolute paths
 int kernelfs_helper_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode);
 int kernelfs_helper_create_file(const char *parent, const char *name, uint8_t type, uid_t uid, gid_t gid, mode_t mode,
                                 vfs_read_func_t read, vfs_write_func_t write, vfs_seek_func_t seek, void *func_args);

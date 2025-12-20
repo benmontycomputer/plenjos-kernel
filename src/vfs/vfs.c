@@ -1,17 +1,14 @@
-#include <stdint.h>
-
-#include "memory/kmalloc.h"
-
-#include "proc/proc.h"
-
-#include "vfs/kernelfs.h"
 #include "vfs/vfs.h"
 
 #include "lib/mode.h"
 #include "lib/stdio.h"
-
+#include "memory/kmalloc.h"
 #include "plenjos/errno.h"
 #include "plenjos/syscall.h"
+#include "proc/proc.h"
+#include "vfs/kernelfs.h"
+
+#include <stdint.h>
 
 void vfs_init() {
     kernelfs_init();
@@ -19,7 +16,9 @@ void vfs_init() {
 }
 
 int vfs_close(vfs_handle_t *f) {
-    if (!f) { return -EINVAL; }
+    if (!f) {
+        return -EINVAL;
+    }
 
     if (f->backing_node == NULL || f->backing_node->fsops == NULL || f->backing_node->fsops->close == NULL) {
         return -EIO;
@@ -29,15 +28,19 @@ int vfs_close(vfs_handle_t *f) {
 }
 
 ssize_t vfs_read(vfs_handle_t *f, void *buf, size_t len) {
-    if (!f) { return -EINVAL; }
+    if (!f) {
+        return -EINVAL;
+    }
 
-    if ((f->access & ACCESS_READ) == 0) { return -EACCES; }
+    if ((f->access & ACCESS_READ) == 0) {
+        return -EACCES;
+    }
 
     if (f->backing_node == NULL) {
         printf("vfs_read: backing_node is NULL\n");
         return -EIO;
     }
-    
+
     if (f->backing_node->fsops == NULL) {
         printf("vfs_read: fsops is NULL\n");
         return -EIO;
@@ -52,9 +55,13 @@ ssize_t vfs_read(vfs_handle_t *f, void *buf, size_t len) {
 }
 
 ssize_t vfs_write(vfs_handle_t *f, const void *buf, size_t len) {
-    if (!f) { return -EINVAL; }
+    if (!f) {
+        return -EINVAL;
+    }
 
-    if ((f->access & ACCESS_WRITE) == 0) { return -EACCES; }
+    if ((f->access & ACCESS_WRITE) == 0) {
+        return -EACCES;
+    }
 
     if (f->backing_node == NULL || f->backing_node->fsops == NULL || f->backing_node->fsops->write == NULL) {
         return -EIO;
@@ -64,7 +71,9 @@ ssize_t vfs_write(vfs_handle_t *f, const void *buf, size_t len) {
 }
 
 ssize_t vfs_seek(vfs_handle_t *f, ssize_t offset, vfs_seek_whence_t whence) {
-    if (!f) { return -EINVAL; }
+    if (!f) {
+        return -EINVAL;
+    }
 
     if (f->backing_node == NULL || f->backing_node->fsops == NULL || f->backing_node->fsops->seek == NULL) {
         return -EIO;
@@ -75,7 +84,9 @@ ssize_t vfs_seek(vfs_handle_t *f, ssize_t offset, vfs_seek_whence_t whence) {
 
 // Helper function to create a vfs_handle_t; DOES NOT check permissions. out MUST NOT be NULL.
 static ssize_t vfs_helper_create_handle(fscache_node_t *node, access_t access, vfs_handle_t **out) {
-    if (!node) { return -EINVAL; }
+    if (!node) {
+        return -EINVAL;
+    }
 
     vfs_handle_t *handle = (vfs_handle_t *)kmalloc_heap(sizeof(vfs_handle_t));
     if (!handle) {
@@ -83,7 +94,7 @@ static ssize_t vfs_helper_create_handle(fscache_node_t *node, access_t access, v
     }
 
     handle->backing_node = node;
-    int oldval = atomic_fetch_add(&node->ref_count, 1);
+    int oldval           = atomic_fetch_add(&node->ref_count, 1);
     if (oldval < 0 || oldval == INT32_MAX) {
         atomic_fetch_sub(&node->ref_count, 1);
         // Failed to acquire reference
@@ -105,6 +116,17 @@ static ssize_t vfs_helper_create_handle(fscache_node_t *node, access_t access, v
 // TODO: implement groups
 // TODO: do we want SYSCALL_OPEN_FLAG_EX to actually be a valid flag?
 ssize_t vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_create, uid_t uid, vfs_handle_t **out) {
+    if (!path) {
+        return -EINVAL;
+    }
+
+    if (path[0] != '/') {
+        // Only absolute paths are supported; otherwise we'd need to pass another argument to this function which
+        // doesn't make much sense.
+        printf("ERROR: vfs_open: only absolute paths are supported (got %s). This indicates a severe bug or error in the (kernel code) caller.\n", path);
+        return -EINVAL;
+    }
+
     ssize_t res = 0;
 
     if ((flags & SYSCALL_OPEN_FLAG_CREATE) && (flags & SYSCALL_OPEN_FLAG_DIRECTORY)) {
@@ -114,7 +136,7 @@ ssize_t vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_cr
 
     // First, find the fscache node
     fscache_node_t *node = NULL;
-    res = (ssize_t)fscache_request_node(path, uid, &node);
+    res                  = (ssize_t)fscache_request_node(path, uid, &node);
 
     if (res == FSCACHE_REQUEST_NODE_ONE_LEVEL_AWAY) {
         // The node doesn't exist, but its parent does. If the CREATE flag is set, create it.
@@ -126,10 +148,12 @@ ssize_t vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_cr
                 goto cleanup_and_return;
             }
 
-            const char *p = path;
+            const char *p          = path;
             const char *last_slash = NULL;
             while (*p != '\0') {
-                if (*p == '/') { last_slash = p; }
+                if (*p == '/') {
+                    last_slash = p;
+                }
                 p++;
             }
 
@@ -137,20 +161,25 @@ ssize_t vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_cr
 
             fscache_node_t *new_node = NULL;
             // This function properly masks the mode; we don't have to do that here.
-            res = vfs_creatat(node, last_slash, uid, mode_if_create, &new_node);
+            res                      = vfs_creatat(node, last_slash, uid, mode_if_create, &new_node);
 
             if (res < 0) {
                 goto cleanup_and_return;
             }
 
             access_t handle_access = 0;
-            if (flags & SYSCALL_OPEN_FLAG_READ) { handle_access |= ACCESS_READ; }
-            if (flags & SYSCALL_OPEN_FLAG_WRITE) { handle_access |= ACCESS_WRITE; }
-            if (flags & SYSCALL_OPEN_FLAG_EX) { handle_access |= ACCESS_EXECUTE; }
+            if (flags & SYSCALL_OPEN_FLAG_READ) {
+                handle_access |= ACCESS_READ;
+            }
+            if (flags & SYSCALL_OPEN_FLAG_WRITE) {
+                handle_access |= ACCESS_WRITE;
+            }
+            if (flags & SYSCALL_OPEN_FLAG_EX) {
+                handle_access |= ACCESS_EXECUTE;
+            }
 
             if (out) {
-                res = vfs_helper_create_handle(new_node, handle_access,
-                                              out);
+                res = vfs_helper_create_handle(new_node, handle_access, out);
             }
 
             _fscache_release_node_readable(new_node);
@@ -211,14 +240,18 @@ ssize_t vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_cr
     }
 
 cleanup_and_return:
-    if (node) { _fscache_release_node_readable(node); }
+    if (node) {
+        _fscache_release_node_readable(node);
+    }
     return res;
 }
 
 // Unlike other functions, this actually handles allocation of the fscache_node_t.
 // If out isn't passed as NULL and the function succeeds, the resulting node is read-locked.
 ssize_t vfs_creatat(fscache_node_t *parent, const char *name, uid_t uid, mode_t mode, fscache_node_t **out) {
-    if (!parent || !name) { return -EINVAL; }
+    if (!parent || !name) {
+        return -EINVAL;
+    }
 
     if (parent->fsops == NULL || parent->fsops->create_child == NULL) {
         printf("vfs_creatat: file system doesn't support create_child\n");
@@ -231,8 +264,8 @@ ssize_t vfs_creatat(fscache_node_t *parent, const char *name, uid_t uid, mode_t 
         return -ENOMEM;
     }
 
-    mode_t masked_mode = mode & ~022; // TODO: apply actual umask from process
-    masked_mode &= 0xFFF;          // Only lower 12 bits are honored
+    mode_t masked_mode  = mode & ~022; // TODO: apply actual umask from process
+    masked_mode        &= 0xFFF;       // Only lower 12 bits are honored
 
     ssize_t res = parent->fsops->create_child(parent, name, DT_REG, uid, 0 /* TODO: use egid here */, mode, new_node);
 
@@ -253,8 +286,19 @@ ssize_t vfs_creatat(fscache_node_t *parent, const char *name, uid_t uid, mode_t 
 // This honors the lower 10 (not 12) bits of mode (the rwxrwxrwx bits and the sticky bit).
 // Unlike vfs_creatat, this function does NOT honor the setuid and setgid bits, as they have no meaning on directories.
 ssize_t vfs_mkdir(const char *path, uid_t uid, mode_t mode) {
+    if (!path) {
+        return -EINVAL;
+    }
+
+    if (path[0] != '/') {
+        // Only absolute paths are supported; otherwise we'd need to pass another argument to this function which
+        // doesn't make much sense.
+        printf("ERROR: vfs_mkdir: only absolute paths are supported (got %s). This indicates a severe bug or error in the (kernel code) caller.\n", path);
+        return -EINVAL;
+    }
+
     fscache_node_t *parent = NULL;
-    ssize_t res = (ssize_t)fscache_request_node(path, uid, &parent);
+    ssize_t res            = (ssize_t)fscache_request_node(path, uid, &parent);
     if (res == FSCACHE_REQUEST_NODE_ONE_LEVEL_AWAY) {
         // We need w and x permissions on the parent
         access_t actual_access = access_check(parent->mode, parent->uid, parent->gid, uid);
@@ -265,9 +309,11 @@ ssize_t vfs_mkdir(const char *path, uid_t uid, mode_t mode) {
 
         // Parent exists; create the directory under it
         char *last_slash = NULL;
-        const char *p = path;
+        const char *p    = path;
         while (*p != '\0') {
-            if (*p == '/') { last_slash = (char *)p; }
+            if (*p == '/') {
+                last_slash = (char *)p;
+            }
             p++;
         }
 
@@ -302,6 +348,8 @@ ssize_t vfs_mkdir(const char *path, uid_t uid, mode_t mode) {
     }
 
 cleanup:
-    if (parent) { _fscache_release_node_readable(parent); }
+    if (parent) {
+        _fscache_release_node_readable(parent);
+    }
     return res;
 }

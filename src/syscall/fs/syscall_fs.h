@@ -34,7 +34,7 @@ ssize_t syscall_fs_helper_get_not_dir_handle(size_t fd, proc_t *proc, vfs_handle
  * 1. Any and all output buffers are handled by the syscall routine itself; the routine is passed a user-space pointer.
  * 2. Any input pointers, however, are copied from user space to kernel space before being passed to the routine.
  *    This allows us to use const char *restrict for all pointer arguments. This means that routines are passed a
- * kernel-space pointer.
+ * kernel-space pointer. Finally, this means that routines don't have to worry about being passed NULL pointers.
  */
 
 // Because we copy any string arguments from user space to kernel space before any routines happen, we can use const

@@ -1,23 +1,22 @@
 #include "syscall/syscall_helpers.h"
 
-#include <stdbool.h>
-
+#include "kernel.h"
+#include "lib/stdio.h"
+#include "lib/string.h"
 #include "memory/kmalloc.h"
 #include "memory/mm.h"
 #include "memory/mm_common.h"
-
-#include "lib/string.h"
-#include "lib/stdio.h"
-
-#include "kernel.h"
-
 #include "plenjos/errno.h"
+#include "plenjos/limits.h"
+#include "proc/proc.h"
+
+#include <stdbool.h>
 
 // TODO: any attempts to read/write from an out-of-bounds buffer should kill the process (segfault?)
 
 int copy_to_user_buf(void *dest, void *src, size_t count, pml4_t *current_pml4) {
     size_t first_page_len = PAGE_LEN - ((uint64_t)dest % PAGE_LEN);
-    size_t last_page_len = ((uint64_t)dest + count) % PAGE_LEN;
+    size_t last_page_len  = ((uint64_t)dest + count) % PAGE_LEN;
 
     uint64_t offs = 0;
 
@@ -59,7 +58,7 @@ int copy_to_user_buf(void *dest, void *src, size_t count, pml4_t *current_pml4) 
 
 int copy_to_kernel_buf(void *dest, void *src, size_t count, pml4_t *current_pml4) {
     size_t first_page_len = PAGE_LEN - ((uint64_t)src % PAGE_LEN);
-    size_t last_page_len = ((uint64_t)src + count) % PAGE_LEN;
+    size_t last_page_len  = ((uint64_t)src + count) % PAGE_LEN;
 
     uint64_t offs = 0;
 
@@ -97,7 +96,7 @@ int copy_to_kernel_buf(void *dest, void *src, size_t count, pml4_t *current_pml4
 
 int handle_string_arg(pml4_t *current_pml4, uint64_t user_ptr, const char **out) {
     uint64_t str_ptr = phys_to_virt(get_physaddr(user_ptr, current_pml4));
-    uint64_t len = strlen((char *)str_ptr) + 1;
+    uint64_t len     = strlen((char *)str_ptr) + 1;
 
     char *kstr = kmalloc_heap(len);
     if (!kstr) {
@@ -112,4 +111,39 @@ int handle_string_arg(pml4_t *current_pml4, uint64_t user_ptr, const char **out)
 
     *out = kstr;
     return 0;
+}
+
+int handle_relative_path(const char *rel, proc_t *proc, char out[PATH_MAX]) {
+    if (!rel || !proc || !out) {
+        return -EINVAL;
+    }
+
+    if (rel[0] == '/') {
+        // Absolute path
+        strncpy(out, rel, PATH_MAX);
+        return 0;
+    } else {
+        // Relative path
+        if (proc->cwd[0] == '\0') {
+            // No cwd set; treat as root
+            if (strlen(rel) + 2 > PATH_MAX) {
+                return -ENAMETOOLONG;
+            }
+            // snprintf(out, PATH_MAX, "/%s", rel);
+            *out = '/';
+            strncpy(out + 1, rel, PATH_MAX - 1);
+        } else {
+            // snprintf(out, PATH_MAX, "%s/%s", proc->cwd, rel);
+            size_t cwd_len = strlen(proc->cwd);
+            size_t rel_len = strlen(rel);
+            if (cwd_len + rel_len + 2 > PATH_MAX) {
+                return -ENAMETOOLONG;
+            }
+
+            strncpy(out, proc->cwd, cwd_len + 1);
+            out[cwd_len] = '/';
+            strncpy(out + cwd_len + 1, rel, rel_len + 1);
+        }
+        return 0;
+    }
 }

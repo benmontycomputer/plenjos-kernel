@@ -2,17 +2,15 @@
 
 // TODO: implement locks or something to keep track of what files are opened by who
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
-
 #include "kernel.h"
-
 #include "lib/mode.h"
-
 #include "plenjos/dirent.h"
 #include "plenjos/stat.h"
 #include "plenjos/syscall.h"
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 typedef struct fscache_node fscache_node_t;
 typedef struct vfs_handle vfs_handle_t;
@@ -93,13 +91,18 @@ ssize_t vfs_write(vfs_handle_t *f, const void *buf, size_t len);
 
 ssize_t vfs_seek(vfs_handle_t *f, ssize_t offset, vfs_seek_whence_t whence);
 
-// If we create, only the lower 12 bits of mode_if_create (3 special bits + rwxrwxrwx) are honored.
-// The special bits are setuid, setgid, and sticky.
-// This function can't create directories; that must be done through a separate function.
-// If out is NULL, we just check for existence and permissions.
-// Permissions are ONLY checked upon file opening; the handle's permissions don't change throughout its lifetime.
-// If this function creates a file, the resulting handle has whatever permissions are requested in flags (READ, WRITE, EX), NOT LIMITED BY mode_if_create.
-// mode_if_create is also masked by the process's umask before being applied.
+/**
+ * If we create, only the lower 12 bits of mode_if_create (3 special bits + rwxrwxrwx) are honored.
+ * The special bits are setuid, setgid, and sticky.
+ * This function can't create directories; that must be done through a separate function.
+ * If out is NULL, we just check for existence and permissions.
+ *
+ * Permissions are ONLY checked upon file opening; the handle's permissions don't change throughout its lifetime.
+ * If this function creates a file, the resulting handle has whatever permissions are requested in flags (READ, WRITE,
+ * EX), NOT LIMITED BY mode_if_create. mode_if_create is also masked by the process's umask before being applied.
+ *
+ * This function only works with absolute paths.
+ */
 // TODO: check process's umask instead of just assuming 022
 ssize_t vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_create, uid_t uid, vfs_handle_t **out);
 
@@ -108,5 +111,7 @@ ssize_t vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_cr
 // If out isn't passed as NULL and the function succeeds, the resulting node is read-locked.
 ssize_t vfs_creatat(fscache_node_t *parent, const char *name, uid_t uid, mode_t mode, fscache_node_t **out);
 
+// Absolute path only
 ssize_t vfs_mkdir(const char *path, uid_t uid, mode_t mode);
+
 ssize_t vfs_mkdirat(vfs_handle_t *parent_handle, const char *name, uid_t uid, mode_t mode);
