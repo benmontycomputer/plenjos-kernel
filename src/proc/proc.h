@@ -1,12 +1,11 @@
 #pragma once
 
-#include <stdint.h>
-#include <stddef.h>
-
 #include "kernel.h"
-
 #include "memory/mm_common.h"
 #include "vfs/vfs.h"
+
+#include <stddef.h>
+#include <stdint.h>
 
 #define PROCESS_FDS_MAX 64
 
@@ -22,16 +21,18 @@ typedef enum {
     DEAD,
 } proc_thread_state_t;
 
+// These are page-aligned; remember to use phys_mem_unref_frame on both the process and its cwd when destroying a
+// process. kfree_heap() will NOT work and could break things!
 typedef struct proc proc_t;
 
 struct proc {
     proc_t *parent;
     size_t pid;
     char name[PROCESS_THREAD_NAME_LEN];
-    
+
     volatile proc_thread_state_t state;
 
-    volatile thread_t * volatile threads;
+    volatile thread_t *volatile threads;
 
     volatile pml4_t *pml4;
 
@@ -44,6 +45,7 @@ struct proc {
     volatile proc_t *next_sibling;
 
     size_t uid;
+    char *cwd; // Page-aligned; 4096 bytes
     // TODO: implement groups
 };
 

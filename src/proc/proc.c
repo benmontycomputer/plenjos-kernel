@@ -1,27 +1,21 @@
-#include <stdint.h>
-
 #include "proc/proc.h"
-#include "proc/thread.h"
-
-#include "memory/kmalloc.h"
-#include "memory/mm.h"
-
-#include "lib/stdio.h"
-#include "lib/string.h"
 
 #include "arch/x86_64/apic/apic.h"
 #include "arch/x86_64/apic/ioapic.h"
+#include "arch/x86_64/cpuid/cpuid.h"
 #include "arch/x86_64/gdt/gdt.h"
 #include "arch/x86_64/gdt/tss.h"
 #include "arch/x86_64/idt.h"
-
-#include "cpu/cpu.h"
-
-#include "proc/scheduler.h"
-
 #include "arch/x86_64/irq.h"
+#include "cpu/cpu.h"
+#include "lib/stdio.h"
+#include "lib/string.h"
+#include "memory/kmalloc.h"
+#include "memory/mm.h"
+#include "proc/scheduler.h"
+#include "proc/thread.h"
 
-#include "arch/x86_64/cpuid/cpuid.h"
+#include <stdint.h>
 
 volatile proc_t *pid_zero = NULL;
 
@@ -53,7 +47,16 @@ proc_t *create_proc(const char *name, proc_t *parent) {
         return NULL;
     }
 
+    char *cwd = (char *)phys_to_virt(find_next_free_frame());
+    if (!cwd) {
+        printf("Error allocating memory for proc cwd.\n");
+        phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(virt_to_phys((uint64_t)proc)));
+        return NULL;
+    }
+
     memset(proc, 0, PAGE_LEN);
+    memset(cwd, 0, PAGE_LEN);
+    proc->cwd = cwd;
 
     if (name) {
         strncpy(proc->name, name, PROCESS_THREAD_NAME_LEN);
@@ -62,22 +65,24 @@ proc_t *create_proc(const char *name, proc_t *parent) {
         proc->name[0] = 0;
     }
 
-    proc->first_child = NULL;
+    proc->first_child  = NULL;
     proc->prev_sibling = NULL;
     proc->next_sibling = NULL;
-    proc->parent = parent;
+    proc->parent       = parent;
 
     if (parent) {
         proc->uid = parent->uid;
+        strncpy(proc->cwd, parent->cwd, PATH_MAX);
     } else {
         proc->uid = 0;
+        strncpy(proc->cwd, "/", PATH_MAX);
     }
 
     proc->pid = next_pid++;
     if (proc->pid == 0) {
         pid_zero = proc;
     }
-    proc->state = READY;
+    proc->state   = READY;
     proc->threads = NULL;
 
     // TODO: page table
@@ -120,7 +125,7 @@ proc_t *create_proc(const char *name, proc_t *parent) {
     if (parent) {
         // Insert this proc into the list
         if (parent->first_child) {
-            proc->next_sibling = parent->first_child;
+            proc->next_sibling                = parent->first_child;
             parent->first_child->prev_sibling = proc;
         }
 
@@ -154,9 +159,9 @@ void process_exit(proc_t *proc) {
             }
 
             // This core is running a thread from this process, stop it
-            cores_threads[i]->state = ASLEEP;
-            cores_threads[i] = NULL;
-            cpu_cores[i].status &= ~1;
+            cores_threads[i]->state  = ASLEEP;
+            cores_threads[i]         = NULL;
+            cpu_cores[i].status     &= ~1;
         }
     }
 
@@ -189,9 +194,13 @@ void process_exit(proc_t *proc) {
 
     while (tmp) {
         if (tmp == proc) {
-            if (tmp->prev_sibling) { tmp->prev_sibling->next_sibling = tmp->next_sibling; }
+            if (tmp->prev_sibling) {
+                tmp->prev_sibling->next_sibling = tmp->next_sibling;
+            }
 
-            if (tmp->next_sibling) { tmp->next_sibling->prev_sibling = tmp->prev_sibling; }
+            if (tmp->next_sibling) {
+                tmp->next_sibling->prev_sibling = tmp->prev_sibling;
+            }
 
             break;
         }

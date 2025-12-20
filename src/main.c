@@ -1,37 +1,33 @@
 #define LIMINE_API_REVISION 3
 
+#include "arch/platform.h"
+#include "lib/serial.h"
+#include "lib/stdio.h"
+
 #include <limine.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-
-#include "lib/stdio.h"
-#include "lib/serial.h"
-
-#include "arch/platform.h"
 #if ARCH(X86_64)
-#include "arch/x86_64/common.h"
-#include "arch/x86_64/gdt/gdt.h"
+# include "arch/x86_64/common.h"
+# include "arch/x86_64/gdt/gdt.h"
 #endif
 
-#include "memory/kmalloc.h"
-#include "memory/mm.h"
-
 #include "cpu/cpu.h"
-#include "timer/pit.h"
-
+#include "devices/input/keyboard/keyboard.h"
 #include "devices/pci/pci.h"
 #include "devices/storage/ide.h"
-#include "devices/input/keyboard/keyboard.h"
-
-#include "vfs/vfs.h"
-#include "shell/shell.h"
+#include "exec/elf.h"
+#include "memory/kmalloc.h"
+#include "memory/mm.h"
 #include "proc/proc.h"
 #include "proc/scheduler.h"
 #include "proc/thread.h"
+#include "shell/shell.h"
 #include "syscall/syscall.h"
-#include "exec/elf.h"
+#include "timer/pit.h"
+#include "vfs/vfs.h"
 
 bool debug_serial = false;
 
@@ -82,7 +78,7 @@ static volatile LIMINE_REQUESTS_END_MARKER;
 // They CAN be moved to a different .c file.
 
 void *memcpy(void *dest, const void *src, size_t n) {
-    uint8_t *pdest = (uint8_t *)dest;
+    uint8_t *pdest      = (uint8_t *)dest;
     const uint8_t *psrc = (const uint8_t *)src;
 
     for (size_t i = 0; i < n; i++) {
@@ -103,7 +99,7 @@ void *memset(void *s, int c, size_t n) {
 }
 
 void *memmove(void *dest, const void *src, size_t n) {
-    uint8_t *pdest = (uint8_t *)dest;
+    uint8_t *pdest      = (uint8_t *)dest;
     const uint8_t *psrc = (const uint8_t *)src;
 
     if (src > dest) {
@@ -124,7 +120,9 @@ int memcmp(const void *s1, const void *s2, size_t n) {
     const uint8_t *p2 = (const uint8_t *)s2;
 
     for (size_t i = 0; i < n; i++) {
-        if (p1[i] != p2[i]) { return p1[i] < p2[i] ? -1 : 1; }
+        if (p1[i] != p2[i]) {
+            return p1[i] < p2[i] ? -1 : 1;
+        }
     }
 
     return 0;
@@ -139,8 +137,7 @@ void test_func() {
 
 // Halt and catch fire function.
 __attribute__((noreturn)) //
-void
-hcf(void) {
+void hcf(void) {
     for (;;) {
         asm volatile("hlt");
     }
@@ -151,18 +148,22 @@ hcf(void) {
 // linker script accordingly.
 void kmain(void) {
     // Ensure the bootloader actually understands our base revision (see spec).
-    if (LIMINE_BASE_REVISION_SUPPORTED == false) { hcf(); }
+    if (LIMINE_BASE_REVISION_SUPPORTED == false) {
+        hcf();
+    }
 
     // Ensure we got a framebuffer.
-    if (framebuffer_request.response == NULL || framebuffer_request.response->framebuffer_count < 1) { hcf(); }
+    if (framebuffer_request.response == NULL || framebuffer_request.response->framebuffer_count < 1) {
+        hcf();
+    }
 
     // Fetch the first framebuffer.
     struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
 
-    fb = framebuffer->address;
-    fb_scanline = (int)framebuffer->pitch;
-    fb_width = (int)framebuffer->width;
-    fb_height = (int)framebuffer->height;
+    fb                 = framebuffer->address;
+    fb_scanline        = (int)framebuffer->pitch;
+    fb_width           = (int)framebuffer->width;
+    fb_height          = (int)framebuffer->height;
     fb_bytes_per_pixel = (int)((framebuffer->bpp + 7) / 8);
     printf("Framebuffer: %p\n", framebuffer->address);
 
