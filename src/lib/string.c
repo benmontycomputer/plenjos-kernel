@@ -36,6 +36,8 @@ char *strncpy(char *dest, const char *src, size_t n) {
     } else {
         memcpy(dest, src, n);
     }
+
+    return dest;
 }
 
 static char *olds;
