@@ -54,7 +54,7 @@ kernelfs_node_t *kernelfs_get_node_from_handle(vfs_handle_t *handle);
 void kernelfs_init();
 // ssize_t kernelfs_open(const char *path, uint64_t flags, uint64_t mode, proc_t *proc, kernelfs_node_t **out);
 int kernelfs_close(vfs_handle_t *f);
-ssize_t kernelfs_create_child(fscache_node_t *parent, const char *name, dirent_type_t type, uid_t uid, gid_t gid,
+int kernelfs_create_child(fscache_node_t *parent, const char *name, dirent_type_t type, uid_t uid, gid_t gid,
                               mode_t mode, fscache_node_t *node);
 
 // WARN: only use absolute paths

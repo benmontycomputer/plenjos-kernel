@@ -11,7 +11,7 @@ typedef struct thread thread_t;
 struct thread {
     volatile registers_t regs;
 
-    size_t tid;
+    pid_t tid;
     char name[PROCESS_THREAD_NAME_LEN];
 
     volatile proc_thread_state_t state;

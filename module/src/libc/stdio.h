@@ -10,7 +10,7 @@
 /* Types */
 
 typedef struct {
-    size_t fd;
+    int fd;
 } FILE;
 
 typedef struct {

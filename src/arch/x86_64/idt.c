@@ -175,8 +175,8 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
     } else {
         thread_t *thread = cores_threads[get_curr_core()];
         if (thread) {
-            uint64_t pid = thread->parent->pid;
-            uint64_t tid = thread->tid;
+            pid_t pid = thread->parent->pid;
+            pid_t tid = thread->tid;
 
             printf("Faulting process: PID %p, TID %p\n", pid, tid);
             printf("Killing offending process...\n");

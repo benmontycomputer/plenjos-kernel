@@ -35,7 +35,7 @@ syscall_open_flags_t parse_mode(const char *mode_str) {
 
 FILE *fopen(const char *filename, const char *mode_str) {
     // TODO: set mode correctly instead of 0777
-    ssize_t fd_res = syscall_open(filename, parse_mode(mode_str), 0777);
+    int fd_res = syscall_open(filename, parse_mode(mode_str), 0777);
 
     if (fd_res >= 0) {
         FILE *file = (FILE *)malloc(sizeof(FILE));

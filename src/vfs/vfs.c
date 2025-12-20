@@ -69,7 +69,7 @@ ssize_t vfs_write(vfs_handle_t *f, const void *buf, size_t len) {
     return f->backing_node->fsops->write(f, buf, len);
 }
 
-ssize_t vfs_seek(vfs_handle_t *f, ssize_t offset, vfs_seek_whence_t whence) {
+off_t vfs_seek(vfs_handle_t *f, off_t offset, vfs_seek_whence_t whence) {
     if (!f) {
         return -EINVAL;
     }
@@ -82,7 +82,7 @@ ssize_t vfs_seek(vfs_handle_t *f, ssize_t offset, vfs_seek_whence_t whence) {
 }
 
 // Helper function to create a vfs_handle_t; DOES NOT check permissions. out MUST NOT be NULL.
-static ssize_t vfs_helper_create_handle(fscache_node_t *node, access_t access, vfs_handle_t **out) {
+static int vfs_helper_create_handle(fscache_node_t *node, access_t access, vfs_handle_t **out) {
     if (!node) {
         return -EINVAL;
     }
@@ -114,7 +114,7 @@ static ssize_t vfs_helper_create_handle(fscache_node_t *node, access_t access, v
 // Permissions are ONLY checked upon file opening
 // TODO: implement groups
 // TODO: do we want SYSCALL_OPEN_FLAG_EX to actually be a valid flag?
-ssize_t vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_create, uid_t uid, vfs_handle_t **out) {
+int vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_create, uid_t uid, vfs_handle_t **out) {
     if (!path) {
         return -EINVAL;
     }
@@ -126,7 +126,7 @@ ssize_t vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_cr
         return -EINVAL;
     }
 
-    ssize_t res = 0;
+    int res = 0;
 
     if ((flags & SYSCALL_OPEN_FLAG_CREATE) && (flags & SYSCALL_OPEN_FLAG_DIRECTORY)) {
         // Invalid combination of flags
@@ -135,7 +135,7 @@ ssize_t vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_cr
 
     // First, find the fscache node
     fscache_node_t *node = NULL;
-    res                  = (ssize_t)fscache_request_node(path, uid, &node);
+    res                  = fscache_request_node(path, uid, &node);
 
     if (res == FSCACHE_REQUEST_NODE_ONE_LEVEL_AWAY) {
         // The node doesn't exist, but its parent does. If the CREATE flag is set, create it.
@@ -247,7 +247,7 @@ cleanup_and_return:
 
 // Unlike other functions, this actually handles allocation of the fscache_node_t.
 // If out isn't passed as NULL and the function succeeds, the resulting node is read-locked.
-ssize_t vfs_creatat(fscache_node_t *parent, const char *name, uid_t uid, gid_t gid, mode_t mode, fscache_node_t **out) {
+int vfs_creatat(fscache_node_t *parent, const char *name, uid_t uid, gid_t gid, mode_t mode, fscache_node_t **out) {
     if (!parent || !name) {
         return -EINVAL;
     }
@@ -266,7 +266,7 @@ ssize_t vfs_creatat(fscache_node_t *parent, const char *name, uid_t uid, gid_t g
     mode_t masked_mode  = mode & ~022; // TODO: apply actual umask from process
     masked_mode        &= 0xFFF;       // Only lower 12 bits are honored
 
-    ssize_t res = parent->fsops->create_child(parent, name, DT_REG, uid, gid, mode, new_node);
+    int res = parent->fsops->create_child(parent, name, DT_REG, uid, gid, mode, new_node);
 
     if (res < 0) {
         _fscache_release_node_readable(new_node);
@@ -284,7 +284,7 @@ ssize_t vfs_creatat(fscache_node_t *parent, const char *name, uid_t uid, gid_t g
 
 // This honors the lower 10 (not 12) bits of mode (the rwxrwxrwx bits and the sticky bit).
 // Unlike vfs_creatat, this function does NOT honor the setuid and setgid bits, as they have no meaning on directories.
-ssize_t vfs_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode) {
+int vfs_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode) {
     if (!path) {
         return -EINVAL;
     }
@@ -297,7 +297,7 @@ ssize_t vfs_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode) {
     }
 
     fscache_node_t *parent = NULL;
-    ssize_t res            = (ssize_t)fscache_request_node(path, uid, &parent);
+    int res            = fscache_request_node(path, uid, &parent);
     if (res == FSCACHE_REQUEST_NODE_ONE_LEVEL_AWAY) {
         // We need w and x permissions on the parent
         access_t actual_access = access_check(parent->mode, parent->uid, parent->gid, uid);

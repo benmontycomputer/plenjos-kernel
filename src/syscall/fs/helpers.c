@@ -1,6 +1,6 @@
 #include "syscall/fs/syscall_fs.h"
 
-ssize_t syscall_fs_helper_get_handle_and_check_backing_node(size_t fd, proc_t *proc, vfs_handle_t **out_handle) {
+int syscall_fs_helper_get_handle_and_check_backing_node(int fd, proc_t *proc, vfs_handle_t **out_handle) {
     vfs_handle_t *handle = proc_get_fd(proc, fd);
 
     if (!handle) {
@@ -18,9 +18,9 @@ ssize_t syscall_fs_helper_get_handle_and_check_backing_node(size_t fd, proc_t *p
     return 0;
 }
 
-ssize_t syscall_fs_helper_get_dir_handle(size_t fd, proc_t *proc, vfs_handle_t **out_handle) {
+int syscall_fs_helper_get_dir_handle(int fd, proc_t *proc, vfs_handle_t **out_handle) {
     vfs_handle_t *handle = NULL;
-    ssize_t res = syscall_fs_helper_get_handle_and_check_backing_node(fd, proc, &handle);
+    int res = syscall_fs_helper_get_handle_and_check_backing_node(fd, proc, &handle);
     if (res < 0) {
         return res;
     }
@@ -35,9 +35,9 @@ ssize_t syscall_fs_helper_get_dir_handle(size_t fd, proc_t *proc, vfs_handle_t *
     return 0;
 }
 
-ssize_t syscall_fs_helper_get_not_dir_handle(size_t fd, proc_t *proc, vfs_handle_t **out_handle) {
+int syscall_fs_helper_get_not_dir_handle(int fd, proc_t *proc, vfs_handle_t **out_handle) {
     vfs_handle_t *handle = NULL;
-    ssize_t res = syscall_fs_helper_get_handle_and_check_backing_node(fd, proc, &handle);
+    int res = syscall_fs_helper_get_handle_and_check_backing_node(fd, proc, &handle);
     if (res < 0) {
         return res;
     }

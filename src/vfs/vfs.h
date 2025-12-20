@@ -34,7 +34,7 @@ typedef ssize_t (*vfs_read_func_t)(vfs_handle_t *handle, void *buf, size_t len);
 typedef ssize_t (*vfs_write_func_t)(vfs_handle_t *handle, const void *buf, size_t len);
 
 // The seek function changes the current position in the file or directory
-typedef ssize_t (*vfs_seek_func_t)(vfs_handle_t *handle, ssize_t offset, vfs_seek_whence_t whence);
+typedef off_t (*vfs_seek_func_t)(vfs_handle_t *handle, off_t offset, vfs_seek_whence_t whence);
 
 // The close function closes the file handle
 typedef int (*vfs_close_func_t)(vfs_handle_t *handle);
@@ -45,11 +45,11 @@ typedef int (*vfs_close_func_t)(vfs_handle_t *handle);
 // unless NULL is passed for out. Only the lower 12 bits of mode are honored (the rwxrwxrwx and special bits). If a node
 // is passed in, the newly created child is loaded into the fscache (the node MUST be allocated already). Otherwise, the
 // new child isn't loaded.
-typedef ssize_t (*vfs_create_child_func_t)(fscache_node_t *parent, const char *name, dirent_type_t type, uid_t uid,
+typedef int (*vfs_create_child_func_t)(fscache_node_t *parent, const char *name, dirent_type_t type, uid_t uid,
                                            gid_t gid, mode_t mode, fscache_node_t *node);
 
 // The load function loads a child from a parent (directory)
-typedef ssize_t (*vfs_load_func_t)(fscache_node_t *node, const char *name, fscache_node_t *out);
+typedef int (*vfs_load_func_t)(fscache_node_t *node, const char *name, fscache_node_t *out);
 
 // The stat function; doesn't require any permissions on the node, but all parent directories must be executable to
 // reach it This may be needed again if we implement any filesystems where stat can be changed without the knowledge of
@@ -89,7 +89,7 @@ int vfs_close(vfs_handle_t *f);
 ssize_t vfs_read(vfs_handle_t *f, void *buf, size_t len);
 ssize_t vfs_write(vfs_handle_t *f, const void *buf, size_t len);
 
-ssize_t vfs_seek(vfs_handle_t *f, ssize_t offset, vfs_seek_whence_t whence);
+off_t vfs_seek(vfs_handle_t *f, off_t offset, vfs_seek_whence_t whence);
 
 /**
  * If we create, only the lower 12 bits of mode_if_create (3 special bits + rwxrwxrwx) are honored.
@@ -104,14 +104,14 @@ ssize_t vfs_seek(vfs_handle_t *f, ssize_t offset, vfs_seek_whence_t whence);
  * This function only works with absolute paths.
  */
 // TODO: check process's umask instead of just assuming 022
-ssize_t vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_create, uid_t uid, vfs_handle_t **out);
+int vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_create, uid_t uid, vfs_handle_t **out);
 
 // Creates a regular file. Only the lower 12 bits of mode are honored (the rwxrwxrwx and special bits).
 // Unlike other functions, this actually handles allocation of the fscache_node_t.
 // If out isn't passed as NULL and the function succeeds, the resulting node is read-locked.
-ssize_t vfs_creatat(fscache_node_t *parent, const char *name, uid_t uid, gid_t gid, mode_t mode, fscache_node_t **out);
+int vfs_creatat(fscache_node_t *parent, const char *name, uid_t uid, gid_t gid, mode_t mode, fscache_node_t **out);
 
 // Absolute path only
-ssize_t vfs_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode);
+int vfs_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode);
 
-ssize_t vfs_mkdirat(vfs_handle_t *parent_handle, const char *name, uid_t uid, gid_t gid, mode_t mode);
+int vfs_mkdirat(vfs_handle_t *parent_handle, const char *name, uid_t uid, gid_t gid, mode_t mode);

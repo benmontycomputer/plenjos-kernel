@@ -19,7 +19,7 @@
 
 volatile proc_t *pid_zero = NULL;
 
-volatile uint64_t next_pid = 0;
+volatile pid_t next_pid = 0;
 
 proc_t *_get_proc_kernel() {
     gsbase_t *gsbase = (gsbase_t *)read_msr(IA32_GS_BASE);
@@ -31,6 +31,7 @@ proc_t *_get_proc_kernel() {
     return (proc_t *)gsbase->proc;
 }
 
+// TODO: enforce some (configurable) PID_MAX?
 proc_t *create_proc(const char *name, proc_t *parent) {
     if (!parent) {
         if (next_pid != 0) {
@@ -215,7 +216,7 @@ void process_exit(proc_t *proc) {
     phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(virt_to_phys((uint64_t)proc)));
 }
 
-vfs_handle_t *proc_get_fd(proc_t *proc, size_t fd) {
+vfs_handle_t *proc_get_fd(proc_t *proc, int fd) {
     if (fd >= proc->fds_max) {
         return NULL;
     }
@@ -223,11 +224,16 @@ vfs_handle_t *proc_get_fd(proc_t *proc, size_t fd) {
     return proc->fds[fd];
 }
 
-ssize_t proc_alloc_fd(proc_t *proc, vfs_handle_t *handle) {
-    for (size_t i = 0; i < proc->fds_max; i++) {
+int proc_alloc_fd(proc_t *proc, vfs_handle_t *handle) {
+    if (!handle) {
+        printf("proc_alloc_fd: handle is NULL\n");
+        return -1;
+    }
+
+    for (int i = 0; i < proc->fds_max; i++) {
         if (proc->fds[i] == NULL) {
             proc->fds[i] = handle;
-            return (ssize_t)i;
+            return i;
         }
     }
 
@@ -235,7 +241,7 @@ ssize_t proc_alloc_fd(proc_t *proc, vfs_handle_t *handle) {
 }
 
 // WARNING: this does *not* free the underlying vfs_handle_t!
-void proc_free_fd(proc_t *proc, size_t fd) {
+void proc_free_fd(proc_t *proc, int fd) {
     if (fd >= proc->fds_max) {
         return;
     }

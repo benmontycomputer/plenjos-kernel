@@ -27,7 +27,7 @@ typedef struct proc proc_t;
 
 struct proc {
     proc_t *parent;
-    size_t pid;
+    pid_t pid;
     char name[PROCESS_THREAD_NAME_LEN];
 
     volatile proc_thread_state_t state;
@@ -37,14 +37,14 @@ struct proc {
     volatile pml4_t *pml4;
 
     // Make sure this is always less than SSIZE_MAX!
-    size_t fds_max;
+    int fds_max;
     vfs_handle_t **fds;
 
     volatile proc_t *first_child;
     volatile proc_t *prev_sibling;
     volatile proc_t *next_sibling;
 
-    size_t uid;
+    uid_t uid;
     char *cwd; // Page-aligned; 4096 bytes
     // TODO: implement groups
 };
@@ -55,6 +55,6 @@ void process_exit(proc_t *proc);
 
 proc_t *_get_proc_kernel();
 
-vfs_handle_t *proc_get_fd(proc_t *proc, size_t fd);
-ssize_t proc_alloc_fd(proc_t *proc, vfs_handle_t *handle);
-void proc_free_fd(proc_t *proc, size_t fd);
+vfs_handle_t *proc_get_fd(proc_t *proc, int fd);
+int proc_alloc_fd(proc_t *proc, vfs_handle_t *handle);
+void proc_free_fd(proc_t *proc, int fd);

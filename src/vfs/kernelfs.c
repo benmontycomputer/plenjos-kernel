@@ -18,8 +18,8 @@ kernelfs_node_t *root_kernelfs_node = NULL;
 // usage
 ssize_t kernelfs_read(vfs_handle_t *f, void *buf, size_t len);
 ssize_t kernelfs_write(vfs_handle_t *f, const void *buf, size_t len);
-ssize_t kernelfs_seek(vfs_handle_t *f, ssize_t offset, vfs_seek_whence_t whence);
-ssize_t kernelfs_load(fscache_node_t *node, const char *name, fscache_node_t *out);
+off_t kernelfs_seek(vfs_handle_t *f, off_t offset, vfs_seek_whence_t whence);
+int kernelfs_load(fscache_node_t *node, const char *name, fscache_node_t *out);
 
 ssize_t kernelfs_default_read_dir(vfs_handle_t *f, void *buf, size_t len);
 
@@ -70,7 +70,7 @@ ssize_t kernelfs_write(vfs_handle_t *f, const void *buf, size_t len) {
     return -1;
 }
 
-ssize_t kernelfs_seek(vfs_handle_t *f, ssize_t offset, vfs_seek_whence_t whence) {
+off_t kernelfs_seek(vfs_handle_t *f, off_t offset, vfs_seek_whence_t whence) {
     kernelfs_node_t *node = kernelfs_get_node_from_handle(f);
 
     if (node && node->seek) {
@@ -140,7 +140,7 @@ ssize_t kernelfs_default_read_dir(vfs_handle_t *f, void *buf, size_t len) {
 }
 
 // IMPORTANT: "out" must point to an already allocated fscache_node_t pointer
-ssize_t kernelfs_load(fscache_node_t *node, const char *name, fscache_node_t *out) {
+int kernelfs_load(fscache_node_t *node, const char *name, fscache_node_t *out) {
     kernelfs_node_t *parent_node = node ? ((kernelfs_cache_data_t *)node->internal_data)->node : root_kernelfs_node;
 
     kernelfs_node_t *current_node;
@@ -203,7 +203,7 @@ int kernelfs_close(vfs_handle_t *f) {
     return 0;
 }
 
-ssize_t kernelfs_create_child(fscache_node_t *parent, const char *name, dirent_type_t type, uid_t uid, gid_t gid,
+int kernelfs_create_child(fscache_node_t *parent, const char *name, dirent_type_t type, uid_t uid, gid_t gid,
                               mode_t mode, fscache_node_t *node) {
     if (!parent || !name || !node) {
         return -EINVAL;

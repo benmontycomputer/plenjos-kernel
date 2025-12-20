@@ -11,7 +11,7 @@
 #include "lib/string.h"
 #include "lib/stdio.h"
 
-uint64_t next_tid = 0;
+pid_t next_tid = 0;
 
 #define DEFAULT_FLAGS 0x202 // Enable interrupts
 
