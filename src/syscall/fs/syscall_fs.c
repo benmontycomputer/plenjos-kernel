@@ -88,8 +88,19 @@ void syscall_handle_fs_call(registers_t *regs, proc_t *proc, pml4_t *current_pml
     case SYSCALL_FCHOWN:
     case SYSCALL_LCHOWN:
     // TODO: modify file groups
-    case SYSCALL_GETCWD:
-    case SYSCALL_CHDIR:
+    case SYSCALL_GETCWD: {
+        regs->rax = (uint64_t)syscall_routine_getcwd(regs->rbx, (size_t)regs->rcx, proc, current_pml4);
+        break;
+    }
+    case SYSCALL_CHDIR: {
+        const char *path = NULL;
+        regs->rax = handle_string_arg(current_pml4, regs->rbx, &path);
+        if (path) {
+            regs->rax = (uint64_t)syscall_routine_chdir(path, proc);
+            kfree_heap((void *)path);
+        }
+        break;
+    }
     case SYSCALL_FCHDIR:
     case SYSCALL_LINK:
     case SYSCALL_UNLINK:

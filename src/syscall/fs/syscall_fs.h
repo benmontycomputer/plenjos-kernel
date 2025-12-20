@@ -35,6 +35,8 @@ ssize_t syscall_fs_helper_get_not_dir_handle(size_t fd, proc_t *proc, vfs_handle
  * 2. Any input pointers, however, are copied from user space to kernel space before being passed to the routine.
  *    This allows us to use const char *restrict for all pointer arguments. This means that routines are passed a
  * kernel-space pointer. Finally, this means that routines don't have to worry about being passed NULL pointers.
+ * 
+ * TODO: similar to how char restrict *ch is used, we can use char __user *buf to indicate user-space pointers.
  */
 
 // Because we copy any string arguments from user space to kernel space before any routines happen, we can use const
@@ -76,8 +78,8 @@ void syscall_routine_chown();
 void syscall_routine_fchown();
 void syscall_routine_lchown();
 // TODO: modify file groups
-void syscall_routine_getcwd();
-void syscall_routine_chdir();
+ssize_t syscall_routine_getcwd(uint64_t out_buf_ptr, size_t size, proc_t *proc, pml4_t *current_pml4);
+ssize_t syscall_routine_chdir(const char *restrict path, proc_t *proc);
 void syscall_routine_fchdir();
 // Hard links CANNOT point to directories
 void syscall_routine_link();
