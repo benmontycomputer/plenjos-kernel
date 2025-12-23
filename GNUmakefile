@@ -153,6 +153,7 @@ clean:
 
 uefi_run:
 	qemu-system-x86_64 \
+		-M q35 \
 		-m 4096 \
 		-smp cores=4,threads=1,sockets=1,maxcpus=4 \
 		-boot d \
@@ -166,6 +167,7 @@ uefi_run:
 
 uefi_run_gdb:
 	qemu-system-x86_64 \
+		-M q35 \
 		-m 4096 \
 		-smp cores=4,threads=1,sockets=1,maxcpus=4 \
 		-boot d \
