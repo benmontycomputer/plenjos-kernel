@@ -10,12 +10,13 @@
 #include <stddef.h>
 #include <stdint.h>
 #if ARCH(X86_64)
-# include "arch/x86_64/common.h"
-# include "arch/x86_64/gdt/gdt.h"
+#include "arch/x86_64/common.h"
+#include "arch/x86_64/gdt/gdt.h"
 #endif
 
 #include "cpu/cpu.h"
 #include "devices/input/keyboard/keyboard.h"
+#include "devices/input/keyboard/ps2kbd.h"
 #include "devices/pci/pci.h"
 #include "devices/storage/ide.h"
 #include "exec/elf.h"
@@ -197,6 +198,8 @@ void kmain(void) {
 
     init_keyboard();
 
+    // TODO: make this part of a device manager
+    init_ps2_keyboard();
     pci_scan();
     ide_init();
 

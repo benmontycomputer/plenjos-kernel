@@ -2,7 +2,6 @@
 #include <stdbool.h>
 
 #include "devices/input/keyboard/keyboard.h"
-#include "devices/input/keyboard/ps2kbd.h"
 
 #include "lib/stdio.h"
 
@@ -54,6 +53,4 @@ void init_keyboard() {
     kbd_buffer_state.full = false;
 
     printf("kbd: %p\n", &kbd_buffer_state);
-
-    init_ps2_keyboard();
 }
