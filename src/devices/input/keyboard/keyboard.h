@@ -5,7 +5,7 @@
 
 #include "plenjos/dev/kbd.h"
 
-void init_keyboard();
+void init_keyboard_interface();
 
 bool kbd_buffer_empty();
 bool kbd_buffer_full();

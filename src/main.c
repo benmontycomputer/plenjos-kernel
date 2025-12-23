@@ -10,14 +10,15 @@
 #include <stddef.h>
 #include <stdint.h>
 #if ARCH(X86_64)
-# include "arch/x86_64/common.h"
-# include "arch/x86_64/gdt/gdt.h"
+#include "arch/x86_64/common.h"
+#include "arch/x86_64/gdt/gdt.h"
 #endif
 
 #include "cpu/cpu.h"
 #include "devices/input/keyboard/keyboard.h"
 #include "devices/pci/pci.h"
 #include "devices/storage/ide.h"
+#include "driver/keyboard/ps2kbd.h"
 #include "exec/elf.h"
 #include "memory/kmalloc.h"
 #include "memory/mm.h"
@@ -195,8 +196,10 @@ void kmain(void) {
 
     vfs_init();
 
-    init_keyboard();
+    init_keyboard_interface();
 
+    // TODO: move these to modules or something?
+    init_ps2_keyboard();
     pci_scan();
     ide_init();
 
