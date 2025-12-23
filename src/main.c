@@ -24,7 +24,6 @@
 #include "proc/proc.h"
 #include "proc/scheduler.h"
 #include "proc/thread.h"
-#include "shell/shell.h"
 #include "syscall/syscall.h"
 #include "timer/pit.h"
 #include "vfs/vfs.h"

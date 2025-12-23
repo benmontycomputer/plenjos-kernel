@@ -227,17 +227,19 @@ registers_t *syscall_routine(registers_t *regs) {
         break;
     }
     case SYSCALL_KB_READ: {
-        while (kbd_buffer_empty()) {
+        /* while (kbd_buffer_empty()) {
             asm volatile("sti");
             // printf("empty\n");
-        }
+        } */
 
-        char ch;
-        kbd_buffer_pop(&ch);
+        /* uint64_t event;
+        kbd_buffer_pop(&event);
 
         // printf("%c", ch);
 
-        regs->rax = (uint64_t)ch;
+        regs->rax = *(uint64_t *)&event; */
+
+        regs->rax = ENOSYS;
 
         break;
     }

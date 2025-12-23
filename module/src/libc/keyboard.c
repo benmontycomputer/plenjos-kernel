@@ -23,8 +23,8 @@ bool kbd_buffer_full() {
     return kbd_buffer_state->full;
 }
 
-void kbd_buffer_push(char ch) {
-    kbd_buffer_state->buffer[kbd_buffer_state->head] = ch;
+void kbd_buffer_push(kbd_event_t event) {
+    kbd_buffer_state->buffer[kbd_buffer_state->head] = event;
 
     if (kbd_buffer_state->full) {
         advance_tail();
@@ -34,7 +34,7 @@ void kbd_buffer_push(char ch) {
     kbd_buffer_state->full = (kbd_buffer_state->head == kbd_buffer_state->tail);
 }
 
-int kbd_buffer_pop(char *data) {
+int kbd_buffer_pop(kbd_event_t *data) {
     if (kbd_buffer_empty()) return -1;
 
     *data = kbd_buffer_state->buffer[kbd_buffer_state->tail];

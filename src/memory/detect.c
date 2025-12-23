@@ -84,6 +84,8 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
         }
     }
 
+    printf("Physical memory frame map allocated at %p\n", phys_mem_frame_map);
+
     if (!phys_mem_frame_map) {
         printf("No suitable memory block found. Halt!\n");
         hcf();
@@ -122,6 +124,8 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
             }
         }
     }
+
+    printf("Physical memory frame map linked list setup complete.\n");
 
     for (size_t i = 0; i < memmap.mem_entry_count; i++) {
         uint64_t base = memmap.mem_entries[i]->base;

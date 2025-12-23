@@ -186,8 +186,13 @@ void main(int argc, char **argv) {
     for (;;) {
         while (kbd_buffer_empty()) {}
 
-        char ch;
-        kbd_buffer_pop(&ch);
+        kbd_event_t event;
+        kbd_buffer_pop(&event);
+
+        if (event.state != KEY_PRESSED) {
+            continue;
+        }
+        char ch = _kbdev_get_ch(event.code, event.mods);
 
         if (ch == '\n') {
             printf("\n");
@@ -199,64 +204,64 @@ void main(int argc, char **argv) {
             printf(SHELL_PROMPT);
 
             cmd_buffer_i = 0;
-        } else {
-            // printf("%d\n", ch);
-            if (ch == '\b') {
-                if (cmd_buffer_i > 0) {
+
+            continue;
+        } else if (ch == '\b') {
+            if (cmd_buffer_i > 0) {
+                --cmd_buffer_i;
+                backs();
+            }
+
+            continue;
+        } else if (_kbdev_is_printable(event.code)) {
+            // Leave space for end of string
+            if (cmd_buffer_i < (CMD_BUFFER_MAX - 1)) {
+                printf("%c", ch);
+                cmdbuffer[cmd_buffer_i] = ch;
+                ++cmd_buffer_i;
+            }
+
+            continue;
+        }
+
+        switch (event.code) {
+        case KEY_UP: {
+            if (cmd_history_count > 0 && cmd_history_i < cmd_history_count - 1) {
+                ++cmd_history_i;
+                // Clear current line
+                while (cmd_buffer_i > 0) {
                     --cmd_buffer_i;
                     backs();
                 }
-            } else if (ch == -1) {
-                // Escape sequence
-
-
-                while (kbd_buffer_empty()) {}
-                kbd_buffer_pop(&ch); // Actual code
-
-                if /* up arrow */ (ch == 0x48) {
-                    if (cmd_history_count > 0) {
-                        if (cmd_history_i < cmd_history_count - 1) {
-                            ++cmd_history_i;
-                            // Clear current line
-                            while (cmd_buffer_i > 0) {
-                                --cmd_buffer_i;
-                                backs();
-                            }
-                            // Copy history command to cmdbuffer
-                            strcpy(cmdbuffer, cmd_history[cmd_history_count - 1 - cmd_history_i]);
-                            cmd_buffer_i = (int)strlen(cmdbuffer);
-                            // Print command
-                            printf("%s", cmdbuffer);
-                        }
-                    }
-                } else if /* down arrow */ (ch == 0x50) {
-                    if (cmd_history_i >= 0) {
-                        --cmd_history_i;
-                        // Clear current line
-                        while (cmd_buffer_i > 0) {
-                            --cmd_buffer_i;
-                            backs();
-                        }
-                        if (cmd_history_i >= 0) {
-                            // Copy history command to cmdbuffer
-                            strcpy(cmdbuffer, cmd_history[cmd_history_count - 1 - cmd_history_i]);
-                            cmd_buffer_i = (int)strlen(cmdbuffer);
-                            // Print command
-                            printf("%s", cmdbuffer);
-                        } else {
-                            // Reset cmdbuffer
-                            memset(cmdbuffer, 0, CMD_BUFFER_MAX);
-                        }
-                    }
+                // Copy history command to cmdbuffer
+                strcpy(cmdbuffer, cmd_history[cmd_history_count - 1 - cmd_history_i]);
+                cmd_buffer_i = (int)strlen(cmdbuffer);
+                // Print command
+                printf("%s", cmdbuffer);
+            }
+            break;
+        }
+        case KEY_DOWN: {
+            if (cmd_history_i >= 0) {
+                --cmd_history_i;
+                // Clear current line
+                while (cmd_buffer_i > 0) {
+                    --cmd_buffer_i;
+                    backs();
                 }
-            } else {
-                // Leave space for end of string
-                if (cmd_buffer_i < (CMD_BUFFER_MAX - 1)) {
-                    printf("%c", ch);
-                    cmdbuffer[cmd_buffer_i] = ch;
-                    ++cmd_buffer_i;
+                if (cmd_history_i >= 0) {
+                    // Copy history command to cmdbuffer
+                    strcpy(cmdbuffer, cmd_history[cmd_history_count - 1 - cmd_history_i]);
+                    cmd_buffer_i = (int)strlen(cmdbuffer);
+                    // Print command
+                    printf("%s", cmdbuffer);
+                } else {
+                    // Reset cmdbuffer
+                    memset(cmdbuffer, 0, CMD_BUFFER_MAX);
                 }
             }
+            break;
+        }
         }
     }
 }
