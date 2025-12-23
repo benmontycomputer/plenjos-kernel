@@ -15,6 +15,10 @@ void mutex_unlock(mutex *m) {
     atomic_flag_clear_explicit(m, __ATOMIC_RELEASE);
 }
 
+bool mutex_is_locked(mutex *m) {
+    return atomic_load_explicit((_Atomic bool *)m, memory_order_acquire);
+}
+
 void rw_lock_init(rw_lock_t *lock) {
     atomic_store(&lock->state, 0);
     atomic_store(&lock->writers_waiting, 0);

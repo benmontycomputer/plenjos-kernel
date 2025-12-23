@@ -10,6 +10,7 @@ typedef atomic_flag mutex;
 
 void mutex_lock(mutex *m);
 void mutex_unlock(mutex *m);
+bool mutex_is_locked(mutex *m);
 
 // This lock allows multiple readers but only one writer (and no readers when writing)
 typedef struct rw_lock {
