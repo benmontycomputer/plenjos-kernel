@@ -156,7 +156,7 @@ void acpi_init() {
         hpet_header_global = (acpi_hpet_header_t *)hpet;
     }
 
-    printf("\n%b\n\n", fadt_header_global->BootArchitectureFlags);
+    printf("Boot architecture flags: %b\n", fadt_header_global->BootArchitectureFlags);
 
     if (fadt_header_global->BootArchitectureFlags & 0b10) {
         printf("PS/2 Controller detected!\n");
