@@ -4,17 +4,14 @@
 
 #include "devices/kconsole.h"
 #include "lib/stdio.h"
+#include "lib/lock.h"
 
 #include "memory/mm.h"
 
 #include "kernel.h"
 #include "lib/serial.h"
 
-typedef struct {
-    bool held;
-} mutex;
-
-static mutex console_access;
+static mutex console_access = MUTEX_INIT;
 
 extern char *fb;
 extern int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
@@ -30,16 +27,11 @@ static uint64_t console_pos;
 static bool cursor;
 
 void request_console() {
-    while (true) {
-        if (!console_access.held) {
-            console_access.held = true;
-            return;
-        }
-    }
+    mutex_lock(&console_access);
 }
 
 void release_console() {
-    console_access.held = false;
+    mutex_unlock(&console_access);
 }
 
 void scroll_console() {
