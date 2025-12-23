@@ -11,6 +11,7 @@
 
 #define TOTAL_IRQ 97
 
+// TODO: IMPORTANT?: PERFORMANCE: map this into userspace so we can check for routine existence without switching page tables
 static void (*routines[TOTAL_IRQ])(registers_t *) = { 0 };
 
 static uint32_t testint = 0;

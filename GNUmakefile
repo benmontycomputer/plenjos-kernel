@@ -153,11 +153,10 @@ clean:
 
 uefi_run:
 	qemu-system-x86_64 \
-		-M q35 \
 		-m 4096 \
 		-smp cores=4,threads=1,sockets=1,maxcpus=4 \
 		-boot d \
-		-cdrom ../image.iso \
+		-drive file=../image.iso,if=ide,media=cdrom \
 		-d guest_errors,cpu_reset,invalid_mem,unimp \
 		-vga std \
 		-serial stdio \
@@ -167,11 +166,10 @@ uefi_run:
 
 uefi_run_gdb:
 	qemu-system-x86_64 \
-		-M q35 \
 		-m 4096 \
 		-smp cores=4,threads=1,sockets=1,maxcpus=4 \
 		-boot d \
-		-cdrom ../image.iso \
+		-drive file=../image.iso,if=ide,media=cdrom \
 		-d guest_errors,cpu_reset,invalid_mem,unimp \
 		-vga std \
 		-serial stdio \

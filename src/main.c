@@ -16,7 +16,7 @@
 
 #include "cpu/cpu.h"
 #include "devices/input/keyboard/keyboard.h"
-#include "devices/input/keyboard/ps2kbd.h"
+#include "devices/input/keyboard/drivers/ps2kbd.h"
 #include "devices/pci/pci.h"
 #include "devices/storage/ide.h"
 #include "exec/elf.h"

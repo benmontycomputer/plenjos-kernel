@@ -1,4 +1,4 @@
-#include "devices/input/keyboard/ps2kbd.h"
+#include "devices/input/keyboard/drivers/ps2kbd.h"
 
 #include "arch/x86_64/apic/apic.h"
 #include "arch/x86_64/common.h"

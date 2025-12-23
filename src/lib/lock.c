@@ -5,14 +5,14 @@
 #include <stdint.h>
 
 void mutex_lock(mutex *m) {
-    while (atomic_flag_test_and_set_explicit(m, __ATOMIC_ACQUIRE)) {
+    while (atomic_flag_test_and_set_explicit(m, memory_order_acquire)) {
         // Wait
         __builtin_ia32_pause();
     }
 }
 
 void mutex_unlock(mutex *m) {
-    atomic_flag_clear_explicit(m, __ATOMIC_RELEASE);
+    atomic_flag_clear_explicit(m, memory_order_release);
 }
 
 bool mutex_is_locked(mutex *m) {

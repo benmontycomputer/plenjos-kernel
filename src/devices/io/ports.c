@@ -18,6 +18,16 @@ void outb(uint16_t port, uint8_t val) {
      * number a wider C type */
 }
 
+uint16_t inw(uint16_t port) {
+    uint16_t value;
+    asm volatile("inw %w1, %0" : "=a"(value) : "Nd"(port) : "memory");
+    return value;
+}
+
+void outw(uint16_t port, uint16_t value) {
+    asm volatile("outw %0, %w1" : : "a"(value), "Nd"(port) : "memory");
+}
+
 // 32-bit read
 uint32_t inl(uint16_t port) {
     uint32_t value;
