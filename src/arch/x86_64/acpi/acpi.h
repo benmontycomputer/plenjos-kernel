@@ -124,9 +124,9 @@ typedef struct {
     GenericAddressStructure X_GPE1Block;
 } __attribute__((packed)) acpi_fadt_header_t;
 
-typedef struct {
+/* typedef struct {
 
-} acpi_dsdt_header_t;
+} acpi_dsdt_header_t; */
 
 typedef struct {
     ACPISDTHeader_t h;

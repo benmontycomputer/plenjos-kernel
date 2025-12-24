@@ -83,7 +83,7 @@ void gdt_tss_init() {
         address: (uint64_t)gdt_entries[get_curr_core()],
     };
 
-    asm("lgdt %0" : : "m"(example_gdtr));
+    asm volatile("lgdt %0" : : "m"(example_gdtr));
     reload_segments();
 
     tss_reload(TSS_SELECTOR);

@@ -160,7 +160,7 @@ void dump_machine_check_msrs()
 }
 
 __attribute__((noreturn)) void exception_handler(registers_t *regs) {
-    // __asm__ volatile ("cli; hlt"); // Completely hangs the computer
+    // asm volatile ("cli; hlt"); // Completely hangs the computer
 
     uint64_t cr3 = get_cr3_addr();
 
@@ -171,7 +171,7 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
         regs = (registers_t *)phys_to_virt(regs_phys);
     }
 
-    // release_console();
+    release_console();
 
     if (regs->int_no == 14) {
         printf("\nPAGE FAULT\n");
@@ -225,8 +225,8 @@ void idt_set_descriptor(uint8_t vector, void *isr, uint8_t flags) {
 static bool vectors[IDT_MAX_DESCRIPTORS];
 
 void idt_load() {
-    __asm__ volatile("lidt %0" : : "m"(idtr)); // load the new IDT
-    __asm__ volatile("sti");                   // set the interrupt flag
+    asm volatile("lidt %0" : : "m"(idtr)); // load the new IDT
+    asm volatile("sti");                   // set the interrupt flag
 }
 
 void idt_init() {
