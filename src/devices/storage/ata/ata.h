@@ -1,6 +1,8 @@
 #pragma once
 
 #include "atapi.h"
+#include "devices/storage/drive.h"
+#include "kernel.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -136,13 +138,16 @@ struct atapi_info {
     // ATAPI specific info can go here
 };
 
-void ata_parse_identify(struct ide_device *dev);
-void atapi_parse_identify(struct ide_device *dev);
+int ata_parse_identify(struct ide_device *dev);
+int atapi_parse_identify(struct ide_device *dev);
 
 void atapi_read_data(struct ide_device *dev, void *buffer, size_t bytes);
 void atapi_write_data(struct ide_device *dev, const void *buffer, size_t bytes);
 
-void atapi_ready_device(struct ide_device *dev);
+ssize_t atapi_read_sectors_func(DRIVE_t *drive, uint64_t lba, size_t sectors, void *buffer);
+ssize_t atapi_write_sectors_func(DRIVE_t *drive, uint64_t lba, size_t sectors, const void *buffer);
+
+int atapi_ready_device(struct ide_device *dev);
 
 int ata_wait_bsy_read_status(uint16_t io);
 int ata_wait_drq(uint16_t io);

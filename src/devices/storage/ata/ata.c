@@ -20,7 +20,7 @@ int ata_wait_drq(uint16_t io) {
     return -1;
 }
 
-void ata_parse_identify(struct ide_device *dev) {
+int ata_parse_identify(struct ide_device *dev) {
     /**
      * Process IDENTIFY data here as needed. Here are some useful fields:
      *  - Word 0: general configuration: bit 7 = removable, bit 15 = fixed disk
@@ -67,4 +67,6 @@ void ata_parse_identify(struct ide_device *dev) {
         // 28-bit LBA or legacy CHS
         dev->numsectors = dev->identify.sectors28;
     }
+
+    return 0;
 }

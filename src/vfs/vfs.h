@@ -51,6 +51,9 @@ typedef int (*vfs_create_child_func_t)(fscache_node_t *parent, const char *name,
 // The load function loads a child from a parent (directory)
 typedef int (*vfs_load_func_t)(fscache_node_t *node, const char *name, fscache_node_t *out);
 
+// Mounts a filesystem at the given mount point node. The mount point node is guaranteed to be a directory.
+typedef bool (*vfs_mount_func_t)(const char *device, fscache_node_t *mount_point);
+
 // The stat function; doesn't require any permissions on the node, but all parent directories must be executable to
 // reach it This may be needed again if we implement any filesystems where stat can be changed without the knowledge of
 // the fscache_node_t typedef ssize_t (*vfs_stat_func_t)(fscache_node_t *node, struct kstat *out_stat);
@@ -79,7 +82,9 @@ struct vfs_ops_block {
 
 typedef struct vfs_filesystem {
     const char *name;
-    bool (*mount)(const char *device, vfs_handle_t *mount_point);
+    vfs_mount_func_t mount;
+
+    uint64_t instance_data[4];
 } vfs_filesystem_t;
 
 void vfs_init();

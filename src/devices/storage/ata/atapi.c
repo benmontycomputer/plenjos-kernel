@@ -10,12 +10,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
-void atapi_parse_identify(struct ide_device *dev) {
+int atapi_parse_identify(struct ide_device *dev) {
     struct atapi_identify *atapi_id = &dev->atapi_identify;
 
     // Additional parsing can be done here as needed
 
-    atapi_ready_device(dev);
+    return atapi_ready_device(dev);
 }
 
 // Make sure to select the device and lock the bus first!
@@ -170,14 +170,14 @@ int atapi_send_packet_command(struct ide_device *dev, const uint8_t *packet, siz
 
 // We don't strictly need to lock the bus here; this is called during initialization. However, our select function does
 // it anyways.
-void atapi_ready_device(struct ide_device *dev) {
+int atapi_ready_device(struct ide_device *dev) {
     // Implementation to ready the ATAPI device (e.g., check status, wait for readiness)
 
     int res = ide_select_bus(dev);
 
     if (res != 0) {
         printf("Error: could not select bus for ATAPI device\n\n");
-        return;
+        goto finally;
     }
 
     /* 1. IDENTIFY PACKET has already been handled and parsed */
@@ -189,7 +189,7 @@ void atapi_ready_device(struct ide_device *dev) {
                                     0, 0);
     if (res != 0) {
         printf("Error: INQUIRY command failed for ATAPI device\n");
-        return;
+        goto finally;
     } else {
         // Parse inquiry_buffer as needed
         printf("ATAPI Device Inquiry Data:\n");
@@ -207,11 +207,12 @@ void atapi_ready_device(struct ide_device *dev) {
 
         uint8_t request_sense_packet[12] = { ATAPI_COMMAND_REQUEST_SENSE, 0, 0, 0, 18, 0, 0, 0, 0, 0, 0, 0 };
         uint8_t sense_buffer[18]         = { 0 };
-        res = atapi_send_packet_command(dev, request_sense_packet, sizeof(request_sense_packet), sense_buffer,
+        int res_2 = atapi_send_packet_command(dev, request_sense_packet, sizeof(request_sense_packet), sense_buffer,
                                         sizeof(sense_buffer), 0, 0);
-        if (res != 0) {
+        if (res_2 != 0) {
+            res = res_2;
             printf("Error: REQUEST SENSE command failed for ATAPI device\n\n");
-            return;
+            goto finally;
         } else {
             printf("ATAPI Device Sense Data:\n");
             printf("  Sense Key: %02x\n", sense_buffer[2] & 0x0F);
@@ -219,8 +220,7 @@ void atapi_ready_device(struct ide_device *dev) {
             printf("  Additional Sense Code Qualifier: %02x\n", sense_buffer[13]);
         }
 
-        printf("\n");
-        return;
+        goto finally;
     } else {
         printf("ATAPI Device is ready.\n");
     }
@@ -231,7 +231,7 @@ void atapi_ready_device(struct ide_device *dev) {
                                     sizeof(capacity_buffer), 0, 0);
     if (res != 0) {
         printf("Error: READ CAPACITY command failed for ATAPI device\n\n");
-        return;
+        goto finally;
     } else {
         uint32_t max_lba
             = (capacity_buffer[0] << 24) | (capacity_buffer[1] << 16) | (capacity_buffer[2] << 8) | capacity_buffer[3];
@@ -248,13 +248,64 @@ void atapi_ready_device(struct ide_device *dev) {
         dev->logical_sector_size  = block_size;
         dev->physical_sector_size = block_size;
         dev->numsectors           = (uint64_t)(max_lba + 1);
-    }
+    }    
 
-    res = ide_unlock_bus(dev);
-    if (res != 0) {
-        printf("Error: could not unlock bus for ATAPI device\n\n");
-        return;
+finally:
+    int unlock_res = ide_unlock_bus(dev);
+    if (unlock_res != 0) {
+        printf("Error: could not unlock bus for ATAPI device\n");
+        res = unlock_res;
     }
 
     printf("\n");
+    return res;
+}
+
+ssize_t atapi_read_sectors_func(struct DRIVE *drive, uint64_t lba, size_t sectors, void *buffer) {
+    struct ide_device *dev = (struct ide_device *)drive->internal_data;
+
+    if (!dev) {
+        printf("Error: DRIVE internal_data is NULL in atapi_read_sectors_func\n");
+        return -1;
+    }
+
+    if (sectors == 0) {
+        return 0;
+    }
+
+    int res = ide_select_bus(dev);
+    if (res != 0) {
+        printf("Error: could not select bus for ATAPI device\n");
+        return -1;
+    }
+
+    uint32_t bytes_per_sector = drive->logical_sector_size;
+    size_t total_bytes        = sectors * bytes_per_sector;
+    uint32_t sector_count     = (uint32_t)sectors;
+
+    // Construct READ(10) packet
+    uint8_t read_packet[12] = { ATAPI_COMMAND_READ_10,
+                                0,
+                                (uint8_t)((lba >> 24) & 0xFF),
+                                (uint8_t)((lba >> 16) & 0xFF),
+                                (uint8_t)((lba >> 8) & 0xFF),
+                                (uint8_t)(lba & 0xFF),
+                                0,
+                                (uint8_t)((sector_count >> 8) & 0xFF),
+                                (uint8_t)(sector_count & 0xFF),
+                                0,
+                                0,
+                                0 };
+
+    // printf("ATAPI READ(10): LBA=%p, Sector Count=%u, Total Bytes=%lu\n", (void *)lba, sector_count, total_bytes);
+    res = atapi_send_packet_command(dev, read_packet, sizeof(read_packet), buffer, total_bytes, 0, 0);
+
+    ide_unlock_bus(dev);
+
+    if (res != 0) {
+        printf("Error: READ(10) command failed for ATAPI device (reading from lba %p, %lu sectors)\n", (void *)lba, sectors);
+        return -1;
+    }
+
+    return (ssize_t)total_bytes;
 }

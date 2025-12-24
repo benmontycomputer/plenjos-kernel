@@ -7,6 +7,8 @@
 #include "kernel.h"
 #include "lib/lock.h"
 #include "lib/stdio.h"
+#include "lib/string.h"
+#include "mbr.h"
 #include "timer/pit.h"
 
 #include <stdatomic.h>
@@ -66,8 +68,8 @@ int ide_unlock_bus(struct ide_device *dev) {
     return 0;
 }
 
-enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive, struct ide_device *dev) {
-    dev->flags = drive ? IDE_DEVICE_FLAG_SLAVE : 0;
+enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive_no, struct ide_device *dev) {
+    dev->flags = drive_no ? IDE_DEVICE_FLAG_SLAVE : 0;
 
     enum ata_device_type type;
     uint8_t status
@@ -76,12 +78,12 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive, st
 
     if (status == 0xFF) {
         printf("WARN: Floating bus detected on IDE channel (io=%x, ctrl=%x, drive=%d)\n", channel->cmd_base,
-               channel->ctrl_base, drive);
+               channel->ctrl_base, drive_no);
         return ATADEV_NONE; // No device present (floating bus)
     }
 
     /* Select drive */
-    outb(channel->cmd_base + ATA_REG_HDDEVSEL, 0xA0 | (drive << 4));
+    outb(channel->cmd_base + ATA_REG_HDDEVSEL, 0xA0 | (drive_no << 4));
     inb(channel->ctrl_base); // 400ns delay
     inb(channel->ctrl_base);
     inb(channel->ctrl_base);
@@ -143,12 +145,12 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive, st
 
     if (ata_wait_drq(channel->cmd_base) != 0) {
         printf("Error: PATAPI device on IDE channel (io=%x, ctrl=%x, drive=%d) did not set DRQ after IDENTIFY\n",
-               channel->cmd_base, channel->ctrl_base, drive);
+               channel->cmd_base, channel->ctrl_base, drive_no);
         return ATADEV_NONE;
     } else {
-        dev->channel = channel;
-        dev->drive   = drive;
-        dev->type    = type;
+        dev->channel  = channel;
+        dev->drive_no = drive_no;
+        dev->type     = type;
 
         // Read IDENTIFY data
         for (int i = 0; i < 256; i++) {
@@ -157,10 +159,23 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive, st
 
         if (dev->flags & IDE_DEVICE_FLAG_ATAPI) {
             // ATAPI device
-            atapi_parse_identify(dev);
+            int res = atapi_parse_identify(dev);
+
+            if (res != 0) {
+                printf(
+                    "Error: could not parse IDENTIFY data for ATAPI device on IDE channel (io=%x, ctrl=%x, drive=%d)\n",
+                    channel->cmd_base, channel->ctrl_base, drive_no);
+                return ATADEV_NONE;
+            }
         } else {
             // ATA device
-            ata_parse_identify(dev);
+            int res = ata_parse_identify(dev);
+            if (res != 0) {
+                printf(
+                    "Error: could not parse IDENTIFY data for ATA device on IDE channel (io=%x, ctrl=%x, drive=%d)\n",
+                    channel->cmd_base, channel->ctrl_base, drive_no);
+                return ATADEV_NONE;
+            }
         }
     }
 
@@ -179,30 +194,43 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive, st
         size_label  = "GiB";
     }
 
+    const char *type_str = type == ATADEV_PATA     ? "PATA"
+                           : type == ATADEV_SATA   ? "SATA"
+                           : type == ATADEV_PATAPI ? "PATAPI"
+                           : type == ATADEV_SATAPI ? "SATAPI"
+                                                   : "Unknown";
+
     printf(
-        "Found %s IDE device, size %d%s on IDE channel (io=%x, ctrl=%x, drive=%d). Sector size: %d bytes; %d logical "
+        "Found %s IDE device, size %lu%s on IDE channel (io=%x, ctrl=%x, drive=%d). Sector size: %u bytes; %u logical "
         "sectors per physical sector; %p sectors.\n",
-        dev->type == ATADEV_PATA     ? "PATA"
-        : dev->type == ATADEV_SATA   ? "SATA"
-        : dev->type == ATADEV_PATAPI ? "PATAPI"
-        : dev->type == ATADEV_SATAPI ? "SATAPI"
-                                     : "Unknown",
-        (int)size_out, size_label, channel->cmd_base, channel->ctrl_base, drive, dev->logical_sector_size,
-        dev->identify.sector_size_info & 0x0F ? (1 << (dev->identify.sector_size_info & 0x0F)) : 1, dev->numsectors);
+        type_str, size_out, size_label, (uint32_t)channel->cmd_base, (uint32_t)channel->ctrl_base, drive_no,
+        dev->logical_sector_size, dev->physical_sector_size / dev->logical_sector_size, dev->numsectors);
+
+    dev->flags |= IDE_DEVICE_FLAG_PRESENT;
+
+    dev->drive.internal_data = (void *)dev;
+    strncpy(dev->drive.model, dev->identify.model, 40);
+    strncpy(dev->drive.interface, "IDE", 15);
+    dev->drive.logical_sector_size  = dev->logical_sector_size;
+    dev->drive.physical_sector_size = dev->physical_sector_size;
+    dev->drive.numsectors           = dev->numsectors;
 
     switch (type) {
     case ATADEV_PATAPI: {
-
+        dev->drive.read_sectors  = atapi_read_sectors_func;
+        dev->drive.write_sectors = NULL; // Not supported
         break;
     }
     default: {
         printf("Found unsupported ATA device type %d on IDE channel (io=%x, ctrl=%x, drive=%d)\n", type,
-               channel->cmd_base, channel->ctrl_base, drive);
+               channel->cmd_base, channel->ctrl_base, drive_no);
         break;
     }
     }
 
-    dev->flags |= IDE_DEVICE_FLAG_PRESENT;
+    struct MBR mbr;
+
+    drive_read_mbr(&dev->drive, &mbr);
 
     return type;
 }
@@ -210,9 +238,10 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive, st
 void ide_irq_routine(registers_t *regs, struct ide_channel *channel) {
     if (!mutex_is_locked(&channel->lock)) {
         // Spurious IRQ?
-        printf("KERNEL ERROR/WARN: IDE bus w/ IRQ %d isn't locked, but an IRQ was fired. Spurious IRQ or programming "
-               "error?\n",
-               (int)channel->irq_no);
+        printf_nolock(
+            "KERNEL ERROR/WARN: IDE bus w/ IRQ %d isn't locked, but an IRQ was fired. Spurious IRQ or programming "
+            "error?\n",
+            (int)channel->irq_no);
         return;
     }
 
@@ -221,13 +250,14 @@ void ide_irq_routine(registers_t *regs, struct ide_channel *channel) {
 
     // Increment IRQ processing count
     if (atomic_fetch_add_explicit(&channel->irq_cnt, 1, memory_order_acquire) > 0) {
-        printf("KERNEL ERROR/WARN: IDE bus w/ IRQ %d has multiple (%d) IRQs being processed simultaneously. IRQs may be "
-               "lost. Are we moving too slowly?\n",
-               (int)channel->irq_no, (int)atomic_load_explicit(&channel->irq_cnt, memory_order_acquire));
+        printf_nolock(
+            "KERNEL ERROR/WARN: IDE bus w/ IRQ %d has multiple (%d) IRQs being processed simultaneously. IRQs may be "
+            "lost. Are we moving too slowly?\n",
+            (int)channel->irq_no, (int)atomic_load_explicit(&channel->irq_cnt, memory_order_acquire));
     } else {
         // Successfully acknowledged IRQ
-        printf("IDE IRQ %d acknowledged, IRQs being processed: %d\n", (int)channel->irq_no,
-               (int)atomic_load_explicit(&channel->irq_cnt, memory_order_acquire));
+        /* printf_nolock("IDE IRQ %d acknowledged, IRQs being processed: %d\n", (int)channel->irq_no,
+                      (int)atomic_load_explicit(&channel->irq_cnt, memory_order_acquire)); */
     }
 }
 
@@ -276,7 +306,7 @@ void ide_init() {
     irq_register_routine(IDE_SECONDARY_IRQ, ide_secondary_irq_routine);
 
     if (!(ide_probe_device(&legacy_ide_channels[0], 0, &legacy_ide_devices[0])
-        || ide_probe_device(&legacy_ide_channels[0], 1, &legacy_ide_devices[1]))) {
+          || ide_probe_device(&legacy_ide_channels[0], 1, &legacy_ide_devices[1]))) {
         // Device(s) found on primary channel
         printf("Unregistering primary IDE IRQ handler\n");
         irq_unregister_routine(IDE_PRIMARY_IRQ);
@@ -299,14 +329,14 @@ int ide_select_bus(struct ide_device *dev) {
     // Valid legacy IDE channel
     ide_lock_bus(dev);
 
-    if (dev->channel->selected != dev->drive) {
-        outb(dev->channel->cmd_base + ATA_REG_HDDEVSEL, 0xA0 | (dev->drive << 4));
+    if (dev->channel->selected != dev->drive_no) {
+        outb(dev->channel->cmd_base + ATA_REG_HDDEVSEL, 0xA0 | (dev->drive_no << 4));
         inb(dev->channel->ctrl_base); // 400ns delay
         inb(dev->channel->ctrl_base);
         inb(dev->channel->ctrl_base);
         inb(dev->channel->ctrl_base);
 
-        dev->channel->selected = dev->drive;
+        dev->channel->selected = dev->drive_no;
     }
 
     return 0;

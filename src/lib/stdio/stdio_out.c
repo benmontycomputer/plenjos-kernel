@@ -143,6 +143,53 @@ void printf_uint(uint32_t num) {
     }
 }
 
+void printf_long(int64_t num, uint16_t min_digits) {
+    uint64_t adj = 0;
+
+    char vals[((8 * sizeof(int64_t)) + 9) / 10] = { 0 };
+
+    if (num < 0) {
+        adj = -num;
+        printf_ch('-');
+    } else {
+        adj = num;
+    }
+
+    int i = 0;
+
+    while (adj || !i) {
+        vals[i++]  = hex_indices[adj % 10];
+        adj       /= 10;
+    }
+
+    if (min_digits > i) {
+        while (min_digits > i) {
+            vals[i++] = '0';
+        }
+    }
+
+    while (i) {
+        printf_ch(vals[--i]);
+    }
+}
+
+void printf_ulong(uint64_t num) {
+    uint64_t adj = num;
+
+    char vals[((8 * sizeof(uint64_t)) + 9) / 10] = { 0 };
+
+    int i = 0;
+
+    while (adj || !i) {
+        vals[i++]  = hex_indices[adj % 10];
+        adj       /= 10;
+    }
+
+    while (i) {
+        printf_ch(vals[--i]);
+    }
+}
+
 void printf_hex(uint32_t hex, uint16_t pad_to) {
     uint64_t adj = (uint64_t)hex;
 
@@ -193,14 +240,7 @@ void printf_hex_long(uint64_t hex, uint16_t pad_to) {
     }
 } */
 
-// %d or %i for integers, %f for floating-point, %s for string, %c for char, %x for hex, %p for pointer, %ld for signed
-// long, %lu for unsigned long
-int printf(const char *format, ...) {
-    request_console();
-
-    va_list list;
-    va_start(list, format);
-
+int _printf_internal(const char *format, va_list list) {
     for (int i = 0; format[i]; i++) {
         if (format[i] == '%') {
             i++;
@@ -236,7 +276,7 @@ int printf(const char *format, ...) {
                 break;
             }
             case 's': {
-                printf_str(va_arg(list, const char *), 0);
+                printf_str(va_arg(list, const char *), -1);
                 break;
             }
             case 'x': {
@@ -251,10 +291,16 @@ int printf(const char *format, ...) {
                 i++;
                 switch (format[i]) {
                 case 'd':
+                    printf_long(va_arg(list, int64_t), 0);
                     break;
                 case 'u':
+                    printf_ulong(va_arg(list, uint64_t));
+                    break;
+                default:
+                    va_arg(list, void *); // consume arg
                     break;
                 }
+                break;
             }
             case '.':
             case '0': {
@@ -280,19 +326,50 @@ int printf(const char *format, ...) {
                     printf_hex((uint32_t)va_arg(list, uint32_t), precision);
                     break;
                 default:
+                    va_arg(list, void *); // consume arg
                     break;
                 }
                 break;
             }
+            default:
+                printf_ch(format[i]);
+                break;
             }
         } else {
             printf_ch(format[i]);
         }
     }
 
+    return 0;
+}
+
+// Use in IRQ handlers in case a process has STDIO locked when interrupt happens
+int printf_nolock(const char *format, ...) {
+    va_list list;
+    va_start(list, format);
+
+    int res = _printf_internal(format, list);
+
+    va_end(list);
+
+    return res;
+}
+
+// %d or %i for integers, %f for floating-point, %s for string, %c for char, %x for hex, %p for pointer, %ld for signed
+// long, %lu for unsigned long
+int printf(const char *format, ...) {
+    request_console();
+
+    va_list list;
+    va_start(list, format);
+
+    int res = _printf_internal(format, list);
+
+    va_end(list);
+
     release_console();
 
-    return 0;
+    return res;
 }
 
 int backs() {

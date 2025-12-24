@@ -153,6 +153,7 @@ static heap_segment_info_t *kheap_segment_split(heap_segment_info_t *segment, si
 }
 
 // TODO: is it safe to return this memory without clearing it?
+// TODO: use refing/unrefing frames for extremely large allocations?
 void *kmalloc_heap(uint64_t size) {
     if (size == 0) return NULL;
 

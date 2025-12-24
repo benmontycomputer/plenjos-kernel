@@ -1,6 +1,7 @@
 #pragma once
 
-#include "devices/storage/ata/ata.h"
+#include "ata/ata.h"
+#include "drive.h"
 #include "lib/lock.h"
 
 #include <stdatomic.h>
@@ -44,7 +45,7 @@ struct ide_channel {
 
 struct ide_device {
     struct ide_channel *channel;
-    int drive; // 0=master, 1=slave
+    int drive_no; // 0=master, 1=slave
 
     enum ata_device_type type;
 
@@ -65,6 +66,8 @@ struct ide_device {
         struct ata_identify identify;
         struct atapi_identify atapi_identify;
     };
+
+    struct DRIVE drive;
 };
 
 void ide_init();
