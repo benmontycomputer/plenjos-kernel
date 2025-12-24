@@ -7,7 +7,7 @@ override OUTPUT = user_shell.elf
 # ====== Compiler & Linker ======
 # GCC = /usr/local/x86_64-elf/bin/x86_64-elf-gcc
 CC = $(TOOLCHAIN_PREFIX)gcc
-CFLAGS := -g -Wall -Wextra -std=gnu11 -m64 -march=x86-64 \
+CFLAGS := -g -Wall -Wextra -pedantic -std=gnu11 -Wno-vla -m64 -march=x86-64 \
            -fno-pie -no-pie -nostdlib -nostartfiles \
 		   -mno-mmx -mno-sse -mno-sse2 \
            -ffreestanding -O2

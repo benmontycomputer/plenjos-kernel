@@ -58,10 +58,14 @@ ifeq ($(CC_IS_CLANG),1)
 endif
 
 # Internal C flags that should not be changed by the user.
+# VLAs are banned because they can cause stack overflows in kernel code.
 override CFLAGS += \
     -Wall \
     -Wextra \
     -std=gnu11 \
+	-Wvla \
+	-Werror=vla \
+	-pedantic \
     -ffreestanding \
     -fno-stack-protector \
     -fno-stack-check \
