@@ -109,6 +109,9 @@ void print_byte_binary(uint8_t byte) {
 
 typedef enum { READFILE_MODE_TEXT, READFILE_MODE_HEX, READFILE_MODE_HEX_BYTES, READFILE_MODE_BINARY } readfile_mode_t;
 
+#define READFILE_BUF_SIZE 1024
+static char readfile_buf[READFILE_BUF_SIZE];
+
 int readfile_cmd(int argc, char argv[][CMD_BUFFER_MAX]) {
     if (argc < 2) {
         _readfile_help();
@@ -165,34 +168,42 @@ int readfile_cmd(int argc, char argv[][CMD_BUFFER_MAX]) {
     case READFILE_MODE_HEX: {
         // Do we want to flip the endianness here?
         bool space = false;
-        int ch;
-        while ((ch = fgetc(file)) != EOF) {
-            print_byte_hex((uint8_t)ch);
-            space &&putchar(' ');
-            space = !space;
+        size_t bytes_read;
+        while ((bytes_read = fread(readfile_buf, 1, READFILE_BUF_SIZE, file)) > 0) {
+            for (size_t i = 0; i < bytes_read; i++) {
+                print_byte_hex((uint8_t)readfile_buf[i]);
+                space &&putchar(' ');
+                space = !space;
+            }
         }
         break;
     }
     case READFILE_MODE_HEX_BYTES: {
-        int ch;
-        while ((ch = fgetc(file)) != EOF) {
-            print_byte_hex((uint8_t)ch);
-            putchar(' ');
+        size_t bytes_read;
+        while ((bytes_read = fread(readfile_buf, 1, READFILE_BUF_SIZE, file)) > 0) {
+            for (size_t i = 0; i < bytes_read; i++) {
+                print_byte_hex((uint8_t)readfile_buf[i]);
+                putchar(' ');
+            }
         }
         break;
     }
     case READFILE_MODE_BINARY: {
-        int ch;
-        while ((ch = fgetc(file)) != EOF) {
-            print_byte_binary((uint8_t)ch);
-            putchar(' ');
+        size_t bytes_read;
+        while ((bytes_read = fread(readfile_buf, 1, READFILE_BUF_SIZE, file)) > 0) {
+            for (size_t i = 0; i < bytes_read; i++) {
+                print_byte_binary((uint8_t)readfile_buf[i]);
+                putchar(' ');
+            }
         }
         break;
     }
     case READFILE_MODE_TEXT: {
-        int ch;
-        while ((ch = fgetc(file)) != EOF) {
-            putchar(ch);
+        size_t bytes_read;
+        while ((bytes_read = fread(readfile_buf, 1, READFILE_BUF_SIZE, file)) > 0) {
+            for (size_t i = 0; i < bytes_read; i++) {
+                putchar(readfile_buf[i]);
+            }
         }
         break;
     }
