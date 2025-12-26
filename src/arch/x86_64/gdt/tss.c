@@ -44,6 +44,8 @@ void tss_set_entry(int i, uint64_t base, uint32_t limit, uint8_t access, uint8_t
 }
 
 void tss_init() {
+    TSS_STACK_ADDR += PAGE_LEN * 4; // Leave 4 guard pages
+
     uint64_t stack = TSS_STACK_ADDR;
 
     for (uint64_t i = 0; i < KERNEL_STACK_SIZE; i += PAGE_LEN) {
