@@ -1,22 +1,21 @@
+#include "arch/x86_64/acpi/acpi.h"
+
+#include "arch/x86_64/apic/apic.h"
+#include "kernel.h"
+#include "lib/stdio.h"
+#include "lib/string.h"
+#include "limine.h"
+#include "memory/mm.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#include "limine.h"
-
-#include "lib/stdio.h"
-#include "lib/string.h"
-
-#include "arch/x86_64/acpi/acpi.h"
-#include "arch/x86_64/apic/apic.h"
-#include "memory/mm.h"
-
-#include "kernel.h"
-
 // https://wiki.osdev.org/RSDT
 
 // Get RSDP info
-__attribute__((used, section(".limine_requests"))) static volatile struct limine_rsdp_request rsdp_request
+__attribute__((used, section(".limine_requests"))) //
+static volatile struct limine_rsdp_request rsdp_request
     = { .id = LIMINE_RSDP_REQUEST, .revision = 0 };
 
 bool checksum_sdt(ACPISDTHeader_t *tableHeader) {
@@ -34,15 +33,14 @@ XSDT_t *xsdt_global = NULL;
 acpi_madt_header_t *madt_header_global;
 acpi_fadt_header_t *fadt_header_global;
 acpi_hpet_header_t *hpet_header_global;
-RSDP_t *rsdp = NULL;
+RSDP_t *rsdp                   = NULL;
 RSDP_EXTENDED_t *rsdp_extended = NULL;
 
 bool ps2_detected = false;
 
 int get_entry_count() {
     if (xsdt_global) return (xsdt_global->h.Length - sizeof(xsdt_global->h)) / 8;
-    else
-        return (rsdt_global->h.Length - sizeof(rsdt_global->h)) / 4;
+    else return (rsdt_global->h.Length - sizeof(rsdt_global->h)) / 4;
 }
 
 // Returns the virtual address
