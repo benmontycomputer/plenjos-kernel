@@ -1,4 +1,4 @@
-MODULE_DIR = module
+MODULE_DIR = usr/shell
 
 # Nuke built-in rules and variables.
 MAKEFLAGS += -rR
@@ -156,7 +156,7 @@ obj/%.psf.o: %.psf GNUmakefile
 # Remove object files and the final executable.
 .PHONY: clean
 clean:
-	rm -rf bin obj module/bin module/obj
+	rm -rf bin obj usr/shell/bin usr/shell/obj
 
 uefi_run:
 	qemu-system-x86_64 \

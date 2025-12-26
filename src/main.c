@@ -15,8 +15,8 @@
 #endif
 
 #include "cpu/cpu.h"
-#include "devices/input/keyboard/keyboard.h"
 #include "devices/input/keyboard/drivers/ps2kbd.h"
+#include "devices/input/keyboard/keyboard.h"
 #include "devices/pci/pci.h"
 #include "devices/storage/ide.h"
 #include "exec/elf.h"
@@ -27,6 +27,8 @@
 #include "proc/thread.h"
 #include "syscall/syscall.h"
 #include "timer/pit.h"
+#include "vfs/fscache.h"
+#include "vfs/iso9660/iso9660.h"
 #include "vfs/vfs.h"
 
 bool debug_serial = false;
@@ -253,7 +255,7 @@ void kmain(void) {
 
     assign_thread_to_cpu(shell_thread); */
 
-    if (!module_request.response) {
+    /* if (!module_request.response) {
         printf("No modules detected.\n");
     } else {
         // for (size_t i = 0; i < 12; i++) {
@@ -269,6 +271,63 @@ void kmain(void) {
 
         thread_ready(shell_thread);
         // }
+    } */
+
+    vfs_handle_t *iso_root_handle;
+    int res = vfs_open("/iso9660/bin/init", SYSCALL_OPEN_FLAG_READ, 0, 0, &iso_root_handle);
+    if (res == 0) {
+        printf("Loading init from iso9660...\n\n");
+        uint64_t file_size = ((struct vfs_iso9660_cache_node_data *)iso_root_handle->backing_node->internal_data)->dir_record->data_length_le;
+
+        void *elf_buf = kmalloc_heap(file_size);
+        if (!elf_buf) {
+            printf("OOM error allocating memory for elf buffer\n");
+            hcf();
+        }
+
+        ssize_t read_bytes = vfs_read(iso_root_handle, elf_buf, file_size);
+        vfs_close(iso_root_handle);
+        if (read_bytes < 0) {
+            printf("Error reading iso9660/bin/init: %d\n", (int)read_bytes);
+            hcf();
+        } else if ((uint64_t)read_bytes != file_size) {
+            printf("Short read reading iso9660/bin/init: expected %p, got %p\n", (void *)file_size,
+                   (void *)read_bytes);
+            hcf();
+        }
+
+        proc_t *shell_proc = create_proc("init", NULL);
+
+        uint64_t entry, stack;
+
+        loadelf(elf_buf, shell_proc->pml4, &entry, &stack);
+        kfree_heap(elf_buf);
+
+        thread_t *shell_thread = create_thread(shell_proc, "init_t0", (void *)entry, NULL);
+
+        thread_ready(shell_thread);
+
+        kfree_heap(elf_buf);
+    } else {
+        printf("\nWARN: Falling back to module...\n\n");
+
+        if (!module_request.response) {
+            printf("No modules detected.\n");
+        } else {
+            // for (size_t i = 0; i < 12; i++) {
+            void *elf_addr = module_request.response->modules[0]->address;
+
+            proc_t *shell_proc = create_proc("kshell", NULL);
+
+            uint64_t entry, stack;
+
+            loadelf(elf_addr, shell_proc->pml4, &entry, &stack);
+
+            thread_t *shell_thread = create_thread(shell_proc, "kshell_t0", (void *)entry, NULL);
+
+            thread_ready(shell_thread);
+            // }
+        }
     }
 
     /* for (size_t i = 0; i < 4; i++) {

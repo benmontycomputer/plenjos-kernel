@@ -12,7 +12,7 @@ CFLAGS := -g -Wall -Wextra -pedantic -std=gnu11 -Wno-vla -m64 -march=x86-64 \
 		   -mno-mmx -mno-sse -mno-sse2 \
            -ffreestanding -O2
 
-CPPFLAGS := -I ../include -I src -I src/libc
+CPPFLAGS := -I ../../include -I src -I src/libc
 
 # LD = /usr/local/x86_64-elf/bin/x86_64-elf-ld
 LD = $(TOOLCHAIN_PREFIX)ld
@@ -32,7 +32,7 @@ OBJ_FILES := $(addprefix obj/,$(SRC_FILES:.c=.c.o) $(PSF_FILES:.psf=.psf.o))
 
 # Use "find" to glob all *.c, *.S, and *.asm files in the tree and obtain the
 # object and header dependency file names.
-override SRCFILES := $(shell find -L src -type f 2>/dev/null | LC_ALL=C sort)
+override SRCFILES := $(shell find -L src/ -type f 2>/dev/null | LC_ALL=C sort)
 override CFILES := $(filter %.c,$(SRCFILES))
 override ASFILES := $(filter %.S,$(SRCFILES))
 override NASMFILES := $(filter %.asm,$(SRCFILES))
