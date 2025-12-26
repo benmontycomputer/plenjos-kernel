@@ -3,10 +3,13 @@
 #include "drive.h"
 #include "lib/stdio.h"
 #include "memory/kmalloc.h"
+#include "vfs/fat/exfat.h"
 #include "vfs/fat/fat.h"
 #include "vfs/fat/fat12.h"
 #include "vfs/fat/fat16.h"
 #include "vfs/fat/fat32.h"
+#include "vfs/fscommon.h"
+#include "vfs/iso9660/iso9660.h"
 
 static char *mbr_pretty_partition_type(mbr_partition_type_t type) {
     switch (type) {
@@ -76,7 +79,6 @@ void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
     }
 
     memcpy(mbr_out, buf, sizeof(struct MBR));
-    kfree_heap(buf);
 
     printf("MBR read successfully from drive\n");
     printf("MBR Signature: %x\n", mbr_out->signature);
@@ -92,12 +94,49 @@ void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
                    (part->boot_indicator == 0x80) ? "Yes" : "No", lba_act, part->size_in_sectors);
         }
 
+        memset(buf, 0, drive->logical_sector_size);
+
+        if (read_first_sector(drive, lba_act, buf) < 0) {
+            printf("Error reading first sector of partition %d\n", i + 1);
+            continue;
+        }
+
+        if (lba_act == 16) {
+            // Potential ISO9660 partition (e.g., Live CD)
+            if (memcmp(buf + 1, "CD001", 5) == 0) {
+                lba_act = 0;
+
+                printf("    ISO9660 filesystem detected on partition %d\n", i + 1);
+
+                if (buf[0] != 0x01) {
+                    printf("    Warning: Primary Volume Descriptor type is not 0x01 (got %02x)\n", buf[0]);
+                    continue;
+                }
+
+                struct filesystem_iso9660 *fs = kmalloc_heap(sizeof(struct filesystem_iso9660));
+                if (!fs) {
+                    printf("OOM Error: could not allocate memory for ISO9660 filesystem structure\n");
+                    continue;
+                }
+                memset(fs, 0, sizeof(struct filesystem_iso9660));
+                memcpy(&fs->pvd, buf, sizeof(struct iso9660_primary_volume_descriptor));
+                fs->read_status |= 0x01; // Mark primary volume descriptor as read
+                if (iso9660_setup(fs, drive, lba_act) == 0) {
+                    printf("    ISO9660 setup successful on partition %d\n", i + 1);
+                } else {
+                    printf("    Failed to setup ISO9660 filesystem on partition %d\n", i + 1);
+                }
+            }
+
+            continue;
+        }
+
         switch (part->partition_type) {
         case MBR_PARTITION_TYPE_FAT32:
         case MBR_PARTITION_TYPE_FAT32_LBA: {
-            struct filesystem_fat32 fs = { 0 };
-            if (fat32_setup(&fs, drive, lba_act) == 0) {
-                printf("    FAT32 filesystem detected on partition %d: Total clusters: %u\n", i + 1, fs.total_clusters);
+            struct filesystem_fat32 *fs = kmalloc_heap(sizeof(struct filesystem_fat32));
+            if (fat32_setup(fs, drive, lba_act) == 0) {
+                printf("    FAT32 filesystem detected on partition %d: Total clusters: %u\n", i + 1, fs->total_clusters);
             } else {
                 printf("    Failed to setup FAT32 filesystem on partition %d\n", i + 1);
             }
@@ -113,32 +152,31 @@ void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
         }
         case MBR_PARTITION_TYPE_EFI_SYSTEM: {
             // Can be FAT12, FAT16, or FAT32
-            struct fat_boot_sector bs;
-            fat_type_t fat_type = fat_detect_type(drive, lba_act, &bs);
+            fat_type_t fat_type = fat_detect_type(drive, lba_act, (struct fat_boot_sector *)buf);
 
             switch (fat_type) {
             case FAT_TYPE_12: {
                 printf("    FAT12 filesystem detected on EFI System Partition %d\n", i + 1);
-                struct filesystem_fat12 fs = { 0 };
-                memcpy(&fs.boot_sector, &bs, sizeof(struct fat_boot_sector));
-                fs.read_status |= 0x01; // Mark boot sector as read
-                fat12_setup(&fs, drive, lba_act);
+                struct filesystem_fat12 *fs = kmalloc_heap(sizeof(struct filesystem_fat12));
+                memcpy(&fs->boot_sector_raw, (struct fat_boot_sector *)buf, sizeof(struct fat_boot_sector));
+                fs->read_status |= 0x01; // Mark boot sector as read
+                fat12_setup(fs, drive, lba_act);
                 break;
             }
             case FAT_TYPE_16: {
                 printf("    FAT16 filesystem detected on EFI System Partition %d\n", i + 1);
-                struct filesystem_fat16 fs = { 0 };
-                memcpy(&fs.boot_sector, &bs, sizeof(struct fat_boot_sector));
-                fs.read_status |= 0x01; // Mark boot sector as read
-                fat16_setup(&fs, drive, lba_act);
+                struct filesystem_fat16 *fs = kmalloc_heap(sizeof(struct filesystem_fat16));
+                memcpy(&fs->boot_sector_raw, (struct fat_boot_sector *)buf, sizeof(struct fat_boot_sector));
+                fs->read_status |= 0x01; // Mark boot sector as read
+                fat16_setup(fs, drive, lba_act);
                 break;
             }
             case FAT_TYPE_32: {
                 printf("    FAT32 filesystem detected on EFI System Partition %d\n", i + 1);
-                struct filesystem_fat32 fs = { 0 };
-                memcpy(&fs.boot_sector, &bs, sizeof(struct fat_boot_sector));
-                fs.read_status |= 0x01; // Mark boot sector as read
-                fat32_setup(&fs, drive, lba_act);
+                struct filesystem_fat32 *fs = kmalloc_heap(sizeof(struct filesystem_fat32));
+                memcpy(&fs->boot_sector_raw, (struct fat_boot_sector *)buf, sizeof(struct fat_boot_sector));
+                fs->read_status |= 0x01; // Mark boot sector as read
+                fat32_setup(fs, drive, lba_act);
                 break;
             }
             default: {
@@ -148,6 +186,35 @@ void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
             }
             break;
         }
+        case MBR_PARTITION_TYPE_NTFS: {
+            // NTFS or exFAT
+            char *signature = (buf + 3);
+            if (memcmp(signature, "EXFAT   ", 8) == 0) {
+                printf("    exFAT filesystem detected on partition %d\n", i + 1);
+
+                struct filesystem_exfat *fs = kmalloc_heap(sizeof(struct filesystem_exfat));
+                memcpy(&fs->boot_sector, buf, sizeof(struct exfat_boot_sector));
+                fs->read_status |= 0x01; // Mark boot sector as read
+                int res         = exfat_setup(fs, drive, lba_act);
+                if (res == 0) {
+                    printf("    exFAT setup successful on partition %d: Total clusters: %u\n", i + 1,
+                           fs->total_clusters);
+                } else {
+                    printf("    Failed to setup exFAT filesystem on partition %d\n", i + 1);
+                }
+            } else if (memcmp(signature, "NTFS    ", 8) == 0) {
+                printf("    NTFS filesystem detected on partition %d\n", i + 1);
+            } else {
+                printf("    Unknown filesystem signature (%.8s, jmp %02x %02x %02x) on NTFS partition %d\n", signature,
+                       (uint8_t)buf[0], (uint8_t)buf[1], (uint8_t)buf[2], i + 1);
+            }
+            break;
+        }
+        default: {
+            break;
+        }
         }
     }
+
+    kfree_heap(buf);
 }

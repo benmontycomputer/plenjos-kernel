@@ -9,6 +9,7 @@
 #include "lib/stdio.h"
 #include "lib/string.h"
 #include "mbr.h"
+#include "memory/kmalloc.h"
 #include "timer/pit.h"
 
 #include <stdatomic.h>
@@ -210,10 +211,13 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive_no,
 
     dev->drive.internal_data = (void *)dev;
     strncpy(dev->drive.model, dev->identify.model, 40);
+    dev->drive.model[40] = '\0';
     strncpy(dev->drive.interface, "IDE", 15);
+    dev->drive.interface[15]        = '\0';
     dev->drive.logical_sector_size  = dev->logical_sector_size;
     dev->drive.physical_sector_size = dev->physical_sector_size;
     dev->drive.numsectors           = dev->numsectors;
+    dev->drive.irq                  = channel->irq_no;
 
     switch (type) {
     case ATADEV_PATAPI: {
@@ -228,9 +232,9 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive_no,
     }
     }
 
-    struct MBR mbr;
+    struct MBR *mbr = kmalloc_heap(sizeof(struct MBR));
 
-    drive_read_mbr(&dev->drive, &mbr);
+    drive_read_mbr(&dev->drive, mbr);
 
     return type;
 }

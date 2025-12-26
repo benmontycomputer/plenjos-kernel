@@ -138,6 +138,7 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
     }
 
     strncpy(path_copy, path, path_copy_len);
+    path_copy[path_copy_len - 1] = '\0';
 
     _fscache_wait_for_node_readable(cur);
 

@@ -8,6 +8,7 @@
 #include "vfs/vfs.h"
 
 // This function reads FAT sectors, translating from FAT sector size to drive sector size
+// TODO: adapt this to a generic function for all filesystems
 int fat12_drive_read(struct filesystem_fat12 *fs, uint32_t fat_lba, uint32_t fat_sectors, void *buffer) {
     if (!fs || !buffer || fat_sectors == 0) {
         return -1;
@@ -297,12 +298,6 @@ off_t fat12_dir_seek_func(vfs_handle_t *handle, off_t offset, int whence) {
     return -EIO;
 }
 
-int fat12_handle_close_func(vfs_handle_t *handle) {
-    // TODO: free anything else necessary
-    kfree_heap(handle->instance_data);
-    return 0;
-}
-
 int fat12_create_child_func(fscache_node_t *parent, const char *name, dirent_type_t type, uid_t uid, gid_t gid,
                             mode_t mode, fscache_node_t *node) {
     // To be implemented
@@ -344,7 +339,9 @@ int fat12_setup(struct filesystem_fat12 *fs, DRIVE_t *drive, uint32_t partition_
 
     if (!(fs->read_status & 0x01)) {
         // Read boot sector and detect type
-        fat_type_t res = fat_detect_type(drive, partition_start_lba, &fs->boot_sector_raw);
+        printf("FAT12: boot sector must be read before setup\n");
+        return -1;
+        /* fat_type_t res = fat_detect_type(drive, partition_start_lba, &fs->boot_sector_raw);
         if (res != FAT_TYPE_12) {
             printf("Error: not a FAT12 filesystem (type: %s)\n", res == FAT_TYPE_32   ? "FAT32"
                                                                  : res == FAT_TYPE_16 ? "FAT16"
@@ -352,7 +349,7 @@ int fat12_setup(struct filesystem_fat12 *fs, DRIVE_t *drive, uint32_t partition_
             return -1;
         }
 
-        fs->read_status |= 0x01; // Mark boot sector as read
+        fs->read_status |= 0x01; // Mark boot sector as read */
     }
 
     struct fat_boot_sector_generic *bsg = &fs->boot_sector.generic;

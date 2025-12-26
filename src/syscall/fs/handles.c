@@ -9,18 +9,24 @@ int syscall_routine_open(const char *restrict path, syscall_open_flags_t flags, 
 
     int res = 0;
 
-    char path_abs[PATH_MAX] = { 0 };
+    char *path_abs = kmalloc_heap(PATH_MAX);
+    if (!path_abs) {
+        printf("OOM Error: syscall_routine_open: OOM error allocating memory for absolute path buffer\n");
+        return -ENOMEM;
+    }
 
     res = handle_relative_path(path, proc, path_abs);
     if (res < 0) {
         printf("syscall_routine_open: failed to handle relative path %s for process %s (pid %p), errno %d\n", path,
                proc->name, proc->pid, res);
+        kfree_heap(path_abs);
         return res;
     }
 
     vfs_handle_t *handle = NULL;
 
     res = vfs_open(path_abs, flags, mode, proc->uid, &handle);
+    kfree_heap(path_abs);
     if (res < 0) {
         printf("syscall_routine_open: vfs_open failed for path %s for process %s (pid %p), errno %d\n", path_abs,
                proc->name, proc->pid, res);

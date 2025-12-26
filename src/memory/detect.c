@@ -161,5 +161,5 @@ void detect_memory(struct limine_memmap_response *memmap_response) {
     }
 
     TSS_STACK_ADDR = 0xFFFF8E0000000000;
-    KERNEL_HEAP_START_ADDR = 0xFFFF900000000000;
+    KERNEL_HEAP_START_ADDR = 0xFFFFA00000000000;
 }

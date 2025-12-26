@@ -51,6 +51,9 @@ typedef int (*vfs_create_child_func_t)(fscache_node_t *parent, const char *name,
 // The load function loads a child from a parent (directory)
 typedef int (*vfs_load_func_t)(fscache_node_t *node, const char *name, fscache_node_t *out);
 
+// The unload function takes care of cleaning up any internal data associated with a node before it is evicted
+typedef int (*vfs_unload_func_t)(fscache_node_t *node);
+
 // Mounts a filesystem at the given mount point node. The mount point node is guaranteed to be a directory.
 typedef bool (*vfs_mount_func_t)(const char *device, fscache_node_t *mount_point);
 
@@ -78,6 +81,7 @@ struct vfs_ops_block {
     // fscache functions
     vfs_create_child_func_t create_child;
     vfs_load_func_t load_node;
+    vfs_unload_func_t unload_node;
 };
 
 typedef struct vfs_filesystem {

@@ -59,6 +59,6 @@ void pit_sleep(uint32_t mills) {
     uint64_t end = pit_count + ((PIT_INTERR_FREQ * mills) / 1000);
 
     while (pit_count < end) {
-        // asm volatile("hlt");
+        asm volatile("hlt");
     }
 }

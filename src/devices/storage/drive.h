@@ -21,6 +21,9 @@ struct DRIVE {
     drive_read_sectors_func_t read_sectors;
     drive_write_sectors_func_t write_sectors;
 
+    // Optional; for convenience
+    uint32_t irq;
+
     void *internal_data;
 };
 

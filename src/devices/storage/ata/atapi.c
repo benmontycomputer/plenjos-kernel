@@ -1,9 +1,11 @@
 #include "atapi.h"
 
+#include "arch/x86_64/apic/ioapic.h"
 #include "ata.h"
 #include "devices/io/ports.h"
 #include "devices/storage/ide.h"
 #include "lib/stdio.h"
+#include "memory/kmalloc.h"
 
 #include <stdatomic.h>
 #include <stdbool.h>
@@ -18,24 +20,53 @@ int atapi_parse_identify(struct ide_device *dev) {
     return atapi_ready_device(dev);
 }
 
+static int interrupts_enabled() {
+    uint64_t rflags;
+    asm volatile("pushfq\n"
+                 "popq %0"
+                 : "=r"(rflags));
+    return (rflags & (1 << 9)) != 0;
+}
+
 // Make sure to select the device and lock the bus first!
 int atapi_send_packet_command(struct ide_device *dev, const uint8_t *packet, size_t packet_len, void *buffer,
                               size_t buffer_len, int is_write, int is_dma) {
+    int res = 0;
+    int interrupts_were_enabled = interrupts_enabled();
+
+    uint32_t *prev_low_dwords = NULL;
+
+    if (!interrupts_were_enabled) {
+        if (dev->drive.irq != (uint32_t)-1) {
+            prev_low_dwords = kmalloc_heap(sizeof(uint32_t) * 128);
+            if (!prev_low_dwords) {
+                printf("Error: unable to allocate memory for IOAPIC masks backup\n");
+                return -1;
+            }
+            ioapic_mask_all_except(dev->drive.irq, prev_low_dwords, 128);
+        }
+
+        asm volatile("sti");
+    }
+
     // Implementation to send ATAPI PACKET command with the given packet
     if (packet_len % 2) {
         // Packet length must be even
         printf("Kernel Programming Error: ATAPI packet length must be even\n");
-        return -1;
+        res = -1;
+        goto cleanup;
     }
 
     if (atomic_load_explicit(&dev->channel->irq_cnt, memory_order_acquire) != 0) {
         printf("Kernel Programming Error: ATAPI send_packet_command called while IRQ processing is ongoing\n");
-        return -1;
+        res = -1;
+        goto cleanup;
     }
 
     if (buffer && (uint64_t)buffer % 2 != 0) {
         printf("Kernel Programming Error: ATAPI data buffer must be word-aligned\n");
-        return -1;
+        res = -1;
+        goto cleanup;
     }
 
     outb(dev->channel->cmd_base + ATA_REG_FEATURES, is_dma ? 0x01 : 0x00); // Enable DMA if is_dma
@@ -69,23 +100,27 @@ int atapi_send_packet_command(struct ide_device *dev, const uint8_t *packet, siz
 
     if ((status = ata_wait_bsy_read_status(dev->channel->cmd_base)) < 0) {
         printf("Error: ATAPI device did not clear BSY after PACKET command\n");
-        return -1;
+        res = -1;
+        goto cleanup;
     }
 
     if (status & ATA_SR_DF) {
         // TODO: Handle device fault
         printf("Error: ATAPI device reported fatal device error after PACKET command\n");
-        return -1;
+        res = -1;
+        goto cleanup;
     }
 
     if (status & ATA_SR_ERR) {
         printf("Error: ATAPI device reported error after PACKET command\n");
-        return -1;
+        res = -1;
+        goto cleanup;
     }
 
     if (ata_wait_drq(dev->channel->cmd_base) != 0) {
         printf("Error: ATAPI device errored or did not set DRQ after PACKET command\n");
-        return -1;
+        res = -1;
+        goto cleanup;
     }
 
     for (size_t i = 0; i < packet_len; i += 2) {
@@ -105,7 +140,8 @@ int atapi_send_packet_command(struct ide_device *dev, const uint8_t *packet, siz
         if (status & ATA_SR_ERR) {
             printf("Error: ATAPI device reported error after PACKET command\n");
             atomic_fetch_sub_explicit(&dev->channel->irq_cnt, 1, memory_order_release);
-            return -1;
+            res = -1;
+            goto cleanup;
         }
 
         if (!(status & ATA_SR_BSY) && !(status & ATA_SR_DRQ)) {
@@ -165,7 +201,17 @@ int atapi_send_packet_command(struct ide_device *dev, const uint8_t *packet, siz
 
     atomic_store_explicit(&dev->channel->last_status, 0, memory_order_release);
     atomic_store_explicit(&dev->channel->irq_cnt, 0, memory_order_release);
-    return 0;
+
+cleanup:
+    if (interrupts_were_enabled == 0) {
+        asm volatile("cli");
+    }
+
+    if (prev_low_dwords) {
+        ioapic_restore_masks(prev_low_dwords, 128);
+        kfree_heap(prev_low_dwords);
+    }
+    return res;
 }
 
 // We don't strictly need to lock the bus here; this is called during initialization. However, our select function does
@@ -208,7 +254,7 @@ int atapi_ready_device(struct ide_device *dev) {
         uint8_t request_sense_packet[12] = { ATAPI_COMMAND_REQUEST_SENSE, 0, 0, 0, 18, 0, 0, 0, 0, 0, 0, 0 };
         uint8_t sense_buffer[18]         = { 0 };
         int res_2 = atapi_send_packet_command(dev, request_sense_packet, sizeof(request_sense_packet), sense_buffer,
-                                        sizeof(sense_buffer), 0, 0);
+                                              sizeof(sense_buffer), 0, 0);
         if (res_2 != 0) {
             res = res_2;
             printf("Error: REQUEST SENSE command failed for ATAPI device\n\n");
@@ -248,7 +294,7 @@ int atapi_ready_device(struct ide_device *dev) {
         dev->logical_sector_size  = block_size;
         dev->physical_sector_size = block_size;
         dev->numsectors           = (uint64_t)(max_lba + 1);
-    }    
+    }
 
 finally:
     int unlock_res = ide_unlock_bus(dev);
@@ -303,7 +349,8 @@ ssize_t atapi_read_sectors_func(struct DRIVE *drive, uint64_t lba, size_t sector
     ide_unlock_bus(dev);
 
     if (res != 0) {
-        printf("Error: READ(10) command failed for ATAPI device (reading from lba %p, %lu sectors)\n", (void *)lba, sectors);
+        printf("Error: READ(10) command failed for ATAPI device (reading from lba %p, %lu sectors)\n", (void *)lba,
+               sectors);
         return -1;
     }
 

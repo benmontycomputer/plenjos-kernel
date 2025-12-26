@@ -32,16 +32,20 @@ static int syscall_routine_stat_from_handle(vfs_handle_t *handle, uint64_t out_s
 int syscall_routine_stat(const char *restrict path, uint64_t out_stat_ptr, proc_t *proc, pml4_t *current_pml4) {
     int res = 0;
 
-    char path_abs[PATH_MAX] = { 0 };
+    char *path_abs = kmalloc_heap(PATH_MAX);
+    if (!path_abs) {
+        printf("OOM Error: syscall_routine_stat: OOM error allocating memory for absolute path buffer\n");
+        return -ENOMEM;
+    }
+
+    vfs_handle_t *handle = NULL;
 
     res = handle_relative_path(path, proc, path_abs);
     if (res < 0) {
         printf("syscall_routine_stat: failed to handle relative path %s for process %s (pid %p), errno %d\n", path,
                proc->name, proc->pid, res);
-        return res;
+        goto cleanup;
     }
-
-    vfs_handle_t *handle = NULL;
 
     // No permissions needed on the file itself; we just need to be able to reach it.
     res = vfs_open(path_abs, 0, 0, proc->uid, &handle);
@@ -61,6 +65,7 @@ int syscall_routine_stat(const char *restrict path, uint64_t out_stat_ptr, proc_
     res = syscall_routine_stat_from_handle(handle, out_stat_ptr, current_pml4);
 
 cleanup:
+    kfree_heap(path_abs);
     if (handle) vfs_close(handle);
     return res;
 }

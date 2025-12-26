@@ -121,6 +121,7 @@ int handle_relative_path(const char *rel, proc_t *proc, char out[PATH_MAX]) {
     if (rel[0] == '/') {
         // Absolute path
         strncpy(out, rel, PATH_MAX);
+        out[PATH_MAX - 1] = '\0';
         return 0;
     } else {
         // Relative path
@@ -132,6 +133,7 @@ int handle_relative_path(const char *rel, proc_t *proc, char out[PATH_MAX]) {
             // snprintf(out, PATH_MAX, "/%s", rel);
             *out = '/';
             strncpy(out + 1, rel, PATH_MAX - 1);
+            out[PATH_MAX - 1] = '\0';
         } else {
             // snprintf(out, PATH_MAX, "%s/%s", proc->cwd, rel);
             size_t cwd_len = strlen(proc->cwd);
@@ -143,6 +145,7 @@ int handle_relative_path(const char *rel, proc_t *proc, char out[PATH_MAX]) {
             strncpy(out, proc->cwd, cwd_len + 1);
             out[cwd_len] = '/';
             strncpy(out + cwd_len + 1, rel, rel_len + 1);
+            out[PATH_MAX - 1] = '\0';
         }
         return 0;
     }
@@ -153,7 +156,10 @@ int collapse_path(const char *path_in, char path_out[PATH_MAX]) {
         return -EINVAL;
     }
 
-    char temp[PATH_MAX];
+    char *temp = kmalloc_heap(PATH_MAX);
+    if (!temp) {
+        return -ENOMEM;
+    }
     size_t out_idx = 0;
 
     size_t len = strlen(path_in);
@@ -203,5 +209,7 @@ int collapse_path(const char *path_in, char path_out[PATH_MAX]) {
 
     temp[out_idx] = '\0';
     strncpy(path_out, temp, PATH_MAX);
+    path_out[PATH_MAX - 1] = '\0';
+    kfree_heap(temp);
     return 0;
 }

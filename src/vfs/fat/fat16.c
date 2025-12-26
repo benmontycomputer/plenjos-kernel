@@ -10,7 +10,9 @@ int fat16_setup(struct filesystem_fat16 *fs, DRIVE_t *drive, uint32_t partition_
     fs->drive = drive;
 
     if (!(fs->read_status & 0x01)) {
-        // Read boot sector and detect type
+        printf("FAT16: boot sector must be read before setup\n");
+        return -1;
+        /* // Read boot sector and detect type
         fat_type_t res = fat_detect_type(drive, partition_start_lba, &fs->boot_sector_raw);
         if (res != FAT_TYPE_16) {
             printf("Error: not a FAT16 filesystem (type: %s)\n", res == FAT_TYPE_32   ? "FAT32"
@@ -19,7 +21,7 @@ int fat16_setup(struct filesystem_fat16 *fs, DRIVE_t *drive, uint32_t partition_
             return -1;
         }
 
-        fs->read_status |= 0x01; // Mark boot sector as read
+        fs->read_status |= 0x01; // Mark boot sector as read */
     }
 
     if (fs->boot_sector.generic.fat_size_16 == 0) {

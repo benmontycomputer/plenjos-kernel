@@ -1,33 +1,33 @@
-#include <stdint.h>
-#include <stdbool.h>
-#include <stdatomic.h>
+#include "memory/kmalloc.h"
 
 #include "kernel.h"
-
 #include "lib/stdio.h"
 #include "lib/string.h"
-
 #include "memory/detect.h"
-#include "memory/kmalloc.h"
 #include "memory/mm.h"
+
+#include <stdatomic.h>
+#include <stdbool.h>
+#include <stdint.h>
 
 // TODO: make sure all sizes are less than uint64_t max?
 // Shouldn't be a huge security issue since this is kernel memory allocation
 
-uint64_t kheap_start, kheap_end;
+atomic_uintptr_t kheap_start = ATOMIC_VAR_INIT(0);
+atomic_uintptr_t kheap_end   = ATOMIC_VAR_INIT(0);
 
 typedef struct heap_segment_info heap_segment_info_t;
 
 struct heap_segment_info {
     size_t size;
 
-    heap_segment_info_t *next;
-    heap_segment_info_t *prev;
+    _Atomic(heap_segment_info_t *) next;
+    _Atomic(heap_segment_info_t *) prev;
 
     bool free;
 };
 
-heap_segment_info_t *kheap_last_segment = NULL;
+_Atomic(heap_segment_info_t *) kheap_last_segment = ATOMIC_VAR_INIT(NULL);
 
 static inline bool is_page_misaligned(uint64_t ptr) {
     return (ptr & (PAGE_LEN - 1)) != 0;
@@ -35,7 +35,7 @@ static inline bool is_page_misaligned(uint64_t ptr) {
 
 // Set to 16 for debug purposes
 #define KHEAP_INIT_PAGES 160
-#define KHEAP_INIT_SIZE (PAGE_LEN * KHEAP_INIT_PAGES)
+#define KHEAP_INIT_SIZE  (PAGE_LEN * KHEAP_INIT_PAGES)
 
 #define HEAP_ALLOC_MIN 0x10
 
@@ -81,15 +81,16 @@ void init_kernel_heap() {
         pos += PAGE_LEN;
     }
 
-    kheap_start = KERNEL_HEAP_START_ADDR;
-    kheap_end = KERNEL_HEAP_START_ADDR + (PAGE_LEN * 4);
+    atomic_store(&kheap_start, KERNEL_HEAP_START_ADDR);
+    atomic_store(&kheap_end, KERNEL_HEAP_START_ADDR + (PAGE_LEN * 4));
 
-    kheap_last_segment = (heap_segment_info_t *)kheap_start;
+    heap_segment_info_t *first_segment = (heap_segment_info_t *)atomic_load(&kheap_start);
+    first_segment->free                = true;
+    atomic_store(&first_segment->next, NULL);
+    atomic_store(&first_segment->prev, NULL);
+    first_segment->size = (PAGE_LEN * 4) - HEAP_HEADER_LEN;
 
-    kheap_last_segment->free = true;
-    kheap_last_segment->next = NULL;
-    kheap_last_segment->prev = NULL;
-    kheap_last_segment->size = (PAGE_LEN * 4) - HEAP_HEADER_LEN;
+    atomic_store(&kheap_last_segment, first_segment);
 
     kheap_add_segment(KHEAP_INIT_SIZE - (PAGE_LEN * 4));
 }
@@ -101,7 +102,7 @@ static heap_segment_info_t *kheap_add_segment(size_t len) {
     size_t pages = (len + HEAP_HEADER_LEN + PAGE_LEN - 1) / PAGE_LEN;
 
     /* Align the next mapping address up to a page boundary. */
-    uint64_t pg_addr = kheap_end;
+    uint64_t pg_addr = atomic_load(&kheap_end);
     if (pg_addr & (PAGE_LEN - 1)) {
         pg_addr = (pg_addr + PAGE_LEN - 1) & ~((uint64_t)(PAGE_LEN - 1));
     }
@@ -111,18 +112,18 @@ static heap_segment_info_t *kheap_add_segment(size_t len) {
         find_page(pg_addr + (i * PAGE_LEN), true, kernel_pml4);
     }
 
-    heap_segment_info_t *new_segment = (heap_segment_info_t *)pg_addr;
+    heap_segment_info_t *new_segment  = (heap_segment_info_t *)pg_addr;
+    heap_segment_info_t *last_segment = atomic_load(&kheap_last_segment);
+    atomic_store(&kheap_last_segment, new_segment);
 
-    if (kheap_last_segment) kheap_last_segment->next = new_segment;
+    if (last_segment) atomic_store(&last_segment->next, new_segment);
 
     new_segment->free = true;
-    new_segment->prev = kheap_last_segment;
-    new_segment->next = NULL;
+    atomic_store(&new_segment->prev, last_segment);
+    atomic_store(&new_segment->next, NULL);
     new_segment->size = len;
 
-    kheap_last_segment = new_segment;
-
-    kheap_end = pg_addr + (pages * PAGE_LEN);
+    atomic_store(&kheap_end, pg_addr + (pages * PAGE_LEN));
 
     return new_segment;
 }
@@ -137,29 +138,47 @@ static heap_segment_info_t *kheap_segment_split(heap_segment_info_t *segment, si
     heap_segment_info_t *new_segment = (heap_segment_info_t *)((uint64_t)segment + keep_size + HEAP_HEADER_LEN);
 
     new_segment->free = true;
-    new_segment->next = segment->next;
-    new_segment->prev = segment;
+    atomic_store(&new_segment->next, atomic_load(&segment->next));
+    atomic_store(&new_segment->prev, segment);
     new_segment->size = (segment->size - keep_size - HEAP_HEADER_LEN);
 
     segment->size = keep_size;
 
-    if (segment->next) segment->next->prev = new_segment;
+    if (atomic_load(&segment->next)) atomic_store(&atomic_load(&segment->next)->prev, new_segment);
 
-    segment->next = new_segment;
+    atomic_store(&segment->next, new_segment);
 
-    if (kheap_last_segment == segment) kheap_last_segment = new_segment;
+    if (atomic_load(&kheap_last_segment) == segment) atomic_store(&kheap_last_segment, new_segment);
 
     return new_segment;
+}
+
+static inline int interrupts_enabled(void) {
+    unsigned long flags;
+
+    asm volatile("pushfq\n\t"
+                 "popq %0"
+                 : "=r"(flags)
+                 :
+                 : "memory");
+
+    return (flags & (1UL << 9)) != 0;
 }
 
 // TODO: is it safe to return this memory without clearing it?
 // TODO: use refing/unrefing frames for extremely large allocations?
 void *kmalloc_heap(uint64_t size) {
     if (size == 0) return NULL;
+    if (size % 2) size++; // Align to 2 bytes
+    if (size < HEAP_ALLOC_MIN) size = HEAP_ALLOC_MIN;
 
+    int ints = interrupts_enabled();
+    if (ints) {
+        asm volatile("cli");
+    }
     lock_kheap();
 
-    heap_segment_info_t *cur_seg = (heap_segment_info_t *)kheap_start;
+    heap_segment_info_t *cur_seg = (heap_segment_info_t *)atomic_load(&kheap_start);
 
     for (;;) {
         if (cur_seg->free) {
@@ -170,17 +189,25 @@ void *kmalloc_heap(uint64_t size) {
                 cur_seg->free = false;
 
                 unlock_kheap();
+                if (ints) {
+                    asm volatile("sti");
+                }
                 return (void *)((uint64_t)cur_seg + HEAP_HEADER_LEN);
             } else if (cur_seg->size == size) {
                 cur_seg->free = false;
 
                 unlock_kheap();
+                if (ints) {
+                    asm volatile("sti");
+                }
                 return (void *)((uint64_t)cur_seg + HEAP_HEADER_LEN);
             }
         }
 
-        if (!cur_seg->next) break;
-        cur_seg = cur_seg->next;
+        heap_segment_info_t *next_seg = atomic_load(&cur_seg->next);
+
+        if (!next_seg) break;
+        cur_seg = next_seg;
     }
 
     heap_segment_info_t *seg = kheap_add_segment(size);
@@ -188,6 +215,11 @@ void *kmalloc_heap(uint64_t size) {
     seg->free = false;
 
     unlock_kheap();
+
+    if (ints) {
+        asm volatile("sti");
+    }
+
     return (void *)((uint64_t)seg + HEAP_HEADER_LEN);
 
     // return kmalloc_heap(size);
@@ -221,7 +253,7 @@ void *kmalloc(uint64_t size) {
         return NULL;
     }
 
-    uint64_t ret = PHYS_MEM_HEAD;
+    uint64_t ret   = PHYS_MEM_HEAD;
     PHYS_MEM_HEAD += size;
 
     return (void *)phys_to_virt(ret);
@@ -239,7 +271,7 @@ void *kmalloc_a(uint64_t size, bool align) {
         return NULL;
     }
 
-    uint64_t ret = PHYS_MEM_HEAD;
+    uint64_t ret   = PHYS_MEM_HEAD;
     PHYS_MEM_HEAD += size;
 
     return (void *)phys_to_virt(ret);

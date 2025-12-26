@@ -20,7 +20,8 @@ int vfs_close(vfs_handle_t *f) {
     }
 
     if (f->backing_node == NULL || f->backing_node->fsops == NULL || f->backing_node->fsops->close == NULL) {
-        return -EIO;
+        kfree_heap(f);
+        return 0;
     }
 
     return f->backing_node->fsops->close(f);

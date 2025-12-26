@@ -6,26 +6,41 @@
 int syscall_routine_chdir(const char *restrict path, proc_t *proc) {
     int res = 0;
 
-    char path_abs[PATH_MAX] = { 0 };
+    char *path_abs = kmalloc_heap(PATH_MAX);
+    if (!path_abs) {
+        printf("syscall_routine_chdir: OOM error allocating memory for absolute path buffer\n");
+        return -ENOMEM;
+    }
 
     res = handle_relative_path(path, proc, path_abs);
     if (res < 0) {
         printf("syscall_routine_chdir: failed to handle relative path %s for process %s (pid %p), errno %d\n", path,
                proc->name, proc->pid, res);
+        kfree_heap(path_abs);
         return res;
     }
 
-    collapse_path(path_abs, path_abs);
+    res = collapse_path(path_abs, path_abs);
+    if (res < 0) {
+        printf("syscall_routine_chdir: failed to collapse path %s for process %s (pid %p), errno %d\n", path_abs,
+               proc->name, proc->pid, res);
+        kfree_heap(path_abs);
+        return res;
+    }
 
     res = fscache_request_node(path_abs, proc->uid, NULL);
     if (res < 0) {
+        kfree_heap(path_abs);
         return res;
     } else if (res == FSCACHE_REQUEST_NODE_ONE_LEVEL_AWAY) {
+        kfree_heap(path_abs);
         return -ENOENT;
     }
 
     memset(proc->cwd, 0, PATH_MAX);
     strncpy(proc->cwd, path_abs, PATH_MAX);
+    proc->cwd[PATH_MAX - 1] = '\0';
+    kfree_heap(path_abs);
     return 0;
 }
 

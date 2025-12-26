@@ -121,6 +121,7 @@ ssize_t kernelfs_default_read_dir(vfs_handle_t *f, void *buf, size_t len) {
         memset(&dirent_entry, 0, sizeof(struct plenjos_dirent));
 
         strncpy(dirent_entry.d_name, current_child->name, NAME_MAX + 1);
+        dirent_entry.d_name[NAME_MAX] = '\0';
         dirent_entry.type = current_child->type;
 
         if (total_bytes_copied + sizeof(struct plenjos_dirent) > len) {
@@ -166,6 +167,7 @@ int kernelfs_load(fscache_node_t *node, const char *name, fscache_node_t *out) {
 node_found:
     if (out) {
         strncpy(out->name, current_node->name, NAME_MAX + 1);
+        out->name[NAME_MAX] = '\0';
 
         out->type = current_node->type;
         out->uid  = current_node->uid;
@@ -174,6 +176,7 @@ node_found:
 
         out->flags = 0;
 
+        // TODO: MEMORY LEAK: free this
         out->fsops = kmalloc_heap(sizeof(vfs_ops_block_t));
         if (!out->fsops) {
             return -ENOMEM;
@@ -186,19 +189,14 @@ node_found:
         out->fsops->read   = current_node->read;
         out->fsops->write  = current_node->write;
         out->fsops->seek   = current_node->seek;
-        out->fsops->close  = kernelfs_close;
+        out->fsops->close  = NULL; // Use default vfs close
         out->fsops->create_child
             = (current_node->type == DT_DIR) ? kernelfs_create_child : NULL; // TODO: implement create_child
         out->fsops->load_node = kernelfs_load;
+        out->fsops->unload_node = NULL; // No internal data to clean up
 
         ((kernelfs_cache_data_t *)out->internal_data)->node = current_node;
     }
-
-    return 0;
-}
-
-int kernelfs_close(vfs_handle_t *f) {
-    kfree_heap(f);
 
     return 0;
 }
@@ -266,6 +264,7 @@ int kernelfs_helper_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode) {
     }
 
     strncpy(path_copy, path, path_copy_size);
+    path_copy[path_copy_size - 1] = '\0';
 
     char *path_copy_ptr = path_copy;
 

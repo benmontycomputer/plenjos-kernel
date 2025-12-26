@@ -68,7 +68,10 @@ override CFLAGS += \
 	-pedantic \
     -ffreestanding \
     -fno-stack-protector \
+	-Wframe-larger-than=512 \
+	-Werror=frame-larger-than=512 \
     -fno-stack-check \
+	-fno-omit-frame-pointer \
     -fno-lto \
     -fno-PIC \
     -m64 \
