@@ -134,7 +134,17 @@ isr_stub_%+%2:
     mov rdi, rsp                    ; Pass the current stack pointer to `pic_irq_handler`
     cld
 
+    push rax
+    mov rax, [gs:0x20]
+    mov cr3, rax
+    pop rax
+
     call irq_handler
+
+    push rax
+    mov rax, [gs:0x10]
+    mov cr3, rax
+    pop rax
 
     isr_restore_ctx
 
@@ -286,6 +296,6 @@ global isr_stub_table
 isr_stub_table:
 %assign i 0 
 %rep    129
-    dq isr_stub_%+i ; use DQ instead if targeting 64-bit
+    dq qword isr_stub_%+i
 %assign i i+1 
 %endrep

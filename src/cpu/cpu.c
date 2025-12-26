@@ -48,6 +48,7 @@ static gsbase_t *new_kernel_gs_base(uint32_t processor_id) {
     base->cr3 = kernel_pml4_phys;
     base->stack = TSS_STACK_ADDR;
     base->processor_id = processor_id;
+    base->kernel_pml4_phys = (uint64_t)kernel_pml4_phys;
 
     return base;
 }

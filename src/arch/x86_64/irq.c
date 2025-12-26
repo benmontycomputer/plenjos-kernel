@@ -20,24 +20,13 @@ void irq_handler(registers_t *regs) {
     // printf("inter %p\n", regs->int_no);
     uint64_t cr3_phys = get_cr3_addr();
     if (cr3_phys != kernel_pml4_phys) {
-        set_cr3_addr(kernel_pml4_phys);
+        printf("\nERROR: IRQ from other cr3 %p\n\n", cr3_phys);
 
-        void (*handler)(registers_t *r) = routines[regs->int_no - 32];
-
-        if (handler) handler(regs);
-
-        set_cr3_addr(cr3_phys);
-
-        apic_send_eoi();
+        // TODO: panic
 
         return;
     }
-    /* if (regs->int_no == 0x22) {
-        if (!(testint % 10)) {
-            // printf("Inter %p %p\n", regs->int_no, testint);
-        }
-        testint++;
-    } */
+
     void (*handler)(registers_t *r) = routines[regs->int_no - 32];
 
     if (handler) handler(regs);

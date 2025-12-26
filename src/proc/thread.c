@@ -22,9 +22,12 @@ thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), vo
     //map_virtual_memory(virt_to_phys((uint64_t)thread), PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, kernel_pml4);
     memset(thread, 0, PAGE_LEN);
 
-    if (name) strncpy(thread->name, name, PROCESS_THREAD_NAME_LEN);
-    else
+    if (name) {
+        strncpy(thread->name, name, PROCESS_THREAD_NAME_LEN);
+        thread->name[PROCESS_THREAD_NAME_LEN - 1] = '\0';
+    } else {
         thread->name[0] = 0;
+    }
 
     thread->next = NULL;
     thread->parent = proc;
@@ -80,6 +83,7 @@ thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), vo
     thread->base->proc = (uint64_t)proc;
     thread->base->cr3 = thread->regs.cr3;
     thread->base->stack = (uint64_t)thread->regs.iret_rsp;
+    thread->base->kernel_pml4_phys = (uint64_t)kernel_pml4_phys;
 
     map_virtual_memory_using_alloc(virt_to_phys((uint64_t)thread), (uint64_t)thread, PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
     map_virtual_memory_using_alloc(virt_to_phys((uint64_t)thread->base), (uint64_t)thread->base, PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);

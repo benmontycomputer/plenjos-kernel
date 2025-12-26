@@ -74,9 +74,11 @@ proc_t *create_proc(const char *name, proc_t *parent) {
     if (parent) {
         proc->uid = parent->uid;
         strncpy(proc->cwd, parent->cwd, PATH_MAX);
+        proc->cwd[PATH_MAX - 1] = '\0';
     } else {
         proc->uid = 0;
         strncpy(proc->cwd, "/", PATH_MAX);
+        proc->cwd[PATH_MAX - 1] = '\0';
     }
 
     proc->pid = next_pid++;
