@@ -39,6 +39,8 @@ char *strcpy(char *dest, const char *src) {
 }
 
 char *strncpy(char *dest, const char *src, size_t n) {
+    if (n == 0) return dest;
+
     if (strlen(src) >= n) {
         memcpy(dest, src, n - 1);
         dest[n - 1] = 0;
