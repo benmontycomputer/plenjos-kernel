@@ -126,8 +126,5 @@ int ld_main(uint64_t stack) {
     struct elf_object main_obj;
     loadelf(argv[0], &main_obj);
 
-    // Jump to the entry point of the loaded executable
-    main_obj.
-
     return 0;
 }
