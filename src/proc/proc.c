@@ -176,10 +176,12 @@ void process_exit(proc_t *proc) {
         next_thread = thread->next;
 
         // Free stack
-        if (thread->stack) {
-            for (uint64_t i = 0; i < THREAD_STACK_SIZE; i += PAGE_LEN) {
-                phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(
-                    get_physaddr((uint64_t)thread->stack + i, proc->pml4)));
+        if (thread->stack_top) {
+            for (uint64_t i = 0; i < THREAD_MAX_STACK_SIZE; i += PAGE_LEN) {
+                uint64_t phys = get_physaddr((uint64_t)thread->stack_top - i, proc->pml4);
+                if (phys) {
+                    phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(phys));
+                }
             }
         }
         phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(virt_to_phys((uint64_t)thread->base)));
@@ -219,7 +221,17 @@ void process_exit(proc_t *proc) {
 }
 
 vfs_handle_t *proc_get_fd(proc_t *proc, int fd) {
+    if (!proc) {
+        return NULL;
+    }
+
+    if (fd < 0) {
+        printf("proc_get_fd: fd %d out of range (negative) for process %s (pid %p)\n", fd, proc->name, proc->pid);
+        return NULL;
+    }
+
     if (fd >= proc->fds_max) {
+        printf("proc_get_fd: fd %d out of range (too high) for process %s (pid %p)\n", fd, proc->name, proc->pid);
         return NULL;
     }
 

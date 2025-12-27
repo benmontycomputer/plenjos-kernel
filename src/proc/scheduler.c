@@ -1,29 +1,23 @@
-#include <stdint.h>
-#include <stdbool.h>
-#include <stdatomic.h>
-
 #include "proc/scheduler.h"
 
+#include "arch/x86_64/apic/apic.h"
+#include "arch/x86_64/cpuid/cpuid.h"
+#include "arch/x86_64/irq.h"
+#include "cpu/cpu.h"
+#include "lib/stdio.h"
+#include "memory/mm.h"
 #include "proc/proc.h"
 #include "proc/thread.h"
-
-#include "cpu/cpu.h"
-
-#include "memory/mm.h"
-
-#include "arch/x86_64/cpuid/cpuid.h"
-
-#include "lib/stdio.h"
-
 #include "timer/pit.h"
 
-#include "arch/x86_64/apic/apic.h"
-#include "arch/x86_64/irq.h"
+#include <stdatomic.h>
+#include <stdbool.h>
+#include <stdint.h>
 
-volatile thread_t * volatile ready_threads = NULL;
-volatile thread_t * volatile ready_threads_last = NULL;
+volatile thread_t *volatile ready_threads      = NULL;
+volatile thread_t *volatile ready_threads_last = NULL;
 
-volatile thread_t * volatile cores_threads[MAX_CORES] = {0};
+volatile thread_t *volatile cores_threads[MAX_CORES] = { 0 };
 
 // static _Atomic(uint32_t) ready_threads_lock = (uint32_t)-1;
 static atomic_flag ready_threads_locked_atomic = ATOMIC_FLAG_INIT;
@@ -88,11 +82,11 @@ void thread_ready(thread_t *thread) {
     thread->state = READY;
 
     if (!ready_threads) {
-        ready_threads = thread;
+        ready_threads      = thread;
         ready_threads_last = thread;
     } else {
         ready_threads_last->next = thread;
-        ready_threads_last = thread;
+        ready_threads_last       = thread;
     }
 
     /* for (size_t i = 0; i < get_n_cores(); i++) {
@@ -112,8 +106,7 @@ void thread_ready(thread_t *thread) {
     asm volatile("sti");
 }
 
-__attribute__((noreturn))
-void start_scheduler() {
+__attribute__((noreturn)) void start_scheduler() {
     /* uint32_t curr_core = lock_ready_threads();
     printf("Starting scheduler on core %d\n", curr_core);
 
@@ -158,9 +151,9 @@ void cpu_scheduler_task() {
             printf("Starting thread %p on core %d\n", cores_threads[curr_core]->tid, curr_core);
             // The thread's regs are the first item in the struct
             assign_thread_to_cpu(cores_threads[curr_core]);
-            cores_threads[curr_core]->state = ASLEEP;
-            cores_threads[curr_core] = NULL;
-            cpu_cores[curr_core].status &= ~1;
+            cores_threads[curr_core]->state  = ASLEEP;
+            cores_threads[curr_core]         = NULL;
+            cpu_cores[curr_core].status     &= ~1;
         } else {
             unlock_ready_threads();
         }
@@ -197,10 +190,16 @@ void assign_thread_to_cpu(thread_t *thread) {
         ipi_tlb_flush_routine(NULL);
     }
 
-    // The thread's regs are the first item in the struct
-    printf("Thread info: regs addr %p, regs phys addr %p %p, base %p, base proc %p\n", &thread->regs, get_physaddr((uint64_t)&thread->regs, thread->parent->pml4), get_physaddr((uint64_t)&thread->regs, kernel_pml4), thread->base, thread->base->proc);
+    thread->base->processor_id     = get_curr_core();
+    thread->base->stack            = (uint64_t)thread->regs.iret_rsp;
+    thread->base->cr3              = virt_to_phys((uint64_t)thread->parent->pml4) & ~0xFFF;
+    thread->base->proc             = (uint64_t)thread->parent;
+    thread->base->kernel_pml4_phys = (uint64_t)kernel_pml4_phys;
 
-    thread->base->processor_id = get_curr_core();
+    // The thread's regs are the first item in the struct
+    printf("Thread info: regs addr %p, regs phys addr %p %p, stack %p, base %p, base proc %p\n", &thread->regs,
+           get_physaddr((uint64_t)&thread->regs, thread->parent->pml4),
+           get_physaddr((uint64_t)&thread->regs, kernel_pml4), thread->regs.iret_rsp, thread->base, thread->base->proc);
 
     // write_msr(IA32_KERNEL_GS_BASE, (uint64_t)thread->base);
     write_msr(IA32_GS_BASE, (uint64_t)thread->base);

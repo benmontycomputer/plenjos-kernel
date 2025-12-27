@@ -391,3 +391,18 @@ int fscache_init() {
 
     return 0;
 }
+
+void fscache_node_populate(fscache_node_t *node, dirent_type_t type, fscache_flags_t flags, const char *name, uid_t uid, gid_t gid,
+                           mode_t mode, off_t size, vfs_ops_block_t *fsops) {
+    if (!node) return;
+
+    node->type  = type;
+    node->flags = flags;
+    strncpy(node->name, name, NAME_MAX);
+    node->name[NAME_MAX] = '\0';
+    node->uid            = uid;
+    node->gid            = gid;
+    node->mode           = mode;
+    node->size           = size;
+    node->fsops          = fsops;
+}

@@ -15,6 +15,8 @@ struct kstat {
     mode_t mode;
     uid_t uid;
     gid_t gid;
+
+    off_t size;
 };
 
 #endif /* _PLENJOS_STAT_H */

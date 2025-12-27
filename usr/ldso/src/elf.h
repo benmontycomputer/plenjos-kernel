@@ -1,10 +1,32 @@
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
-#include "memory/mm_common.h"
-
 #define PT_DYNAMIC 2
+
+#define DT_NULL   0
+#define DT_RELA   7
+#define DT_RELASZ 8
+
+#define R_X86_64_RELATIVE 8
+
+// Lower 32 bits
+#define ELF64_R_TYPE(i) ((uint32_t)(i))
+
+typedef struct ELF_dyn {
+    int64_t  d_tag;     /* 8 bytes: type of entry */
+    union {
+        uint64_t d_val; /* 8 bytes: integer value */
+        uint64_t d_ptr; /* 8 bytes: address value */
+    } d_un;
+} __attribute__((packed)) ELF_dyn_t;
+
+typedef struct ELF_rela {
+    uint64_t r_offset;  /* Location to apply the relocation (virtual address) */
+    uint64_t r_info;    /* Symbol index + type of relocation */
+    int64_t  r_addend;  /* Constant addend used in relocation */
+} __attribute__((packed)) ELF_rela_t;
 
 struct ELF_header {
     /* Identification */
@@ -49,4 +71,9 @@ struct ELF_program_header {
 typedef struct ELF_header ELF_header_t;
 typedef struct ELF_program_header ELF_program_header_t;
 
-void loadelf(void *elf_base, pml4_t *pml4, uint64_t *entry_out, uint64_t voffs_if_pic);
+typedef struct elf_object {
+
+};
+
+// The executable is not checked for execute permissions here; the kernel is responsible for that.
+int loadelf(const char *path, struct elf_object *out_obj);

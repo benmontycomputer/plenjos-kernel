@@ -1,25 +1,15 @@
 #define LIMINE_API_REVISION 3
 
 #include "arch/platform.h"
-#include "lib/serial.h"
-#include "lib/stdio.h"
-
-#include <limine.h>
-#include <limits.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
-#if ARCH(X86_64)
-#include "arch/x86_64/common.h"
-#include "arch/x86_64/gdt/gdt.h"
-#endif
-
 #include "cpu/cpu.h"
 #include "devices/input/keyboard/drivers/ps2kbd.h"
 #include "devices/input/keyboard/keyboard.h"
 #include "devices/pci/pci.h"
 #include "devices/storage/ide.h"
 #include "exec/elf.h"
+#include "lib/serial.h"
+#include "lib/stdio.h"
+#include "lib/string.h"
 #include "memory/kmalloc.h"
 #include "memory/mm.h"
 #include "proc/proc.h"
@@ -30,6 +20,17 @@
 #include "vfs/fscache.h"
 #include "vfs/iso9660/iso9660.h"
 #include "vfs/vfs.h"
+
+#include <limine.h>
+#include <limits.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#if ARCH(X86_64)
+#include "arch/x86_64/common.h"
+#include "arch/x86_64/gdt/gdt.h"
+#endif
 
 bool debug_serial = false;
 
@@ -135,6 +136,11 @@ void test_func() {
         printf("Test %d on core %d\n", i, get_curr_core());
         pit_sleep(1000);
     }
+}
+
+void stack_push_qword(uint64_t qword, uint64_t **rsp) {
+    *rsp  = (uint64_t *)((uint8_t *)(*rsp) - sizeof(uint64_t));
+    **rsp = qword;
 }
 
 // Halt and catch fire function.
@@ -248,36 +254,12 @@ void kmain(void) {
 
     clear();
 
-    // start_shell();
-    /* proc_t *shell_proc = create_proc("kshell");
-    thread_t *shell_thread = create_thread(shell_proc, "kshell_t0", start_shell, NULL);
-    thread_ready(shell_thread);
-
-    assign_thread_to_cpu(shell_thread); */
-
-    /* if (!module_request.response) {
-        printf("No modules detected.\n");
-    } else {
-        // for (size_t i = 0; i < 12; i++) {
-        void *elf_addr = module_request.response->modules[0]->address;
-
-        proc_t *shell_proc = create_proc("kshell", NULL);
-
-        uint64_t entry, stack;
-
-        loadelf(elf_addr, shell_proc->pml4, &entry, &stack);
-
-        thread_t *shell_thread = create_thread(shell_proc, "kshell_t0", (void *)entry, NULL);
-
-        thread_ready(shell_thread);
-        // }
-    } */
-
-    vfs_handle_t *iso_root_handle;
+    /* vfs_handle_t *iso_root_handle;
     int res = vfs_open("/iso9660/bin/init", SYSCALL_OPEN_FLAG_READ, 0, 0, &iso_root_handle);
     if (res == 0) {
         printf("Loading init from iso9660...\n\n");
-        uint64_t file_size = ((struct vfs_iso9660_cache_node_data *)iso_root_handle->backing_node->internal_data)->dir_record->data_length_le;
+        uint64_t file_size = ((struct vfs_iso9660_cache_node_data
+    *)iso_root_handle->backing_node->internal_data)->dir_record->data_length_le;
 
         void *elf_buf = kmalloc_heap(file_size);
         if (!elf_buf) {
@@ -308,6 +290,78 @@ void kmain(void) {
         thread_ready(shell_thread);
 
         kfree_heap(elf_buf);
+    } */
+    vfs_handle_t *ld_handle;
+    int res = vfs_open("/iso9660/lib/ld.so", SYSCALL_OPEN_FLAG_READ, 0, 0, &ld_handle);
+    if (res == 0) {
+        printf("Loading ld.so from iso9660...\n\n");
+        uint64_t file_size = ((struct vfs_iso9660_cache_node_data *)ld_handle->backing_node->internal_data)
+                                 ->dir_record->data_length_le;
+
+        void *elf_buf = kmalloc_heap(file_size);
+        if (!elf_buf) {
+            printf("OOM error allocating memory for elf buffer\n");
+            hcf();
+        }
+
+        ssize_t read_bytes = vfs_read(ld_handle, elf_buf, file_size);
+        vfs_close(ld_handle);
+        if (read_bytes < 0) {
+            printf("Error reading iso9660/lib/ld.so: %d\n", (int)read_bytes);
+            hcf();
+        } else if ((uint64_t)read_bytes != file_size) {
+            printf("Short read reading iso9660/lib/ld.so: expected %p, got %p\n", (void *)file_size,
+                   (void *)read_bytes);
+            hcf();
+        }
+
+        proc_t *shell_proc = create_proc("init", NULL);
+
+        uint64_t entry;
+
+        // 0x7fff80000000ULL
+        loadelf(elf_buf, shell_proc->pml4, &entry, 0);
+        kfree_heap(elf_buf);
+
+        thread_t *shell_thread = create_thread(shell_proc, "init_t0", (void *)entry, NULL);
+
+        // Everything we are about to do fits in the top page of the stack.
+        uint64_t *rsp_og = (uint64_t *)(phys_to_virt(get_physaddr((uint64_t)shell_thread->stack_top - PAGE_LEN, shell_proc->pml4)) + 0x1000);
+        uint64_t *rsp    = rsp_og;
+
+        // First, setup the stack
+        const char *argv0 = "/iso9660/bin/init";
+        const char *argv1 = NULL;
+
+        const char *envp0 = NULL;
+
+        const uint64_t argc = 1;
+
+        size_t argv0_len = strlen(argv0) + 1;
+
+        // Push argv0 onto the stack (getting address aligned to 8 bytes)
+        uint64_t argv0_addr = ((uint64_t)(rsp)-argv0_len) & ~0x7ULL;
+        rsp                 = (uint64_t *)argv0_addr;
+        memcpy((void *)argv0_addr, argv0, argv0_len);
+
+        uint64_t str_usr_addr = (uint64_t)shell_thread->stack_top - ((uint64_t)rsp_og - argv0_addr);
+
+        // Align the rsp to 16-bytes (we have 4 values left to push after this)
+        rsp = (uint64_t *)((uint64_t)(rsp) & ~0xF);
+
+        // Push envp0, argv1, argv0, argc onto the stack
+        stack_push_qword(0, &rsp);
+        stack_push_qword(0, &rsp);
+        stack_push_qword((uint64_t)str_usr_addr, &rsp);
+        stack_push_qword((uint64_t)argc, &rsp);
+
+        shell_thread->regs.iret_rsp -= (uint64_t)rsp_og - (uint64_t)rsp;
+
+        printf("Final stack pointer for init: %p from %p; entry: %p\n", (void *)shell_thread->regs.iret_rsp, (void *)rsp, (void *)entry);
+
+        shell_thread->regs.rdi = shell_thread->regs.iret_rsp;
+
+        thread_ready(shell_thread);
     } else {
         printf("\nWARN: Falling back to module...\n\n");
 
@@ -319,9 +373,9 @@ void kmain(void) {
 
             proc_t *shell_proc = create_proc("kshell", NULL);
 
-            uint64_t entry, stack;
+            uint64_t entry;
 
-            loadelf(elf_addr, shell_proc->pml4, &entry, &stack);
+            loadelf(elf_addr, shell_proc->pml4, &entry, 0);
 
             thread_t *shell_thread = create_thread(shell_proc, "kshell_t0", (void *)entry, NULL);
 

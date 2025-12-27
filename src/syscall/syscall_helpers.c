@@ -95,7 +95,18 @@ int copy_to_kernel_buf(void *dest, void *src, size_t count, pml4_t *current_pml4
 }
 
 int handle_string_arg(pml4_t *current_pml4, uint64_t user_ptr, const char **out) {
+    if (user_ptr == 0) {
+        printf("handle_string_arg: null pointer passed from userland\n");
+        return -EFAULT;
+    }
+
     uint64_t str_ptr = phys_to_virt(get_physaddr(user_ptr, current_pml4));
+
+    if (str_ptr == phys_to_virt(0)) {
+        printf("handle_string_arg: bad pointer passed from userland\n");
+        return -EFAULT;
+    }
+    
     uint64_t len     = strlen((char *)str_ptr) + 1;
 
     char *kstr = kmalloc_heap(len);

@@ -58,7 +58,7 @@ void syscall_handle_fs_call(registers_t *regs, proc_t *proc, pml4_t *current_pml
         break;
     }
     case SYSCALL_FSTAT: {
-        regs->rax = (uint64_t)syscall_routine_fstat(regs->rbx, regs->rcx, proc, current_pml4);
+        regs->rax = (uint64_t)syscall_routine_fstat((int)regs->rbx, regs->rcx, proc, current_pml4);
         break;
     }
     case SYSCALL_LSTAT: {
@@ -70,7 +70,7 @@ void syscall_handle_fs_call(registers_t *regs, proc_t *proc, pml4_t *current_pml
         }
         break;
     }
-    case SYSCALL_POLL:
+    // case SYSCALL_POLL:
     case SYSCALL_LSEEK: {
         regs->rax = (uint64_t)syscall_routine_lseek(regs->rbx, (ssize_t)regs->rcx, (int)regs->rdx, proc);
         break;
@@ -88,13 +88,13 @@ void syscall_handle_fs_call(registers_t *regs, proc_t *proc, pml4_t *current_pml
         }
         break;
     }
-    case SYSCALL_RMDIR:
+    /* case SYSCALL_RMDIR:
     case SYSCALL_RENAME:
     case SYSCALL_CHMOD:
     case SYSCALL_FCHMOD:
     case SYSCALL_CHOWN:
     case SYSCALL_FCHOWN:
-    case SYSCALL_LCHOWN:
+    case SYSCALL_LCHOWN: */
     // TODO: modify file groups
     case SYSCALL_GETCWD: {
         regs->rax = (uint64_t)syscall_routine_getcwd(regs->rbx, (size_t)regs->rcx, proc, current_pml4);
@@ -109,11 +109,11 @@ void syscall_handle_fs_call(registers_t *regs, proc_t *proc, pml4_t *current_pml
         }
         break;
     }
-    case SYSCALL_FCHDIR:
+    /* case SYSCALL_FCHDIR:
     case SYSCALL_LINK:
     case SYSCALL_UNLINK:
     case SYSCALL_SYMLINK:
-    case SYSCALL_READLINK:
+    case SYSCALL_READLINK: */
     default: {
         printf("syscall_handle_fs_call: unrecognized filesystem syscall %p\n", call);
         regs->rax = (uint64_t)-ENOSYS;

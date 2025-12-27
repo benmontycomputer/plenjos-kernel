@@ -44,6 +44,8 @@ struct proc {
     volatile proc_t *prev_sibling;
     volatile proc_t *next_sibling;
 
+    _Atomic(pid_t) next_thread_index;
+
     uid_t uid;
     char *cwd; // Page-aligned; 4096 bytes
     // TODO: implement groups

@@ -143,8 +143,9 @@ ssize_t iso9660_directory_read_func(vfs_handle_t *handle, void *buf, size_t len)
 
     struct filesystem_iso9660 *fs = parent_data->fs;
 
-    uint64_t dir_extent_lba = parent_data->dir_record->extent_location_lba_le + instance_data->current_extent_location + fs->partition_start_lba;
-    uint64_t dir_size       = parent_data->dir_record->data_length_le - instance_data->seek_pos;
+    uint64_t dir_extent_lba = parent_data->dir_record->extent_location_lba_le + instance_data->current_extent_location
+                              + fs->partition_start_lba;
+    uint64_t dir_size           = parent_data->dir_record->data_length_le - instance_data->seek_pos;
     uint64_t logical_block_size = fs->logical_block_size;
 
     uint64_t seek_offset_in_block = instance_data->seek_pos % logical_block_size;
@@ -336,19 +337,10 @@ int iso9660_load_func(fscache_node_t *node, const char *name, fscache_node_t *ou
                 child_data->unused[0] = 0;
                 child_data->unused[1] = 0;
 
-                out->flags = 0;
-                if (dir_record->file_flags & 0x02) {
-                    out->type  = DT_DIR;
-                    out->fsops = (vfs_ops_block_t *)iso9660_directory_fsops;
-                } else {
-                    out->type  = DT_REG;
-                    out->fsops = (vfs_ops_block_t *)iso9660_file_fsops;
-                }
-                out->mode = 0755; // TODO: set proper mode
-                out->uid  = 0;    // TODO: decide if we want to support xattr for ownership
-                out->gid  = 0;    // TODO: decide if we want to support xattr for ownership
-                strncpy(out->name, name, NAME_MAX);
-                out->name[NAME_MAX] = '\0';
+                fscache_node_populate(out, (dir_record->file_flags & 0x02) ? DT_DIR : DT_REG, 0, name, 0, 0, 0755,
+                                      dir_record->data_length_le,
+                                      (dir_record->file_flags & 0x02) ? (vfs_ops_block_t *)iso9660_directory_fsops
+                                                                      : (vfs_ops_block_t *)iso9660_file_fsops);
 
                 kfree_heap(dir_buffer);
                 return 0;

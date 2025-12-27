@@ -166,34 +166,29 @@ int kernelfs_load(fscache_node_t *node, const char *name, fscache_node_t *out) {
 // Found the node
 node_found:
     if (out) {
-        strncpy(out->name, current_node->name, NAME_MAX + 1);
-        out->name[NAME_MAX] = '\0';
-
-        out->type = current_node->type;
-        out->uid  = current_node->uid;
-        out->gid  = current_node->gid;
-        out->mode = current_node->mode;
-
-        out->flags = 0;
-
         // TODO: MEMORY LEAK: free this
-        out->fsops = kmalloc_heap(sizeof(vfs_ops_block_t));
-        if (!out->fsops) {
+        vfs_ops_block_t *fsops = kmalloc_heap(sizeof(vfs_ops_block_t));
+        if (!fsops) {
             return -ENOMEM;
         }
 
         // Clear everything first; only assign to the pointers we actually want
-        memset(out->fsops, 0, sizeof(vfs_ops_block_t));
+        memset(fsops, 0, sizeof(vfs_ops_block_t));
 
-        out->fsops->fsname = "kernelfs";
-        out->fsops->read   = current_node->read;
-        out->fsops->write  = current_node->write;
-        out->fsops->seek   = current_node->seek;
-        out->fsops->close  = NULL; // Use default vfs close
-        out->fsops->create_child
+        fsops->fsname = "kernelfs";
+        fsops->read   = current_node->read;
+        fsops->write  = current_node->write;
+        fsops->seek   = current_node->seek;
+        fsops->close  = NULL; // Use default vfs close
+        fsops->create_child
             = (current_node->type == DT_DIR) ? kernelfs_create_child : NULL; // TODO: implement create_child
-        out->fsops->load_node = kernelfs_load;
-        out->fsops->unload_node = NULL; // No internal data to clean up
+        fsops->load_node = kernelfs_load;
+        fsops->unload_node = NULL; // No internal data to clean up
+
+        // TODO: implement size
+        fscache_node_populate(out, current_node->type, 0, current_node->name, current_node->uid, current_node->gid,
+                              current_node->mode, 0 /* current_node->size */,
+                              fsops);
 
         ((kernelfs_cache_data_t *)out->internal_data)->node = current_node;
     }

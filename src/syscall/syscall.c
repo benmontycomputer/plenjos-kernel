@@ -78,7 +78,7 @@ extern int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
 
 registers_t *syscall_routine(registers_t *regs) {
     uint64_t call = regs->rax;
-    printf("syscall %d\n", (int)call);
+    // printf("syscall %d\n", (int)call);
 
     // TODO: would we rather use this or the one from the proc struct? They should ALWAYS be the same, right?
     pml4_t *current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);

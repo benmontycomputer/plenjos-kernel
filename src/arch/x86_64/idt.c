@@ -181,6 +181,9 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
         gpf_handler(regs);
     } else if (regs->int_no < 32) {
         printf("\nCPU EXCEPTION\n");
+        printf("RSP: %p\n", regs->iret_rsp);
+        printf("RIP: %p\n", regs->iret_rip);
+        printf("Error Code: %p\n", regs->err_code);
 
         dump_machine_check_msrs();
     } else {
