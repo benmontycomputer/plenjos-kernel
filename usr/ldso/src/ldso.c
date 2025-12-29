@@ -3,7 +3,7 @@
 #include "elf.h"
 #include "syscall.h"
 
-void _start(uint64_t stack) {
+void _start(uint64_t stack, uint64_t target_entry) {
     // Get the stack pointer
     // uint64_t rsp;
     // asm volatile("mov %%rsp, %0" : "=r"(rsp));
@@ -73,7 +73,16 @@ void _start(uint64_t stack) {
 
 finish_relocations:
     syscall_print("ldso: Finished relocations, jumping to main executable...\nargv0: ");
-    ld_main(stack);
+    ld_main(stack, target_entry);
+}
+
+void jump_to_entry(uint64_t entry, uint64_t stack) {
+    // Jump to the entry point
+    asm volatile("mov %0, %%rsp\n"
+                 "jmp *%1\n"
+                 :
+                 : "r"(stack), "r"(entry)
+                 : "%rsp");
 }
 
 /**
@@ -102,7 +111,7 @@ finish_relocations:
  * is a regular file.
  */
 
-int ld_main(uint64_t stack) {
+int ld_main(uint64_t stack, uint64_t target_entry) {
     uint64_t argc = *((uint64_t *)stack);
     char **argv   = (char **)((uint8_t *)stack + 8);
     char **envp   = (char **)((uint8_t *)argv + (argc + 1) * 8);
@@ -124,7 +133,36 @@ int ld_main(uint64_t stack) {
     }
 
     struct elf_object main_obj;
-    loadelf(argv[0], &main_obj);
+    // loadelf(argv[0], &main_obj);
+
+    parse_dynamic_section(&main_obj);
+
+    int res = 0;
+
+    // Handle relocations
+    if (main_obj.rela_sz > 0) {
+        res = apply_relocations(&main_obj, main_obj.rela, main_obj.rela_sz, 0);
+        if (res < 0) {
+            syscall_print("load_library_from_disk: failed to apply relocations\n");
+            return res;
+        }
+    }
+    if (main_obj.rela_plt_sz > 0) {
+        res = apply_relocations(&main_obj, main_obj.rela_plt, main_obj.rela_plt_sz, 1);
+        if (res < 0) {
+            syscall_print("load_library_from_disk: failed to apply PLT relocations\n");
+            return res;
+        }
+    }
+
+    // Resolve symbols (populate GOT and PLT)
+    // TODO
+
+    // Jump to the entry point
+    // TODO
+
+    while (1)
+        ;
 
     return 0;
 }

@@ -43,6 +43,9 @@ typedef enum {
     SYSCALL_PRINT_PTR,
     SYSCALL_KB_READ,
     SYSCALL_SLEEP,
+    SYSCALL_MEMMAP_FROM_BUFFER, // Used for read-only mappings; this might be temporary. These should be protected from unmapping.
+    SYSCALL_MEMMAP_FILE,
+    SYSCALL_ALLOC_PAGE,
 } syscalls_call;
 
 typedef uint8_t syscall_open_flags_t;
@@ -53,5 +56,11 @@ typedef uint8_t syscall_open_flags_t;
 #define SYSCALL_OPEN_FLAG_CREATE 0x8
 #define SYSCALL_OPEN_FLAG_EXCL 0x10
 #define SYSCALL_OPEN_FLAG_DIRECTORY 0x20
+
+typedef uint8_t syscall_memmap_flags_t;
+
+// #define SYSCALL_MEMMAP_FLAG_RD 0x1 // Read is implied
+#define SYSCALL_MEMMAP_FLAG_WR 0x1
+#define SYSCALL_MEMMAP_FLAG_EX 0x2
 
 #endif /* _PLENJOS_SYSCALL_H */

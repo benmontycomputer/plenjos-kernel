@@ -14,7 +14,7 @@ int mmap(void *addr, size_t length) {
         return -1;
     }
 
-    int res = (int)syscall_memmap(addr, length);
+    int res = (int)syscall_memmap(addr, length, SYSCALL_MEMMAP_FLAG_WR);
     if (res != 0) {
         printf("mmap: syscall failed with res %d\n", res);
         return -1;

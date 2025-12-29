@@ -45,6 +45,7 @@
 #define PAGE_FLAG_PRESENT 0x1
 #define PAGE_FLAG_WRITE   0x2
 #define PAGE_FLAG_USER    0x4
+#define PAGE_FLAG_NX      (1ULL << 63)
 
 // Virtual memory allocation types
 #define ALLOCATE_VM_EX  0x1

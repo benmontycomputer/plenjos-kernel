@@ -21,6 +21,7 @@ void loadelf(void *elf_base, pml4_t *pml4, uint64_t *entry_out, uint64_t voffs_i
 
         if (phdr->type == PT_DYNAMIC) {
             // Allow us to map
+            // TODO: should we map these? I don't know.
             printf("Found PT_DYNAMIC segment at vaddr %p\n", (void *)(phdr->vaddr + voffs_if_pic));
         } else if (phdr->type != 1) continue;
 

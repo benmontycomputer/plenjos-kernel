@@ -19,6 +19,16 @@ uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_
     return out;
 }
 
+int syscall_memmap(void *addr, size_t length, syscall_memmap_flags_t flags) {
+    return (int)syscall(SYSCALL_MEMMAP, (uint64_t)addr, (uint64_t)length, (uint64_t)flags, 0, 0);
+}
+
+int syscall_memmap_from_buffer(void *addr, size_t length, syscall_memmap_flags_t flags, void *buffer,
+                               size_t buffer_length) {
+    return (int)syscall(SYSCALL_MEMMAP_FROM_BUFFER, (uint64_t)addr, (uint64_t)length, (uint64_t)flags, (uint64_t)buffer,
+                        (uint64_t)buffer_length);
+}
+
 int syscall_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_create) {
     return (int)syscall(SYSCALL_OPEN, (uint64_t)path, (uint64_t)flags, (uint64_t)mode_if_create, 0, 0);
 }
