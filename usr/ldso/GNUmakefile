@@ -68,6 +68,7 @@ override CFLAGS += \
     -ffreestanding \
     -shared \
     -fPIC \
+    -mno-mmx -mno-sse -mno-sse2 \
     -fno-stack-protector
 
 # Internal C preprocessor flags that should not be changed by the user.

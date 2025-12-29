@@ -59,7 +59,7 @@ ssize_t syscall_routine_getcwd(uint64_t out_buf_ptr, ssize_t size, proc_t *proc,
         return -ERANGE;
     }
 
-    res = (ssize_t)copy_to_user_buf((void *)out_buf_ptr, proc->cwd, cwd_len + 1, current_pml4);
+    res = (ssize_t)copy_to_user_buf((void *)out_buf_ptr, proc->cwd, cwd_len + 1, false, current_pml4);
     if (res < 0) {
         printf("syscall_routine_getcwd: failed to copy cwd to user buffer %p for process %s (pid %p), errno %d\n",
                (void *)out_buf_ptr, proc->name, proc->pid, res);

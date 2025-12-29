@@ -37,15 +37,16 @@ typedef enum {
 
     // Other
     SYSCALL_MEMMAP = 0x40,
+    SYSCALL_MEMMAP_FROM_BUFFER, // Used for read-only mappings; this might be temporary. These should be protected from unmapping.
+    SYSCALL_MEMMAP_FILE,
+    SYSCALL_MEMPROTECT, // Currently only supports removing permissions, not adding them.
+    SYSCALL_ALLOC_PAGE,
     SYSCALL_GET_FB,
     SYSCALL_GET_KB,
     SYSCALL_PRINT,
     SYSCALL_PRINT_PTR,
     SYSCALL_KB_READ,
     SYSCALL_SLEEP,
-    SYSCALL_MEMMAP_FROM_BUFFER, // Used for read-only mappings; this might be temporary. These should be protected from unmapping.
-    SYSCALL_MEMMAP_FILE,
-    SYSCALL_ALLOC_PAGE,
 } syscalls_call;
 
 typedef uint8_t syscall_open_flags_t;

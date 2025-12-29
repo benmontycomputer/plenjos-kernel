@@ -10,6 +10,7 @@
 int syscall_memmap(void *addr, size_t length, syscall_memmap_flags_t flags);
 int syscall_memmap_from_buffer(void *addr, size_t length, syscall_memmap_flags_t flags, void *buffer,
                                size_t buffer_length);
+int syscall_memprotect(void *addr, size_t length, syscall_memmap_flags_t flags);
 int syscall_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_create);
 ssize_t syscall_read(int fd, void *buf, size_t count);
 int syscall_fstat(int fd, struct kstat *out_stat_ptr);

@@ -8,16 +8,16 @@ override OUTPUT = user_shell.elf
 # GCC = /usr/local/x86_64-elf/bin/x86_64-elf-gcc
 CC = $(TOOLCHAIN_PREFIX)gcc
 CFLAGS := -g -Wall -Wextra -pedantic -std=gnu11 -Wno-vla -m64 -march=x86-64 \
-           -fno-pie -no-pie -nostdlib -nostartfiles \
+           -fPIE -nostdlib -nostartfiles -fno-builtin \
 		   -mno-mmx -mno-sse -mno-sse2 \
-           -ffreestanding -O2
+           -ffreestanding -fno-stack-protector -O2 -L../libc/lib -lc
 
-CPPFLAGS := -I ../../include -I src -I src/libc
+CPPFLAGS := -I ../../include -I src -isystem ../libc/include
 
 # LD = /usr/local/x86_64-elf/bin/x86_64-elf-ld
 LD = $(TOOLCHAIN_PREFIX)ld
-LINKER_FILE = linker.lds
-LDFLAGS := -m elf_x86_64 -nostdlib -static -z max-page-size=0x1000 -T $(LINKER_FILE)
+# LINKER_FILE = linker.lds
+LDFLAGS := -nostdlib -fPIE -pie -L../libc/lib -Wl,--dynamic-linker=/usr/lib/ld.so -lc -z max-page-size=0x1000 ../libc/crt/crt*.o
 
 OBJCOPY := $(TOOLCHAIN_PREFIX)objcopy
 
@@ -50,7 +50,7 @@ all: bin/$(OUTPUT)
 # Link rules for the final executable.
 bin/$(OUTPUT): GNUmakefile linker.lds $(OBJ)
 	mkdir -p "$$(dirname $@)"
-	$(LD) $(OBJ) $(LDFLAGS) -o $@
+	$(CC) $(OBJ) $(CFLAGS) $(LDFLAGS) -o $@
 
 # Compilation rules for *.c files.
 obj/%.c.o: %.c GNUmakefile

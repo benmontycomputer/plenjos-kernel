@@ -1,20 +1,15 @@
-#include <stdbool.h>
-#include <stdint.h>
-
-#include "kernel.h"
-
-#include "memory/mm.h"
-
-#include "memory/detect.h"
-#include "memory/kmalloc.h"
-
 #include "arch/x86_64/apic/apic.h"
-
-#include "lib/stdio.h"
-
 #include "arch/x86_64/cpuid/cpuid.h"
 #include "arch/x86_64/irq.h"
 #include "cpu/cpu.h"
+#include "kernel.h"
+#include "lib/stdio.h"
+#include "memory/detect.h"
+#include "memory/kmalloc.h"
+#include "memory/mm.h"
+
+#include <stdbool.h>
+#include <stdint.h>
 
 // Partially modified from KeblaOS
 
@@ -39,8 +34,8 @@ void set_cr3_addr(uint64_t cr3) {
 static inline void addr_split(uint64_t virt, uint32_t *pml4, uint32_t *pdpt, uint32_t *pd, uint32_t *pt) {
     *pml4 = ((virt) >> 39) & 0x1FF; // 39-47
     *pdpt = ((virt) >> 30) & 0x1FF; // 30-38
-    *pd = ((virt) >> 21) & 0x1FF;   // 21-29
-    *pt = ((virt) >> 12) & 0x1FF;   // 12-20
+    *pd   = ((virt) >> 21) & 0x1FF; // 21-29
+    *pt   = ((virt) >> 12) & 0x1FF; // 12-20
 }
 
 static inline void flush_ipi_all() {
@@ -109,37 +104,36 @@ page_t *find_page_using_alloc(uint64_t virt, bool autocreate, uint64_t *alloc_fu
     if (!(pml4_table[i_pml4] & PAGE_FLAG_PRESENT)) {
         if (!autocreate) return NULL;
         // Allocate a new page directory pointer table and add it to the pml4 table
-        pdpt_table = alloc_func();
+        pdpt_table         = alloc_func();
         pml4_table[i_pml4] = (virt_to_phys((uint64_t)pdpt_table) | flags);
     } else {
         // Retrieve the page directory pointer table, making sure to discard unnecessary bits.
-        // the tilde inverts the 0xFFF (so we can write ~0xFFF instead of 0xFFFFFFFFFFFFF000)
         if (user) pml4_table[i_pml4] |= PAGE_FLAG_USER;
-        pdpt_table = (uint64_t *)phys_to_virt((uint64_t)pml4_table[i_pml4] & ~(uint64_t)0xFFF);
+        pdpt_table = (uint64_t *)phys_to_virt((uint64_t)pml4_table[i_pml4] & PHYSADDR_MASK);
     }
 
     // Search for a page directory table; create if not found
     if (!(pdpt_table[i_pdpt] & PAGE_FLAG_PRESENT)) {
         if (!autocreate) return NULL;
         // Allocate a new page directory table and add it to the page directory pointer table
-        pd_table = alloc_func();
+        pd_table           = alloc_func();
         pdpt_table[i_pdpt] = (virt_to_phys((uint64_t)pd_table) | flags);
     } else {
         // Retrieve the page directory table, making sure to discard unnecessary bits
         if (user) pdpt_table[i_pdpt] |= PAGE_FLAG_USER;
-        pd_table = (uint64_t *)phys_to_virt((uint64_t)pdpt_table[i_pdpt] & ~(uint64_t)0xFFF);
+        pd_table = (uint64_t *)phys_to_virt((uint64_t)pdpt_table[i_pdpt] & PHYSADDR_MASK);
     }
 
     // Search for a page table; create if not found
     if (!(pd_table[i_pd] & PAGE_FLAG_PRESENT)) {
         if (!autocreate) return NULL;
         // Allocate a new page table and add it to the page directory table
-        pt_table = alloc_func();
+        pt_table       = alloc_func();
         pd_table[i_pd] = (virt_to_phys((uint64_t)pt_table) | flags);
     } else {
         // Retrieve the page table, making sure to discard unnecessary bits
         if (user) pd_table[i_pd] |= PAGE_FLAG_USER;
-        pt_table = (uint64_t *)phys_to_virt((uint64_t)pd_table[i_pd] & ~(uint64_t)0xFFF);
+        pt_table = (uint64_t *)phys_to_virt((uint64_t)pd_table[i_pd] & PHYSADDR_MASK);
     }
 
     pg = &pt_table[i_pt];
@@ -162,6 +156,7 @@ page_t *find_page(uint64_t virt, bool autocreate, pml4_t *pml4) {
     return find_page_using_alloc(virt, autocreate, alloc_paging_node, is_userspace(virt), pml4);
 }
 
+// The alloc func should return a kernel-mapped pointer
 void map_virtual_memory_using_alloc(uint64_t phys_start, uint64_t virt_start, size_t len, uint64_t flags,
                                     uint64_t *alloc_func(), pml4_t *pml4) {
     uint32_t i_pml4, i_pdpt, i_pd, i_pt;
@@ -185,40 +180,39 @@ void map_virtual_memory_using_alloc(uint64_t phys_start, uint64_t virt_start, si
         // Search for a page directory pointer table; create if not found
         if (!(pml4_table[i_pml4] & PAGE_FLAG_PRESENT)) {
             // Allocate a new page directory pointer table and add it to the pml4 table
-            pdpt_table = alloc_func();
+            pdpt_table         = alloc_func();
             pml4_table[i_pml4] = (virt_to_phys((uint64_t)pdpt_table) | flags);
         } else {
             // Retrieve the page directory pointer table, making sure to discard unnecessary bits.
-            // the tilde inverts the 0xFFF (so we can write ~0xFFF instead of 0xFFFFFFFFFFFFF000)
             if (user) pml4_table[i_pml4] |= PAGE_FLAG_USER;
-            pdpt_table = (uint64_t *)phys_to_virt((uint64_t)pml4_table[i_pml4] & ~(uint64_t)0xFFF);
+            pdpt_table = (uint64_t *)phys_to_virt((uint64_t)pml4_table[i_pml4] & PHYSADDR_MASK);
         }
 
         // Search for a page directory table; create if not found
         if (!(pdpt_table[i_pdpt] & PAGE_FLAG_PRESENT)) {
             // Allocate a new page directory table and add it to the page directory pointer table
-            pd_table = alloc_func();
+            pd_table           = alloc_func();
             pdpt_table[i_pdpt] = (virt_to_phys((uint64_t)pd_table) | flags);
         } else {
             // Retrieve the page directory table, making sure to discard unnecessary bits
             if (user) pdpt_table[i_pdpt] |= PAGE_FLAG_USER;
-            pd_table = (uint64_t *)phys_to_virt((uint64_t)pdpt_table[i_pdpt] & ~(uint64_t)0xFFF);
+            pd_table = (uint64_t *)phys_to_virt((uint64_t)pdpt_table[i_pdpt] & PHYSADDR_MASK);
         }
 
         // Search for a page table; create if not found
         if (!(pd_table[i_pd] & PAGE_FLAG_PRESENT)) {
             // Allocate a new page table and add it to the page directory table
-            pt_table = alloc_func();
+            pt_table       = alloc_func();
             pd_table[i_pd] = (virt_to_phys((uint64_t)pt_table) | flags);
         } else {
             // Retrieve the page table, making sure to discard unnecessary bits
             if (user) pd_table[i_pd] |= PAGE_FLAG_USER;
-            pt_table = (uint64_t *)phys_to_virt((uint64_t)pd_table[i_pd] & ~(uint64_t)0xFFF);
+            pt_table = (uint64_t *)phys_to_virt((uint64_t)pd_table[i_pd] & PHYSADDR_MASK);
         }
 
         // Finally, set the entry in the page table
         // printf("mapping 2 %p\n", phys_current);
-        pt_table[i_pt] = ((phys_current & ~(uint64_t)0xFFF) | flags);
+        pt_table[i_pt] = ((phys_current & PHYSADDR_MASK) | flags);
 
         // Flush the tlb to update the tables in the CPU
         __native_flush_tlb_single(virt_current);
@@ -240,18 +234,18 @@ uint64_t get_physaddr(uint64_t virt, pml4_t *pml4) {
 
     if (!pml4_entry.present) return 0;
 
-    pdpt_t *pdpt_table = (pdpt_t *)phys_to_virt(pml4_entry.base_addr << 12);
+    pdpt_t *pdpt_table     = (pdpt_t *)phys_to_virt(pml4_entry.base_addr << 12);
     dir_entry_t pdpt_entry = pdpt_table->entries[pdpt_index];
 
     if (!pdpt_entry.present) return 0;
 
-    pd_t *pd_table = (pd_t *)phys_to_virt(pdpt_entry.base_addr << 12);
+    pd_t *pd_table       = (pd_t *)phys_to_virt(pdpt_entry.base_addr << 12);
     dir_entry_t pd_entry = pd_table->entries[pd_index];
 
     if (!pd_entry.present) return 0;
 
     pt_t *pt_table = (pt_t *)phys_to_virt(pd_entry.base_addr << 12);
-    page_t page = pt_table->pages[pt_index];
+    page_t page    = pt_table->pages[pt_index];
 
     if (!page.present) return 0;
 
@@ -260,7 +254,7 @@ uint64_t get_physaddr(uint64_t virt, pml4_t *pml4) {
 
 void init_paging() {
     kernel_pml4_phys = get_cr3_addr();
-    kernel_pml4 = (pml4_t *)phys_to_virt(kernel_pml4_phys);
+    kernel_pml4      = (pml4_t *)phys_to_virt(kernel_pml4_phys);
 
     if (!kernel_pml4_phys) {
         printf("\nNo page table! Halt.\n");
@@ -324,11 +318,14 @@ void free_page_table(pml4_t *pml4_virt) {
                     phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(PTE_ADDR(pte)));
                     pt[pt_i] = 0;
                 }
-                phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(PTE_ADDR(pde)));   // free page table
+                phys_mem_unref_frame(
+                    (phys_mem_free_frame_t *)phys_addr_to_frame_addr(PTE_ADDR(pde))); // free page table
             }
-            phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(PTE_ADDR(pdpte)));     // free page directory
+            phys_mem_unref_frame(
+                (phys_mem_free_frame_t *)phys_addr_to_frame_addr(PTE_ADDR(pdpte))); // free page directory
         }
-        phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(PTE_ADDR(pml4e)));         // free pdpt
+        phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(PTE_ADDR(pml4e))); // free pdpt
     }
-    phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(virt_to_phys((uint64_t)pml4_virt))); // free pml4
+    phys_mem_unref_frame(
+        (phys_mem_free_frame_t *)phys_addr_to_frame_addr(virt_to_phys((uint64_t)pml4_virt))); // free pml4
 }

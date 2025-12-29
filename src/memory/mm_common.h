@@ -47,6 +47,8 @@
 #define PAGE_FLAG_USER    0x4
 #define PAGE_FLAG_NX      (1ULL << 63)
 
+#define PHYSADDR_MASK 0x000FFFFFFFFFF000ULL
+
 // Virtual memory allocation types
 #define ALLOCATE_VM_EX  0x1
 #define ALLOCATE_VM_RO  0x2

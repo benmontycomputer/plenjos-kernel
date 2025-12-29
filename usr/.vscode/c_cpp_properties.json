@@ -5,7 +5,7 @@
             "includePath": [
                 "${workspaceFolder}/../include",
                 "${workspaceFolder}/shell/src",
-                "${workspaceFolder}/shell/src/libc"
+                "${workspaceFolder}/libc/include"
             ],
             "defines": [],
             "cStandard": "c17",

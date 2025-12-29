@@ -6,6 +6,14 @@
 
 #define PT_DYNAMIC 2
 
+typedef struct ELF_dyn {
+    int64_t d_tag; /* 8 bytes: type of entry */
+    union {
+        uint64_t d_val; /* 8 bytes: integer value */
+        uint64_t d_ptr; /* 8 bytes: address value */
+    } d_un;
+} __attribute__((packed)) ELF_dyn_t;
+
 struct ELF_header {
     /* Identification */
     uint32_t magic;

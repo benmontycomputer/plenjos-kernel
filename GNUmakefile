@@ -1,5 +1,4 @@
-SHELL_DIR = usr/shell
-LDSO_DIR = usr/ldso
+SUBDIRS = usr/ldso usr/libc usr/shell
 
 # Nuke built-in rules and variables.
 MAKEFLAGS += -rR
@@ -118,17 +117,16 @@ override OBJ := $(addprefix obj/,$(CFILES:.c=.c.o) $(ASFILES:.S=.S.o) $(NASMFILE
 override HEADER_DEPS := $(addprefix obj/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d))
 
 # Default target. This must come first, before header dependencies.
-.PHONY: all
-.PHONY: user_shell
-.PHONY: user_ldso
+.PHONY: all $(SUBDIRS)
 
-all: bin/$(OUTPUT) user_shell user_ldso
+all: bin/$(OUTPUT) $(SUBDIRS)
 
-user_shell:
-	$(MAKE) -C $(SHELL_DIR)
+# Subdir dependencies
+usr/shell: usr/libc
+usr/libc: usr/ldso
 
-user_ldso:
-	$(MAKE) -C $(LDSO_DIR)
+$(SUBDIRS): 
+	$(MAKE) -C $@
 
 # Include header dependencies.
 -include $(HEADER_DEPS)
@@ -161,7 +159,7 @@ obj/%.psf.o: %.psf GNUmakefile
 # Remove object files and the final executable.
 .PHONY: clean
 clean:
-	rm -rf bin obj usr/shell/bin usr/shell/obj usr/ldso/bin usr/ldso/obj
+	rm -rf bin obj usr/shell/bin usr/shell/obj usr/ldso/bin usr/ldso/obj usr/libc/lib usr/libc/obj usr/libc/crt
 
 uefi_run:
 	qemu-system-x86_64 \

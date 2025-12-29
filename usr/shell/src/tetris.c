@@ -3,7 +3,6 @@
 
 #include "sys/syscall.h"
 
-#include "common.h"
 #include "string.h"
 #include "keyboard.h"
 #include "uconsole.h"

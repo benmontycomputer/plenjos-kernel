@@ -1,4 +1,3 @@
-#include "common.h"
 #include "graphics/draw.h"
 #include "keyboard.h"
 #include "libshell/libshell.h"
@@ -127,7 +126,8 @@ static bool process_cmd(const char *cmd) {
             printf("Usage: print [string]\n");
             return false;
         }
-        syscall_print(toks[1]);
+        printf("[not implemented]\n");
+        // syscall_print(toks[1]);
     } else if (!strcmp(toks[0], "ls")) {
         ls_cmd(toks_count, toks);
     } else if (!strcmp(toks[0], "mkdir")) {

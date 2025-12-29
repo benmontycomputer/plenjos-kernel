@@ -14,3 +14,6 @@ int syscall_routine_memmap_file(void *addr, size_t length, syscall_memmap_flags_
 // page of the mapping. The parts of the mapping outside of the buffer are guaranteed to be zeroed.
 int syscall_routine_memmap_from_buffer(void *addr, size_t length, syscall_memmap_flags_t flags, void *buffer,
                                        size_t buffer_length, pml4_t *current_pml4);
+
+// Currently, this only supports removing permissions, not adding them.
+int syscall_routine_memprotect(void *addr, size_t length, syscall_memmap_flags_t flags, pml4_t *current_pml4);

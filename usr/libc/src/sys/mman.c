@@ -1,8 +1,6 @@
-#include "mman.h"
+#include "sys/mman.h"
 
 #include "sys/syscall.h"
-
-#include "common.h"
 
 // TODO: find a way to handle debug messages without just printing them to the console; this will be necessary once this
 // becomes a freestanding userland library

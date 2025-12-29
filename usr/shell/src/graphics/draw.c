@@ -1,6 +1,6 @@
 #include "draw.h"
 
-#include "../../uconsole.h"
+#include "uconsole.h"
 
 static inline int abs(int a) {
     if (a < 0) a = -a;

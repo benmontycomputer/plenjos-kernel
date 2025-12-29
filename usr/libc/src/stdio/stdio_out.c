@@ -2,9 +2,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "../../uconsole.h"
+#include "uconsole.h"
 #include "stdio.h"
-#include "common.h"
 
 // #include "memory/mm.h"
 

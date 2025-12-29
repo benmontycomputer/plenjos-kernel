@@ -22,7 +22,7 @@ static int syscall_routine_stat_from_handle(vfs_handle_t *handle, uint64_t out_s
     kstat.gid  = node->gid;
     kstat.size = node->size;
 
-    res = copy_to_user_buf((void *)out_stat_ptr, &kstat, sizeof(struct kstat), current_pml4);
+    res = copy_to_user_buf((void *)out_stat_ptr, &kstat, sizeof(struct kstat), false, current_pml4);
     if (res < 0) {
         return res;
     }

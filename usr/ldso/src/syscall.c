@@ -29,6 +29,10 @@ int syscall_memmap_from_buffer(void *addr, size_t length, syscall_memmap_flags_t
                         (uint64_t)buffer_length);
 }
 
+int syscall_memprotect(void *addr, size_t length, syscall_memmap_flags_t flags) {
+    return (int)syscall(SYSCALL_MEMPROTECT, (uint64_t)addr, (uint64_t)length, (uint64_t)flags, 0, 0);
+}
+
 int syscall_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_create) {
     return (int)syscall(SYSCALL_OPEN, (uint64_t)path, (uint64_t)flags, (uint64_t)mode_if_create, 0, 0);
 }

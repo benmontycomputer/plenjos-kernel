@@ -34,7 +34,7 @@ ssize_t syscall_routine_read(int fd, void *buf, size_t count, proc_t *proc, pml4
     res = vfs_read(handle, buf_tmp, count);
 
     if (res > 0) {
-        int check = copy_to_user_buf(buf, buf_tmp, res, current_pml4);
+        int check = copy_to_user_buf(buf, buf_tmp, res, false, current_pml4);
         if (check < 0) {
             printf("syscall_routine_read: failed to copy data to user buffer %p for process %s (pid %p), errno %d\n", buf,
                    proc->name, proc->pid, check);

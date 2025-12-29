@@ -1,8 +1,10 @@
-#include "syscall.h"
+#include "sys/syscall.h"
 
 #include "plenjos/syscall.h"
 #include "plenjos/types.h"
-#include "types.h"
+#include "plenjos/dev/fb.h"
+#include "plenjos/dev/kbd.h"
+#include "sys/types.h"
 
 #include <stdint.h>
 

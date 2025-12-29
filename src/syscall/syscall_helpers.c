@@ -14,7 +14,7 @@
 
 // TODO: any attempts to read/write from an out-of-bounds buffer should kill the process (segfault?)
 
-int copy_to_user_buf(void *dest, void *src, size_t count, pml4_t *current_pml4) {
+int copy_to_user_buf(void *dest, void *src, size_t count, bool override_write_check, pml4_t *current_pml4) {
     size_t first_page_len = PAGE_LEN - ((uint64_t)dest % PAGE_LEN);
     size_t last_page_len  = ((uint64_t)dest + count) % PAGE_LEN;
 
@@ -32,7 +32,7 @@ int copy_to_user_buf(void *dest, void *src, size_t count, pml4_t *current_pml4) 
             printf("check_buf: permission denied (not user accessible) at addr %p\n", addr);
             return -EFAULT;
         }
-        if (!page->rw) {
+        if (!page->rw && !override_write_check) {
             printf("check_buf: permission denied (not writeable) at addr %p\n", addr);
             return -EFAULT;
         }

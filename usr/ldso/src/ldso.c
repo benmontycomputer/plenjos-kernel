@@ -3,7 +3,9 @@
 #include "elf.h"
 #include "syscall.h"
 
-void _start(uint64_t stack, uint64_t target_entry) {
+extern uint64_t next_dso_base;
+
+void _start(uint64_t stack, uint64_t target_ehdr) {
     // Get the stack pointer
     // uint64_t rsp;
     // asm volatile("mov %%rsp, %0" : "=r"(rsp));
@@ -71,15 +73,22 @@ void _start(uint64_t stack, uint64_t target_entry) {
         }
     } */
 
+    init_dso_base();
+
 finish_relocations:
-    syscall_print("ldso: Finished relocations, jumping to main executable...\nargv0: ");
-    ld_main(stack, target_entry);
+    syscall_print("ldso: Finished relocations, jumping to main executable... (ehdr ");
+    syscall_print_ptr(target_ehdr);
+    syscall_print(" stack ");
+    syscall_print_ptr(stack);
+    syscall_print(")\n");
+    ld_main(stack, target_ehdr);
 }
 
 void jump_to_entry(uint64_t entry, uint64_t stack) {
     // Jump to the entry point
     asm volatile("mov %0, %%rsp\n"
-                 "jmp *%1\n"
+                 "push %1\n"
+                 "ret\n"
                  :
                  : "r"(stack), "r"(entry)
                  : "%rsp");
@@ -111,7 +120,7 @@ void jump_to_entry(uint64_t entry, uint64_t stack) {
  * is a regular file.
  */
 
-int ld_main(uint64_t stack, uint64_t target_entry) {
+int ld_main(uint64_t stack, uint64_t target_ehdr) {
     uint64_t argc = *((uint64_t *)stack);
     char **argv   = (char **)((uint8_t *)stack + 8);
     char **envp   = (char **)((uint8_t *)argv + (argc + 1) * 8);
@@ -132,8 +141,12 @@ int ld_main(uint64_t stack, uint64_t target_entry) {
         syscall_print("\n");
     }
 
-    struct elf_object main_obj;
+    struct elf_object main_obj = { 0 };
     // loadelf(argv[0], &main_obj);
+
+    main_obj.base = 0x400000; // Typical base for executables
+    main_obj.ehdr = (ELF_header_t *)target_ehdr;
+    main_obj.phdrs = (ELF_program_header_t *)((uint8_t *)target_ehdr + main_obj.ehdr->ph_offset);
 
     parse_dynamic_section(&main_obj);
 
@@ -141,6 +154,9 @@ int ld_main(uint64_t stack, uint64_t target_entry) {
 
     // Handle relocations
     if (main_obj.rela_sz > 0) {
+        syscall_print("\nldso: applying ");
+        syscall_print_ptr((uint64_t)(main_obj.rela_sz / sizeof(ELF_rela_t)));
+        syscall_print(" rela relocations\n");
         res = apply_relocations(&main_obj, main_obj.rela, main_obj.rela_sz, 0);
         if (res < 0) {
             syscall_print("load_library_from_disk: failed to apply relocations\n");
@@ -148,6 +164,9 @@ int ld_main(uint64_t stack, uint64_t target_entry) {
         }
     }
     if (main_obj.rela_plt_sz > 0) {
+        syscall_print("\nldso: applying ");
+        syscall_print_ptr((uint64_t)(main_obj.rela_plt_sz / sizeof(ELF_rela_t)));
+        syscall_print(" rela_plt relocations\n");
         res = apply_relocations(&main_obj, main_obj.rela_plt, main_obj.rela_plt_sz, 1);
         if (res < 0) {
             syscall_print("load_library_from_disk: failed to apply PLT relocations\n");
@@ -159,7 +178,15 @@ int ld_main(uint64_t stack, uint64_t target_entry) {
     // TODO
 
     // Jump to the entry point
-    // TODO
+    
+    uint64_t entry = main_obj.ehdr->entry_offset + main_obj.base;
+    syscall_print("ldso: Jumping to entry point at ");
+    syscall_print_ptr(entry);
+    syscall_print(" with stack ");
+    syscall_print_ptr(stack);
+    syscall_print("\n");
+
+    jump_to_entry(entry, stack);
 
     while (1)
         ;

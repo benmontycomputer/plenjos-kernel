@@ -347,13 +347,15 @@ void kmain(void) {
             hcf();
         }
 
+        printf("Read %p bytes for init and %p bytes for ld.so\n", (void *)read_bytes, (void *)linker_read_bytes);
+
         // Load the linker first
         uint64_t linker_entry;
         loadelf(linker_elf_buf, shell_proc->pml4, &linker_entry, 0);
         // kfree_heap(linker_elf_buf);
 
         // 0x7fff80000000ULL
-        loadelf(elf_buf, shell_proc->pml4, &entry, 0);
+        loadelf(elf_buf, shell_proc->pml4, &entry, 0x400000ULL);
         kfree_heap(elf_buf);
 
         thread_t *shell_thread = create_thread(shell_proc, "init_t0", (void *)linker_entry, NULL);
@@ -396,7 +398,7 @@ void kmain(void) {
                (void *)rsp, (void *)entry);
 
         shell_thread->regs.rdi = shell_thread->regs.iret_rsp;
-        shell_thread->regs.rsi = entry;
+        shell_thread->regs.rsi = 0x400000ULL; // Shell binary base addr
 
         thread_ready(shell_thread);
     } else {

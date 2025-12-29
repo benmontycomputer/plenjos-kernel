@@ -1,7 +1,6 @@
 // TODO: find a way to handle debug messages without just printing them to the console; this will be necessary once this
 // becomes a freestanding userland library
 
-#include "common.h"
 #include "sys/mman.h"
 #include "stdlib.h"
 #include "stdio.h"

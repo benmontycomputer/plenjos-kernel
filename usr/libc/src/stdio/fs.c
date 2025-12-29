@@ -4,7 +4,6 @@
 #include "stdio.h"
 #include "sys/types.h"
 #include "stdlib.h"
-#include "common.h"
 #include "errno.h"
 
 // TODO: implement errno
