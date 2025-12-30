@@ -3,9 +3,8 @@
         {
             "name": "Mac",
             "includePath": [
-                "${workspaceFolder}/../include",
-                "${workspaceFolder}/shell/src",
-                "${workspaceFolder}/libc/include"
+                "${workspaceFolder}/../../include",
+                "${workspaceFolder}/src"
             ],
             "defines": [],
             "cStandard": "c17",

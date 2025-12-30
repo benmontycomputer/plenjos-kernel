@@ -2,7 +2,7 @@
 CC      = x86_64-elf-gcc
 AR      = x86_64-elf-ar
 LD      = x86_64-elf-ld
-CFLAGS  = -m64 -ffreestanding -g -O2 -Wall -Wextra -fno-builtin -mno-mmx -mno-sse -mno-sse2 -fPIC -MMD -MP -Iinclude -Isrc -I../../include
+CFLAGS  = -m64 -ffreestanding -g -O2 -Wall -Wextra -fno-builtin -mno-mmx -mno-sse -mno-sse2 -fPIC -MMD -MP -I include -I ../../include
 ASMFLAGS = -m64 -ffreestanding -g -O2 -Wall -fPIC
 OBJCOPY = x86_64-elf-objcopy
 

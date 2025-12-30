@@ -10,14 +10,14 @@ CC = $(TOOLCHAIN_PREFIX)gcc
 CFLAGS := -g -Wall -Wextra -pedantic -std=gnu11 -Wno-vla -m64 -march=x86-64 \
            -fPIE -nostdlib -nostartfiles -fno-builtin \
 		   -mno-mmx -mno-sse -mno-sse2 \
-           -ffreestanding -fno-stack-protector -O2 -L../libc/lib -lc
+           -ffreestanding -fno-stack-protector -O2 -L ../libc/lib -lc
 
 CPPFLAGS := -I ../../include -I src -isystem ../libc/include
 
 # LD = /usr/local/x86_64-elf/bin/x86_64-elf-ld
 LD = $(TOOLCHAIN_PREFIX)ld
 # LINKER_FILE = linker.lds
-LDFLAGS := -nostdlib -fPIE -pie -L../libc/lib -Wl,--dynamic-linker=/usr/lib/ld.so -lc -z max-page-size=0x1000 ../libc/crt/crt*.o
+LDFLAGS := -nostdlib -fPIE -pie -L ../libc/lib -Wl,--dynamic-linker=/usr/lib/ld.so -lc -z max-page-size=0x1000 ../libc/crt/crt*.o
 
 OBJCOPY := $(TOOLCHAIN_PREFIX)objcopy
 
@@ -70,33 +70,3 @@ obj/%.psf.o: %.psf GNUmakefile
 .PHONY: clean
 clean:
 	rm -rf bin obj
-
-# ====== Rules ======
-
-# Compile .c to build/%.o
-#$(BUILD_DIR)/%.o: %.c
-#	@mkdir -p $(dir $@)
-#	$(CC) $(CFLAGS) -c $< -o $@
-
-# Linking
-#linking: $(BUILD_DIR)/$(FILE_NAME).elf
-
-#$(BUILD_DIR)/$(FILE_NAME).elf: $(OBJ_FILES)
-#	@mkdir -p $(BUILD_DIR)
-#	$(LD) $(LDFLAGS) -T $(LINKER_FILE) -o $@ $^
-#	@echo "Linked object files into $@"
-#
-#	make clean
-
-# Clean
-#clean:
-#	# Delete all .o and .d files recursively inside build directory
-#	find $(BUILD_DIR) -type f \( -name '*.o' -o -name '*.d' \) -delete
-#
-#	# Remove empty directories (which had only .o, .d files) inside build directory
-#	find $(BUILD_DIR) -type d -empty -delete
-#
-#	# Remove all files from build directory
-#	# rm -rf $(BUILD_DIR)/*
-#
-#	@echo "Cleaned object files and empty directories."
