@@ -151,6 +151,8 @@ void hcf(void) {
     }
 }
 
+#define LINKER_OFFS 0x7fff80000000ULL
+
 // The following will be our kernel's entry point.
 // If renaming kmain() to something else, make sure to change the
 // linker script accordingly.
@@ -351,7 +353,7 @@ void kmain(void) {
 
         // Load the linker first
         uint64_t linker_entry;
-        loadelf(linker_elf_buf, shell_proc->pml4, &linker_entry, 0);
+        loadelf(linker_elf_buf, shell_proc->pml4, &linker_entry, LINKER_OFFS);
         // kfree_heap(linker_elf_buf);
 
         // 0x7fff80000000ULL
@@ -398,7 +400,8 @@ void kmain(void) {
                (void *)rsp, (void *)entry);
 
         shell_thread->regs.rdi = shell_thread->regs.iret_rsp;
-        shell_thread->regs.rsi = 0x400000ULL; // Shell binary base addr
+        shell_thread->regs.rsi = LINKER_OFFS; // Linker base addr
+        shell_thread->regs.rdx = 0x400000ULL; // Shell binary base addr
 
         thread_ready(shell_thread);
     } else {

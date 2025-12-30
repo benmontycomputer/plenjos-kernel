@@ -89,10 +89,9 @@ override NASMFLAGS := \
 # Internal linker flags that should not be changed by the user.
 override LDFLAGS += \
     -m elf_x86_64 \
-    -static \
+    -shared \
     --no-undefined \
-    -z max-page-size=0x1000 \
-    -T linker-relocatable.lds
+    -z max-page-size=0x1000
 
 # Use "find" to glob all *.c, *.S, and *.asm files in the tree and obtain the
 # object and header dependency file names.
@@ -106,13 +105,13 @@ override HEADER_DEPS := $(addprefix obj/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d))
 # Default target. This must come first, before header dependencies.
 .PHONY: all
 
-all: bin/$(OUTPUT)
+all: lib/$(OUTPUT)
 
 # Include header dependencies.
 -include $(HEADER_DEPS)
 
 # Link rules for the final executable.
-bin/$(OUTPUT): GNUmakefile linker-relocatable.lds $(OBJ)
+lib/$(OUTPUT): GNUmakefile $(OBJ)
 	mkdir -p "$$(dirname $@)"
 #	$(LD) -r $(OBJ) -o obj/tmp.o
 #	$(LD) obj/tmp.o $(LDFLAGS) -o $@
@@ -136,4 +135,4 @@ obj/%.asm.o: %.asm GNUmakefile
 # Remove object files and the final executable.
 .PHONY: clean
 clean:
-	rm -rf bin obj
+	rm -rf lib obj

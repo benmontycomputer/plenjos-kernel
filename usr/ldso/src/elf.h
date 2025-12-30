@@ -150,7 +150,6 @@ typedef struct elf_object {
 
     ELF_rela_t *rela_plt;
     size_t rela_plt_sz;
-    size_t rela_plt_ent;
 
     uint64_t pltgot;
 

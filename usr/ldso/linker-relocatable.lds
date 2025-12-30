@@ -4,7 +4,7 @@ ENTRY(_start)
 
 SECTIONS
 {
-    . = 0x7fff80000000;
+    /* . = 0x7fff80000000; */
     /* Start at 0, but code is relocatable */
     . = ALIGN(0x1000);
     .text : {

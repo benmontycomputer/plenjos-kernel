@@ -37,6 +37,7 @@ int elf_copy(void *dest, void *src, size_t count, pml4_t *current_pml4) {
     return 0;
 }
 
+// TODO: if voffs_is_pic is non-zero, verify that the ELF is actually position-independent
 void loadelf(void *elf_base, pml4_t *pml4, uint64_t *entry_out, uint64_t voffs_if_pic) {
     ELF_header_t *ehdr          = (ELF_header_t *)elf_base;
     ELF_program_header_t *phdrs = (ELF_program_header_t *)((uint64_t)elf_base + ehdr->ph_offset);

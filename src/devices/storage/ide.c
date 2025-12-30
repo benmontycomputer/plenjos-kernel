@@ -350,7 +350,8 @@ int ide_wait_for_irq(struct ide_device *dev) {
     while (atomic_load_explicit(&dev->channel->irq_cnt, memory_order_acquire) == 0) {
         // Wait for IRQ to be processed
         // TODO: this might need to be something else if the driver runs on a different core from the IRQ handler
-        asm volatile("hlt");
+        // asm volatile("hlt");
+        asm volatile("pause");
     }
     return 0;
 }
