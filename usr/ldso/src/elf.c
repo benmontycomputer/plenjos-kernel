@@ -424,120 +424,13 @@ ELF_addr_t resolve_symbol(const char *name) {
             if (strcmp(sym_name, name) == 0) {
                 // Found the symbol
                 ELF_addr_t addr = obj->base + sym->st_value;
-                syscall_print("resolve_symbol: found symbol at address ");
+                syscall_print("resolve_symbol: found symbol ");
+                syscall_print(sym_name);
+                syscall_print(" at address ");
                 syscall_print_ptr((uint64_t)addr);
                 syscall_print("\n");
                 return addr;
             }
-        }
-    }
-
-    return 0;
-}
-
-// This is for both the main executable and shared libraries. This should happen AFTER it's loaded into memory.
-int apply_relocations(struct elf_object *obj, ELF_rela_t *rela, size_t rela_sz, int write_got) {
-    syscall_print("apply_relocations: applying relocations\n");
-
-    ELF_addr_t base    = obj->base;
-    ELF_sym_t *symtab  = obj->symtab;
-    const char *strtab = obj->strtab;
-    size_t relaent     = obj->relaent;
-
-    if (!rela || rela_sz == 0) {
-        syscall_print("apply_relocations: no rela table found\n");
-        return 0;
-    }
-
-    size_t count = rela_sz / relaent;
-    for (size_t i = 0; i < count; i++) {
-        ELF_rela_t *r     = (ELF_rela_t *)((uint8_t *)rela + i * relaent);
-        ELF_addr_t *where = (ELF_addr_t *)(base + r->r_offset);
-
-        // https://docs.oracle.com/cd/E19120-01/open.solaris/819-0690/chapter7-2/index.html
-        // https://docs.oracle.com/cd/E19120-01/open.solaris/819-0690/chapter6-54839/index.html
-        // S = value of symbol whose index resides in relocation entry
-        // A = addend
-        // B = base address of shared object
-        switch (ELF64_R_TYPE(r->r_info)) {
-        case (R_X86_64_64): {
-            // S + A
-            uint32_t sym_index = ELF64_R_SYM(r->r_info);
-            ELF_sym_t *sym     = &symtab[sym_index];
-
-            const char *name = strtab + sym->st_name;
-            syscall_print("apply_relocations: resolving R_X86_64_64 symbol: ");
-            syscall_print(name);
-            syscall_print("\n");
-
-            ELF_addr_t addr = resolve_symbol(name);
-
-            if (addr == 0) {
-                syscall_print("ERROR: Couldn't resolve symbol ");
-                syscall_print(name);
-                syscall_print("!\n");
-                return -1;
-            }
-
-            *where = addr + r->r_addend;
-
-            break;
-        }
-        // These next two cases resolve to the same calculation
-        case (R_X86_64_GLOB_DAT):
-        case (R_X86_64_JUMP_SLOT): {
-            // S
-            uint32_t sym_index = ELF64_R_SYM(r->r_info);
-            ELF_sym_t *sym     = &symtab[sym_index];
-
-            const char *name = strtab + sym->st_name;
-            syscall_print("apply_relocations: resolving R_X86_64_GLOB_DAT or R_X86_64_JUMP_SLOT symbol: ");
-            syscall_print(name);
-            syscall_print("\n");
-
-            ELF_addr_t addr = resolve_symbol(name);
-
-            if (addr == 0) {
-                syscall_print("ERROR: Couldn't resolve symbol ");
-                syscall_print(name);
-                syscall_print("!\n");
-                return -1;
-            }
-
-            *where = addr;
-
-            if (write_got && obj->pltgot && ELF64_R_TYPE(r->r_info) == R_X86_64_JUMP_SLOT) {
-                // Also write to the GOT entry
-                ELF_addr_t *got_entry
-                    = (ELF_addr_t *)(base + r->r_offset); //(obj->pltgot + (r->r_offset - (obj->rela_plt ?
-                                                          //(uint64_t)obj->rela_plt : 0)));
-                *got_entry = addr;
-            }
-
-            break;
-        }
-        case (R_X86_64_RELATIVE): {
-            // B + A
-            *where = r->r_addend + base;
-            break;
-        }
-        default: {
-            syscall_print("WARN: unrecognized relocation type ");
-            syscall_print_ptr(ELF64_R_TYPE(r->r_info));
-            syscall_print(" at index ");
-            syscall_print_ptr(i);
-            syscall_print(" (relatab =");
-            syscall_print_ptr((uint64_t)rela);
-            syscall_print(", r =");
-            syscall_print_ptr((uint64_t)r);
-            syscall_print(", count = ");
-            syscall_print_ptr(count);
-            syscall_print(", rela_sz = ");
-            syscall_print_ptr(rela_sz);
-            syscall_print(")\n");
-
-            return -1;
-        }
         }
     }
 

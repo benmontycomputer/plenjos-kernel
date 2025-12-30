@@ -159,6 +159,9 @@ typedef struct elf_object {
 
 void init_dso_base();
 
-int apply_relocations(struct elf_object *obj, ELF_rela_t *rela, size_t rela_sz, int write_got);
+// _apply_relocations is defined in lsdo.c so it can be used to self-relocate the linker itself; apply_relocations is a
+// wrapper for _apply_relocations and must also be defined in ldso.c.
+int apply_relocations(struct elf_object *obj, ELF_rela_t *rela, size_t rela_sz, int is_jmprel);
+
 int parse_dynamic_section(struct elf_object *obj);
 ELF_addr_t resolve_symbol(const char *name);

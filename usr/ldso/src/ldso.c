@@ -67,6 +67,120 @@ static int _prereloc_syscall_print_ptr(uint64_t val) {
     return (int)_prereloc_syscall(SYSCALL_PRINT_PTR, (uint64_t)val, 0, 0, 0, 0);
 }
 
+// This is for both the main executable and shared libraries. This should happen AFTER it's loaded into memory.
+static int _apply_relocations(ELF_addr_t base, ELF_sym_t *symtab, const char *strtab, size_t relaent, uint64_t pltgot, ELF_rela_t *rela, size_t rela_sz, int is_jmprel, int use_linker_resolve_symbol) {
+    // _prereloc_syscall_print("apply_relocations: applying relocations\n");
+
+    if (!rela || rela_sz == 0) {
+        // _prereloc_syscall_print("apply_relocations: no rela table found\n");
+        return 0;
+    }
+
+    size_t count = rela_sz / relaent;
+    for (size_t i = 0; i < count; i++) {
+        ELF_rela_t *r     = (ELF_rela_t *)((uint8_t *)rela + i * relaent);
+        ELF_addr_t *where = (ELF_addr_t *)(base + r->r_offset);
+
+        // https://docs.oracle.com/cd/E19120-01/open.solaris/819-0690/chapter7-2/index.html
+        // https://docs.oracle.com/cd/E19120-01/open.solaris/819-0690/chapter6-54839/index.html
+        // S = value of symbol whose index resides in relocation entry
+        // A = addend
+        // B = base address of shared object
+        switch (ELF64_R_TYPE(r->r_info)) {
+        case (R_X86_64_64): {
+            // S + A
+            uint32_t sym_index = ELF64_R_SYM(r->r_info);
+            ELF_sym_t *sym     = &symtab[sym_index];
+
+            const char *name = strtab + sym->st_name;
+            /* _prereloc_syscall_print("apply_relocations: resolving R_X86_64_64 symbol: ");
+            _prereloc_syscall_print(name);
+            _prereloc_syscall_print("\n"); */
+
+            ELF_addr_t addr = use_linker_resolve_symbol ? _ldso_self_resolve_symbol(name, symtab, strtab, base) : resolve_symbol(name);
+
+            if (addr == 0) {
+                _prereloc_syscall_print("ERROR: Couldn't resolve symbol ");
+                _prereloc_syscall_print(name);
+                _prereloc_syscall_print("!\n");
+                return -1;
+            }
+
+            *where = addr + r->r_addend;
+
+            break;
+        }
+        // These next two cases resolve to the same calculation
+        case (R_X86_64_GLOB_DAT):
+        case (R_X86_64_JUMP_SLOT): {
+            // S
+            uint32_t sym_index = ELF64_R_SYM(r->r_info);
+            ELF_sym_t *sym     = &symtab[sym_index];
+
+            const char *name = strtab + sym->st_name;
+            /* _prereloc_syscall_print("apply_relocations: resolving R_X86_64_GLOB_DAT or R_X86_64_JUMP_SLOT symbol: ");
+            _prereloc_syscall_print(name);
+            _prereloc_syscall_print("\n"); */
+
+            ELF_addr_t addr = use_linker_resolve_symbol ? _ldso_self_resolve_symbol(name, symtab, strtab, base) : resolve_symbol(name);
+
+            if (addr == 0) {
+                _prereloc_syscall_print("ERROR: Couldn't resolve symbol ");
+                _prereloc_syscall_print(name);
+                _prereloc_syscall_print("!\n");
+                return -1;
+            }
+
+            *where = addr;
+
+            if (is_jmprel && pltgot && ELF64_R_TYPE(r->r_info) == R_X86_64_JUMP_SLOT) {
+                // Also write to the GOT entry
+                ELF_addr_t *got_entry
+                    = (ELF_addr_t *)(base + r->r_offset); //(obj->pltgot + (r->r_offset - (obj->rela_plt ?
+                                                          //(uint64_t)obj->rela_plt : 0)));
+                *got_entry = addr;
+            } else if (!is_jmprel && pltgot && ELF64_R_TYPE(r->r_info) == R_X86_64_GLOB_DAT) {
+                // Also write to the GOT entry
+                ELF_addr_t *got_entry
+                    = (ELF_addr_t *)(base + r->r_offset); //(obj->pltgot + (r->r_offset - (obj->rela_plt ?
+                                                          //(uint64_t)obj->rela_plt : 0)));
+                *got_entry = addr;
+            }
+
+            break;
+        }
+        case (R_X86_64_RELATIVE): {
+            // B + A
+            *where = r->r_addend + base;
+            break;
+        }
+        default: {
+            _prereloc_syscall_print("ERROR: unrecognized relocation type ");
+            _prereloc_syscall_print_ptr(ELF64_R_TYPE(r->r_info));
+            _prereloc_syscall_print(" at index ");
+            _prereloc_syscall_print_ptr(i);
+            _prereloc_syscall_print(" (relatab =");
+            _prereloc_syscall_print_ptr((uint64_t)rela);
+            _prereloc_syscall_print(", r =");
+            _prereloc_syscall_print_ptr((uint64_t)r);
+            _prereloc_syscall_print(", count = ");
+            _prereloc_syscall_print_ptr(count);
+            _prereloc_syscall_print(", rela_sz = ");
+            _prereloc_syscall_print_ptr(rela_sz);
+            _prereloc_syscall_print(")\n");
+
+            return -1;
+        }
+        }
+    }
+
+    return 0;
+}
+
+int apply_relocations(struct elf_object *obj, ELF_rela_t *rela, size_t rela_sz, int is_jmprel) {
+    return _apply_relocations(obj->base, obj->symtab, obj->strtab, obj->relaent, obj->pltgot, rela, rela_sz, is_jmprel, 0);
+}
+
 void _start(uint64_t stack, uint64_t linker_ehdr, uint64_t target_ehdr) {
     // First, we must self-relocate. Until we do this, we can only call functions defined statically in this file.
 
@@ -172,119 +286,11 @@ void _start(uint64_t stack, uint64_t linker_ehdr, uint64_t target_ehdr) {
 
     // Apply relocations
     if (rela_sz > 0) {
-        size_t count = rela_sz / relaent;
-        for (size_t i = 0; i < count; i++) {
-            ELF_rela_t *r     = &rela[i];
-            ELF_addr_t *where = (ELF_addr_t *)(linker_ehdr + r->r_offset);
-
-            switch (ELF64_R_TYPE(r->r_info)) {
-            case (R_X86_64_64): {
-                // S + A
-                uint32_t sym_index = ELF64_R_SYM(r->r_info);
-                ELF_sym_t *sym     = &symtab[sym_index];
-
-                const char *name = strtab + sym->st_name;
-
-                ELF_addr_t addr = _ldso_self_resolve_symbol(name, symtab, strtab, linker_ehdr);
-
-                if (addr == 0) {
-                    return;
-                }
-
-                *where = addr + r->r_addend;
-
-                break;
-            }
-            case (R_X86_64_GLOB_DAT):
-            case (R_X86_64_JUMP_SLOT): {
-                // S
-                uint32_t sym_index = ELF64_R_SYM(r->r_info);
-                ELF_sym_t *sym     = &symtab[sym_index];
-
-                const char *name = strtab + sym->st_name;
-
-                ELF_addr_t addr = _ldso_self_resolve_symbol(name, symtab, strtab, linker_ehdr);
-
-                if (addr == 0) {
-                    return;
-                }
-
-                *where = addr;
-
-                /* if (write_got && obj->pltgot && ELF64_R_TYPE(r->r_info) == R_X86_64_JUMP_SLOT) {
-                    // Also write to the GOT entry
-                    ELF_addr_t *got_entry
-                        = (ELF_addr_t *)(base + r->r_offset); //(obj->pltgot + (r->r_offset - (obj->rela_plt ?
-                                                              //(uint64_t)obj->rela_plt : 0)));
-                    *got_entry = addr;
-                } */
-
-                break;
-            }
-            case (R_X86_64_RELATIVE): {
-                // B + A
-                *where = r->r_addend + linker_ehdr;
-                break;
-            }
-            }
-        }
+        _apply_relocations(linker_ehdr, symtab, strtab, relaent, pltgot, rela, rela_sz, 1, 1);
     }
 
     if (rela_plt_sz > 0) {
-        size_t count = rela_plt_sz / relaent;
-        for (size_t i = 0; i < count; i++) {
-            ELF_rela_t *r     = &rela_plt[i];
-            ELF_addr_t *where = (ELF_addr_t *)(linker_ehdr + r->r_offset);
-
-            switch (ELF64_R_TYPE(r->r_info)) {
-            case (R_X86_64_64): {
-                // S + A
-                uint32_t sym_index = ELF64_R_SYM(r->r_info);
-                ELF_sym_t *sym     = &symtab[sym_index];
-
-                const char *name = strtab + sym->st_name;
-
-                ELF_addr_t addr = _ldso_self_resolve_symbol(name, symtab, strtab, linker_ehdr);
-
-                if (addr == 0) {
-                    return;
-                }
-
-                *where = addr + r->r_addend;
-
-                break;
-            }
-            case (R_X86_64_GLOB_DAT):
-            case (R_X86_64_JUMP_SLOT): {
-                // S
-                uint32_t sym_index = ELF64_R_SYM(r->r_info);
-                ELF_sym_t *sym     = &symtab[sym_index];
-
-                const char *name = strtab + sym->st_name;
-
-                ELF_addr_t addr = _ldso_self_resolve_symbol(name, symtab, strtab, linker_ehdr);
-
-                if (addr == 0) {
-                    return;
-                }
-
-                *where = addr;
-
-                if (pltgot && (ELF64_R_TYPE(r->r_info) == R_X86_64_JUMP_SLOT)) {
-                    // Also write to the GOT entry
-                    ELF_addr_t *got_entry = (ELF_addr_t *)(linker_ehdr + r->r_offset);
-                    *got_entry            = addr;
-                }
-
-                break;
-            }
-            case (R_X86_64_RELATIVE): {
-                // B + A
-                *where = r->r_addend + linker_ehdr;
-                break;
-            }
-            }
-        }
+        _apply_relocations(linker_ehdr, symtab, strtab, relaent, pltgot, rela_plt, rela_plt_sz, 1, 1);
     }
 
     _prereloc_syscall_print("ldso: Self-relocations complete.\ninit_dso_base resolves to ");
