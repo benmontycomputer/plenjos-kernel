@@ -255,6 +255,7 @@ registers_t *syscall_routine(registers_t *regs) {
     case SYSCALL_SLEEP: {
         asm volatile("sti");
         pit_sleep((uint32_t)regs->rbx);
+        asm volatile("cli");
         break;
     }
     default:
