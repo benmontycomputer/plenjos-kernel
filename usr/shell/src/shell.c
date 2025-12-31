@@ -185,7 +185,8 @@ void main(int argc, char **argv) {
 
     for (;;) {
         while (kbd_buffer_empty()) {
-            asm volatile("pause");
+            // TODO: let the kernel know we're idle
+            syscall_sleep(10);
         }
 
         kbd_event_t event;
