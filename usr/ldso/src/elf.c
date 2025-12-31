@@ -191,7 +191,7 @@ int load_library_from_disk(const char *path, uint64_t *out_index) {
     }
 
     // Add to symbol table
-    // TODO
+    // (already done by being in loaded_dsos array)
 
     // Run initializers
     // TODO
@@ -237,11 +237,11 @@ int parse_dynamic_section(struct elf_object *obj) {
         ELF_program_header_t *phdr = &phdrs[i];
 
         if (phdr->type == PT_DYNAMIC) {
-            syscall_print("parse_dynamic_section: found PT_DYNAMIC segment at vaddr ");
+            /* syscall_print("parse_dynamic_section: found PT_DYNAMIC segment at vaddr ");
             syscall_print_ptr((uint64_t)(obj->base + phdr->vaddr));
             syscall_print(" w/ obj base ");
             syscall_print_ptr((uint64_t)obj->base);
-            syscall_print("\n");
+            syscall_print("\n"); */
 
             obj->dynamic       = (ELF_dyn_t *)(obj->base + phdr->vaddr);
             obj->dynamic_count = phdr->memsz / sizeof(ELF_dyn_t);
@@ -259,7 +259,7 @@ int parse_dynamic_section(struct elf_object *obj) {
         ELF_dyn_t *d = &dynamic[i];
 
         // For simplicity, we just print out the dynamic entries here.
-        syscall_print("parse_dynamic_section: Dynamic Entry ");
+        /* syscall_print("parse_dynamic_section: Dynamic Entry ");
         syscall_print_ptr((uint64_t)i);
         syscall_print(": d_tag=");
         syscall_print_ptr((uint64_t)d->d_tag);
@@ -267,7 +267,7 @@ int parse_dynamic_section(struct elf_object *obj) {
         syscall_print_ptr((uint64_t)d->d_un.d_val);
         syscall_print(", d_un.d_ptr=");
         syscall_print_ptr((uint64_t)d->d_un.d_ptr);
-        syscall_print("\n");
+        syscall_print("\n"); */
 
         switch (d->d_tag) {
         case DT_NULL: {
@@ -424,11 +424,11 @@ ELF_addr_t resolve_symbol(const char *name) {
             if (strcmp(sym_name, name) == 0) {
                 // Found the symbol
                 ELF_addr_t addr = obj->base + sym->st_value;
-                syscall_print("resolve_symbol: found symbol ");
+                /* syscall_print("resolve_symbol: found symbol ");
                 syscall_print(sym_name);
                 syscall_print(" at address ");
                 syscall_print_ptr((uint64_t)addr);
-                syscall_print("\n");
+                syscall_print("\n"); */
                 return addr;
             }
         }

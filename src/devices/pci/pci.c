@@ -1,20 +1,17 @@
-#include "devices/pci/pci.h"
+#include "pci.h"
 
-#include "lib/stdio.h"
-#include "lib/string.h"
+#ifdef __KERNEL_SUPPORT_DEV_PCI
 
-#include "devices/io/ports.h"
-#include "memory/kmalloc.h"
-#include "vfs/kernelfs.h"
-#include "vfs/vfs.h"
-
-#include "plenjos/errno.h"
+# include "devices/io/ports.h"
+# include "lib/stdio.h"
+# include "lib/string.h"
+# include "memory/kmalloc.h"
+# include "plenjos/errno.h"
+# include "vfs/kernelfs.h"
+# include "vfs/vfs.h"
 
 pci_device_t pci_devices[PCI_MAX_DEVICES];
 uint32_t pci_device_count = 0;
-
-pci_device_t pci_mass_storage_controllers[PCI_MAX_MASS_STORAGE_CONTROLLERS];
-uint32_t pci_mass_storage_controller_count = 0;
 
 void pci_write(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint32_t value) {
     uint32_t address = (1 << 31) | (bus << 16) | (device << 11) | (function << 8) | (offset & 0xFC);
@@ -28,6 +25,20 @@ uint32_t pci_read(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset)
 
     outl(PCI_CONFIG_ADDRESS, address);
     return inl(PCI_CONFIG_DATA);
+}
+
+int pci_set_command_bits(uint8_t bus, uint8_t device, uint8_t function, uint16_t bits) {
+    uint32_t cmd_reg  = pci_read(bus, device, function, 0x04);
+    cmd_reg          |= bits;
+    pci_write(bus, device, function, 0x04, cmd_reg);
+    return 0;
+}
+
+int pci_clear_command_bits(uint8_t bus, uint8_t device, uint8_t function, uint16_t bits) {
+    uint32_t cmd_reg  = pci_read(bus, device, function, 0x04);
+    cmd_reg          &= ~bits;
+    pci_write(bus, device, function, 0x04, cmd_reg);
+    return 0;
 }
 
 uint8_t pci_get_header_type(uint8_t bus, uint8_t device, uint8_t function) {
@@ -188,8 +199,8 @@ const char *get_subclass_pretty(pci_device_t *dev) {
 }
 
 void pci_print_device_info(pci_device_t *dev) {
-    const char *vendor_pretty = get_vendor_pretty(dev->vendor_id);
-    const char *class_pretty = get_class_pretty(dev->class_code);
+    const char *vendor_pretty   = get_vendor_pretty(dev->vendor_id);
+    const char *class_pretty    = get_class_pretty(dev->class_code);
     const char *subclass_pretty = get_subclass_pretty(dev);
 
     printf("PCI Device Info:\n");
@@ -206,15 +217,15 @@ void pci_print_device_info(pci_device_t *dev) {
 
 pci_device_t pci_check_device(uint8_t bus, uint8_t device, uint8_t function) {
     pci_device_t dev;
-    dev.header_type = 0;
-    dev.bus = bus;
-    dev.device = device;
-    dev.function = function;
-    dev.vendor_id = 0xFFFF;
-    dev.device_id = 0xFFFF;
-    dev.class_code = 0xFF;
+    dev.header_type   = 0;
+    dev.bus           = bus;
+    dev.device        = device;
+    dev.function      = function;
+    dev.vendor_id     = 0xFFFF;
+    dev.device_id     = 0xFFFF;
+    dev.class_code    = 0xFF;
     dev.subclass_code = 0xFF;
-    dev.prog_if = 0xFF;
+    dev.prog_if       = 0xFF;
 
     uint32_t vendor_device = pci_read(bus, device, function, 0);
 
@@ -222,16 +233,16 @@ pci_device_t pci_check_device(uint8_t bus, uint8_t device, uint8_t function) {
         return dev; // No device present
     }
 
-    uint16_t vendor_id = vendor_device & 0xFFFF;
-    uint16_t device_id = (vendor_device >> 16) & 0xFFFF;
+    uint16_t vendor_id  = vendor_device & 0xFFFF;
+    uint16_t device_id  = (vendor_device >> 16) & 0xFFFF;
     uint8_t header_type = pci_get_header_type(bus, device, function);
 
-    dev.header_type = header_type;
-    dev.vendor_id = vendor_id;
-    dev.device_id = device_id;
-    dev.class_code = (pci_read(bus, device, function, 8) >> 24) & 0xFF;
+    dev.header_type   = header_type;
+    dev.vendor_id     = vendor_id;
+    dev.device_id     = device_id;
+    dev.class_code    = (pci_read(bus, device, function, 8) >> 24) & 0xFF;
     dev.subclass_code = (pci_read(bus, device, function, 8) >> 16) & 0xFF;
-    dev.prog_if = (pci_read(bus, device, function, 8) >> 8) & 0xFF;
+    dev.prog_if       = (pci_read(bus, device, function, 8) >> 8) & 0xFF;
 
     dev.bar0 = pci_read(bus, device, function, 0x10);
     dev.bar1 = pci_read(bus, device, function, 0x14);
@@ -243,16 +254,98 @@ pci_device_t pci_check_device(uint8_t bus, uint8_t device, uint8_t function) {
     pci_print_device_info(&dev);
 
     switch (dev.class_code) {
-    case PCI_CLASS_MASS_STORAGE:
-        if (pci_mass_storage_controller_count < PCI_MAX_MASS_STORAGE_CONTROLLERS) {
-            pci_mass_storage_controllers[pci_mass_storage_controller_count] = dev;
-            pci_mass_storage_controller_count++;
-        } else {
-            printf("Mass storage controller array full, cannot record more controllers.\n");
-        }
+    case PCI_CLASS_UNCLASSIFIED: {
+        printf("PCI: Unclassified PCI device detected.\n");
         break;
-    default:
+    }
+    case PCI_CLASS_MASS_STORAGE: {
+        printf("PCI: NO DRIVER: Mass storage PCI device detected.\n");
         break;
+    }
+    case PCI_CLASS_NETWORK: {
+        printf("PCI: NO DRIVER: Network PCI device detected.\n");
+        break;
+    }
+    case PCI_CLASS_DISPLAY: {
+        printf("PCI: NO DRIVER: Display PCI device detected.\n");
+        break;
+    }
+    case PCI_CLASS_MULTIMEDIA: {
+        printf("PCI: NO DRIVER: Multimedia PCI device detected.\n");
+        break;
+    }
+    case PCI_CLASS_MEMORY: {
+        printf("PCI: NO DRIVER: Memory controller PCI device detected.\n");
+        break;
+    }
+    case PCI_CLASS_BRIDGE: {
+        printf("PCI: NO DRIVER: Bridge PCI device detected.\n");
+        break;
+    }
+    case PCI_CLASS_SIMPLE_COMM: {
+        printf("PCI: NO DRIVER: Simple communication PCI device detected.\n");
+        break;
+    }
+    case PCI_CLASS_BASE_SYSTEM_PERIPH: {
+        printf("PCI: NO DRIVER: Base system peripheral PCI device detected.\n");
+        break;
+    }
+    case PCI_CLASS_INPUT_DEVICE: {
+        printf("PCI: NO DRIVER: Input device PCI device detected.\n");
+        break;
+    }
+    case PCI_CLASS_DOCKING_STATION: {
+        printf("PCI: NO DRIVER: Docking station PCI device detected.\n");
+        break;
+    }
+    case PCI_CLASS_PROCESSOR: {
+        printf("PCI: NO DRIVER: Processor PCI device detected.\n");
+        break;
+    }
+    case PCI_CLASS_SERIAL_BUS: {
+        pci_scan_process_serial_bus_controller(&dev);
+        break;
+    }
+    case PCI_CLASS_WIRELESS: {
+        printf("PCI: NO DRIVER: Wireless PCI device detected.\n");
+        break;
+    }
+    case PCI_CLASS_INTELLIGENT_IO: {
+        printf("PCI: NO DRIVER: Intelligent I/O PCI device detected.\n");
+        break;
+    }
+    case PCI_CLASS_SATELLITE: {
+        printf("PCI: NO DRIVER: Satellite communication PCI device detected.\n");
+        break;
+    }
+    case PCI_CLASS_ENCRYPTION: {
+        printf("PCI: NO DRIVER: Encryption/decryption PCI device detected.\n");
+        break;
+    }
+    case PCI_CLASS_SIGNAL_PROCESSING: {
+        printf("PCI: NO DRIVER: Signal processing PCI device detected.\n");
+        break;
+    }
+    case PCI_CLASS_PROCESSING_ACCEL: {
+        printf("PCI: NO DRIVER: Processing accelerator PCI device detected.\n");
+        break;
+    }
+    case PCI_CLASS_NON_ESSENTIAL_INSTR: {
+        printf("PCI: NO DRIVER: Non-essential instrumentation PCI device detected.\n");
+        break;
+    }
+    case PCI_CLASS_CO_PROCESSOR: {
+        printf("PCI: NO DRIVER: Co-processor PCI device detected.\n");
+        break;
+    }
+    case PCI_CLASS_VENDOR_SPECIFIC: {
+        printf("PCI: NO DRIVER: Vendor-specific PCI device detected.\n");
+        break;
+    }
+    default: {
+        printf("PCI: NO DRIVER: Unknown PCI device class detected.\n");
+        break;
+    }
     }
 
     return dev;
@@ -271,11 +364,13 @@ static uint8_t char_to_hex(char c) {
     return 0xFF; // Invalid
 }
 
-#define PCI_DEV_PREFIX "pci_dev_0x"
+# define PCI_DEV_PREFIX "pci_dev_0x"
 
 ssize_t pci_dev_file_read(vfs_handle_t *handle, void *buf, size_t len) {
     kernelfs_node_t *node = kernelfs_get_node_from_handle(handle);
-    if (!node || !node->func_args) { return -EIO; }
+    if (!node || !node->func_args) {
+        return -EIO;
+    }
     pci_device_t *dev = (pci_device_t *)node->func_args;
 
     // Calculate current offset
@@ -294,8 +389,8 @@ ssize_t pci_dev_file_read(vfs_handle_t *handle, void *buf, size_t len) {
     return copylen;
 }
 
-#define PCI_DEV_FS_MODE 0644
-#define PCI_DEV_FS_TYPE DT_REG
+# define PCI_DEV_FS_MODE 0644
+# define PCI_DEV_FS_TYPE DT_REG
 
 static void pci_add_device_to_array(uint8_t bus, uint8_t device, uint8_t function) {
     pci_devices[pci_device_count] = pci_check_device(bus, device, function);
@@ -379,3 +474,5 @@ void pci_scan() {
         }
     }
 }
+
+#endif // __KERNEL_SUPPORT_DEV_PCI

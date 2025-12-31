@@ -1,25 +1,48 @@
 // https://wiki.osdev.org/Programmable_Interval_Timer
 
-#include "timer/pit.h"
+#include "pit.h"
 
 #include "arch/x86_64/apic/apic.h"
-#include "arch/x86_64/irq.h"
 #include "arch/x86_64/common.h"
-
-#include "lib/stdio.h"
-
+#include "arch/x86_64/irq.h"
 #include "devices/io/ports.h"
-
-#define PIT_FREQ 1193182     // Hz / 1000
-#define PIT_INTERR_FREQ 2000 // hertz
+#include "lib/stdio.h"
+#include "timer.h"
 
 volatile uint64_t pit_count;
+
+void pit_timer_callback(void *data) {
+    struct timer_timeout *timeout = (struct timer_timeout *)data;
+
+    if (timeout->callback) {
+        timeout->callback(timeout);
+    }
+
+    // Mark the timeout as unused
+    atomic_store(&(timeout->milliseconds), 0);
+}
 
 void pit_irq(registers_t *regs) {
     if (pit_count >= UINT64_MAX) pit_count = 0;
 
     pit_count++;
     // printf("pit timer %x\n", pit_count);
+
+    // TODO: separate timers into PIT and HPET ones (or HPET only?)
+    struct timer_timeout *timer;
+    for (int i = 0; i < TIMER_MAX_TIMEOUTS; i++) {
+        timer       = &timer_timeouts[i];
+        uint64_t ms = atomic_load(&(timer->milliseconds));
+        if (ms != 0 && ms != UINT64_MAX) {
+            uint64_t elapsed = pit_count - timer->start_time;
+            if (elapsed >= ms) {
+                // Timeout reached
+                // Clear the timeout first to avoid re-entrancy issues
+                atomic_store(&(timer->milliseconds), UINT64_MAX);
+                delegate_kernel_task(pit_timer_callback, timer);
+            }
+        }
+    }
 
     apic_send_eoi();
 }
@@ -55,8 +78,16 @@ void pit_init() {
     apic_send_eoi();
 }
 
-void pit_sleep(uint32_t mills) {
-    uint64_t end = pit_count + ((PIT_INTERR_FREQ * mills) / 1000);
+void pit_sleep(uint64_t mills) {
+    uint64_t end;
+
+    // Same calculation; potentially avoid multiplication overflow
+    // TODO: better way to avoid overflow?
+    if (PIT_INTERR_FREQ % 1000) {
+        end = pit_count + ((PIT_INTERR_FREQ * mills) / 1000);
+    } else {
+        end = pit_count + (PIT_INTERR_FREQ / 1000) * mills;
+    }
 
     while (pit_count < end) {
         asm volatile("hlt");

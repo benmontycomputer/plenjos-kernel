@@ -184,7 +184,9 @@ void main(int argc, char **argv) {
     printf("%s", SHELL_PROMPT);
 
     for (;;) {
-        while (kbd_buffer_empty()) {}
+        while (kbd_buffer_empty()) {
+            asm volatile("pause");
+        }
 
         kbd_event_t event;
         kbd_buffer_pop(&event);

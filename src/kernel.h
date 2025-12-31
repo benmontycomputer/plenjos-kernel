@@ -7,6 +7,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/**
+ * This file contains various kernel-wide definitions and structures, as well as config options.
+ */
+
+#include "devices/manager.h"
+
+typedef uintptr_t physptr_t;
+
 extern bool debug_serial;
 
 void *memcpy(void *dest, const void *src, size_t n);
@@ -118,5 +126,7 @@ struct registers { // Total 26*8 = 208 bytes, 16 bytes aligned
     uint64_t iret_ss;       // Offset 8*25 bytes, stack segment
 } __attribute__((packed));
 typedef struct registers registers_t; */
+
+_Noreturn void panic(const char *message);
 
 #endif

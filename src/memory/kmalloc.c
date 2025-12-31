@@ -5,6 +5,7 @@
 #include "lib/string.h"
 #include "memory/detect.h"
 #include "memory/mm.h"
+#include "arch/x86_64/common.h"
 
 #include <stdatomic.h>
 #include <stdbool.h>
@@ -153,18 +154,6 @@ static heap_segment_info_t *kheap_segment_split(heap_segment_info_t *segment, si
     return new_segment;
 }
 
-static inline int interrupts_enabled(void) {
-    unsigned long flags;
-
-    asm volatile("pushfq\n\t"
-                 "popq %0"
-                 : "=r"(flags)
-                 :
-                 : "memory");
-
-    return (flags & (1UL << 9)) != 0;
-}
-
 // TODO: is it safe to return this memory without clearing it?
 // TODO: use refing/unrefing frames for extremely large allocations?
 void *kmalloc_heap(uint64_t size) {
@@ -172,7 +161,7 @@ void *kmalloc_heap(uint64_t size) {
     if (size % 2) size++; // Align to 2 bytes
     if (size < HEAP_ALLOC_MIN) size = HEAP_ALLOC_MIN;
 
-    int ints = interrupts_enabled();
+    bool ints = are_interrupts_enabled();
     if (ints) {
         asm volatile("cli");
     }

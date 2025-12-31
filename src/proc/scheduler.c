@@ -4,6 +4,7 @@
 #include "arch/x86_64/cpuid/cpuid.h"
 #include "arch/x86_64/irq.h"
 #include "cpu/cpu.h"
+#include "arch/x86_64/common.h"
 #include "lib/stdio.h"
 #include "memory/mm.h"
 #include "proc/proc.h"
@@ -14,10 +15,24 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#define MAX_KERNEL_TASKS 8192
+
+typedef struct {
+    _Atomic(kernel_task_func_t) func;
+    void *arg;
+} kernel_task_t;
+
 volatile thread_t *volatile ready_threads      = NULL;
 volatile thread_t *volatile ready_threads_last = NULL;
 
 volatile thread_t *volatile cores_threads[MAX_CORES] = { 0 };
+
+volatile kernel_task_t volatile ready_kernel_tasks[MAX_KERNEL_TASKS] = { 0 };
+
+// TODO: make this a ring buffer
+static volatile size_t ready_kernel_tasks_head = 0ULL;
+static volatile size_t ready_kernel_tasks_tail = 0ULL;
+static atomic_flag kernel_tasks_lock_atomic    = ATOMIC_FLAG_INIT;
 
 // static _Atomic(uint32_t) ready_threads_lock = (uint32_t)-1;
 static atomic_flag ready_threads_locked_atomic = ATOMIC_FLAG_INIT;
@@ -39,6 +54,29 @@ uint32_t lock_ready_threads() {
 void unlock_ready_threads() {
     // ready_threads_lock = (uint32_t)-1;
     atomic_flag_clear_explicit(&ready_threads_locked_atomic, __ATOMIC_RELEASE);
+}
+
+void lock_kernel_tasks() {
+    while (atomic_flag_test_and_set_explicit(&kernel_tasks_lock_atomic, __ATOMIC_ACQUIRE)) {
+        // Wait
+        __builtin_ia32_pause();
+    }
+}
+
+void unlock_kernel_tasks() {
+    atomic_flag_clear_explicit(&kernel_tasks_lock_atomic, __ATOMIC_RELEASE);
+}
+
+void send_wakeup_ipi() {
+    uint32_t curr_core = get_curr_core();
+
+    for (size_t i = 0; i < get_n_cores(); i++) {
+        if (cpu_cores[i].online && i != curr_core) {
+            // There's a core without a thread assigned, wake it up
+            // printf("Waking up core %d\n", i);
+            send_ipi(cpu_cores[i].lapic_id, IPI_WAKEUP_IRQ + 32); // IPI for wakeup
+        }
+    }
 }
 
 static void thread_unready_nolock(thread_t *thread) {
@@ -104,6 +142,8 @@ void thread_ready(thread_t *thread) {
 
     unlock_ready_threads();
     asm volatile("sti");
+
+    send_wakeup_ipi();
 }
 
 __attribute__((noreturn)) void start_scheduler() {
@@ -141,6 +181,22 @@ void cpu_scheduler_task() {
 
     for (;;) {
         asm volatile("cli");
+
+        lock_kernel_tasks();
+        if (ready_kernel_tasks_head != ready_kernel_tasks_tail) {
+            // There's a kernel task to run
+            printf("SCHEDULER: core %d executing kernel task\n", curr_core);
+            kernel_task_func_t func = ready_kernel_tasks[ready_kernel_tasks_tail].func;
+            void *arg               = ready_kernel_tasks[ready_kernel_tasks_tail].arg;
+            ready_kernel_tasks_tail = (ready_kernel_tasks_tail + 1) % MAX_KERNEL_TASKS;
+            unlock_kernel_tasks();
+            asm volatile("sti");
+            // Execute the kernel task
+            func(arg);
+            continue;
+        }
+        unlock_kernel_tasks();
+
         // printf("core %d scheduler tick\n", get_curr_core());
         lock_ready_threads();
         if (cores_threads[curr_core]) {
@@ -169,8 +225,6 @@ void cpu_scheduler_task() {
             thread_unready_nolock(ready_threads);
             printf("Assigned thread %p to core %d\n", cores_threads[curr_core]->tid, curr_core);
             unlock_ready_threads();
-            asm volatile("sti");
-            // pit_sleep(100);
             continue;
         }
 
@@ -178,8 +232,7 @@ void cpu_scheduler_task() {
 
         // printf("No threads to schedule on core %d, halting...\n", curr_core);
         asm volatile("sti");
-        // asm volatile("hlt");
-        pit_sleep(100);
+        asm volatile("hlt");
     }
 }
 
@@ -205,4 +258,38 @@ void assign_thread_to_cpu(thread_t *thread) {
     write_msr(IA32_GS_BASE, (uint64_t)thread->base);
 
     _finalize_task_switch((registers_t *)&thread->regs);
+}
+
+int delegate_kernel_task(kernel_task_func_t func, void *arg) {
+    // This blocks interrupts and can also be called from an IRQ handler, so we should keep it as fast as possible
+
+    bool ints = are_interrupts_enabled();
+    if (ints) {
+        asm volatile("cli");
+    }
+
+    int res = 0;
+
+    lock_kernel_tasks();
+
+    size_t next_head = (ready_kernel_tasks_head + 1) % MAX_KERNEL_TASKS;
+    if (next_head == ready_kernel_tasks_tail) {
+        // No space
+        res = -1;
+        goto cleanup;
+    }
+
+    ready_kernel_tasks[ready_kernel_tasks_head].func = func;
+    ready_kernel_tasks[ready_kernel_tasks_head].arg  = arg;
+    ready_kernel_tasks_head                          = next_head;
+
+cleanup:
+    unlock_kernel_tasks();
+    if (ints) {
+        asm volatile("sti");
+    }
+
+    send_wakeup_ipi();
+
+    return res;
 }

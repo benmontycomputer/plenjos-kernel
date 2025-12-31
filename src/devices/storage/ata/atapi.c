@@ -1,6 +1,7 @@
 #include "atapi.h"
 
 #include "arch/x86_64/apic/ioapic.h"
+#include "arch/x86_64/common.h"
 #include "ata.h"
 #include "devices/io/ports.h"
 #include "devices/storage/ide.h"
@@ -20,19 +21,12 @@ int atapi_parse_identify(struct ide_device *dev) {
     return atapi_ready_device(dev);
 }
 
-static int interrupts_enabled() {
-    uint64_t rflags;
-    asm volatile("pushfq\n"
-                 "popq %0"
-                 : "=r"(rflags));
-    return (rflags & (1 << 9)) != 0;
-}
-
 // Make sure to select the device and lock the bus first!
 int atapi_send_packet_command(struct ide_device *dev, const uint8_t *packet, size_t packet_len, void *buffer,
                               size_t buffer_len, int is_write, int is_dma) {
     int res = 0;
-    int interrupts_were_enabled = interrupts_enabled();
+
+    bool interrupts_were_enabled = are_interrupts_enabled();
 
     uint32_t *prev_low_dwords = NULL;
 

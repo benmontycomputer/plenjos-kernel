@@ -116,25 +116,46 @@ override PSFFILES := $(filter %.psf,$(SRCFILES))
 override OBJ := $(addprefix obj/,$(CFILES:.c=.c.o) $(ASFILES:.S=.S.o) $(NASMFILES:.asm=.asm.o) $(PSFFILES:.psf=.psf.o))
 override HEADER_DEPS := $(addprefix obj/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d))
 
-# Default target. This must come first, before header dependencies.
-.PHONY: all $(SUBDIRS)
+override ROOT_BIN_DIR := root/bin
+override ROOT_LIB_DIR := root/lib
+override ROOT_BOOT_DIR := root/boot
 
-all: bin/$(OUTPUT) $(SUBDIRS)
+# Default target. This must come first, before header dependencies.
+.PHONY: all $(SUBDIRS) $(ROOT_BIN_DIR) $(ROOT_BOOT_DIR) $(ROOT_LIB_DIR)
+
+all: bin/$(OUTPUT) $(ROOT_BIN_DIR) $(ROOT_BOOT_DIR) $(ROOT_LIB_DIR) $(SUBDIRS)
 
 # Subdir dependencies
 usr/shell: usr/libc
-usr/libc: usr/ldso
-
-$(SUBDIRS): 
 	$(MAKE) -C $@
+	cp usr/shell/bin/* root/bin/
+
+usr/libc: usr/ldso
+	$(MAKE) -C $@
+	cp usr/libc/lib/* root/lib/
+
+usr/ldso:
+	$(MAKE) -C $@
+	cp usr/ldso/lib/* root/lib/
 
 # Include header dependencies.
 -include $(HEADER_DEPS)
+
+# Create directories
+$(ROOT_BOOT_DIR):
+	mkdir -p root/boot
+
+$(ROOT_BIN_DIR):
+	mkdir -p root/bin
+
+$(ROOT_LIB_DIR):
+	mkdir -p root/lib
 
 # Link rules for the final executable.
 bin/$(OUTPUT): GNUmakefile linker.lds $(OBJ)
 	mkdir -p "$$(dirname $@)"
 	$(LD) $(OBJ) $(LDFLAGS) -o $@
+	cp $@ root/boot/
 
 # Compilation rules for *.c files.
 obj/%.c.o: %.c GNUmakefile
@@ -159,7 +180,10 @@ obj/%.psf.o: %.psf GNUmakefile
 # Remove object files and the final executable.
 .PHONY: clean
 clean:
-	rm -rf bin obj usr/shell/bin usr/shell/obj usr/ldso/bin usr/ldso/obj usr/libc/lib usr/libc/obj usr/libc/crt
+	rm -rf bin obj root
+	$(MAKE) -C usr/ldso clean
+	$(MAKE) -C usr/libc clean
+	$(MAKE) -C usr/shell clean
 
 uefi_run:
 	qemu-system-x86_64 \
@@ -172,6 +196,8 @@ uefi_run:
 		-serial stdio \
 		-smbios type=0,uefi=on \
 		-rtc base=utc,clock=host \
+		-device piix3-usb-uhci \
+		-device usb-mouse \
         -no-reboot
 
 uefi_run_gdb:
@@ -185,6 +211,8 @@ uefi_run_gdb:
 		-serial stdio \
 		-smbios type=0,uefi=on \
 		-rtc base=utc,clock=host \
+		-device piix3-usb-uhci \
+		-device usb-mouse \
         -no-reboot \
         -s -S
 

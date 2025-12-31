@@ -53,14 +53,14 @@ void loadelf(void *elf_base, pml4_t *pml4, uint64_t *entry_out, uint64_t voffs_i
         if (phdr->type == PT_DYNAMIC) {
             // Allow us to map
             // TODO: should we map these? I don't know.
-            printf("Found PT_DYNAMIC segment at vaddr %p\n", (void *)(phdr->vaddr + voffs_if_pic));
+            // printf("Found PT_DYNAMIC segment at vaddr %p\n", (void *)(phdr->vaddr + voffs_if_pic));
             // Count the entries for debugging
             ELF_dyn_t *dyn   = (ELF_dyn_t *)((uint64_t)elf_base + phdr->offset);
             size_t dyn_count = phdr->memsz / sizeof(ELF_dyn_t);
             for (size_t j = 0; j < dyn_count; j++) {
                 ELF_dyn_t *d = &dyn[j];
-                printf(" Dynamic Entry %p: d_tag=%p, d_un.d_val=%p, d_un.d_ptr=%p\n", (void *)j, (void *)d->d_tag,
-                       (void *)d->d_un.d_val, (void *)d->d_un.d_ptr);
+                /* printf(" Dynamic Entry %p: d_tag=%p, d_un.d_val=%p, d_un.d_ptr=%p\n", (void *)j, (void *)d->d_tag,
+                       (void *)d->d_un.d_val, (void *)d->d_un.d_ptr); */
             }
         } else if (phdr->type != 1) continue;
 
@@ -69,8 +69,6 @@ void loadelf(void *elf_base, pml4_t *pml4, uint64_t *entry_out, uint64_t voffs_i
 
         uint64_t p_start = 0;
         for (uint64_t j = 0; j < phdr->memsz; j += PAGE_LEN) {
-            // uint64_t p = alloc_virtual_memory(j + phdr->vaddr, ALLOCATE_VM_EX | ALLOCATE_VM_RO | ALLOCATE_VM_USER,
-            // pml4);
             uint64_t p = alloc_virtual_memory(j + phdr->vaddr + voffs_if_pic, flags, pml4)
                          + ((j + phdr->vaddr + voffs_if_pic) % PAGE_LEN);
             if (p_start == 0) {
@@ -78,11 +76,12 @@ void loadelf(void *elf_base, pml4_t *pml4, uint64_t *entry_out, uint64_t voffs_i
             }
 
             if (phdr->type == PT_DYNAMIC) {
-                printf("Mapping PT_DYNAMIC segment page at vaddr %p (file offset %p)\n",
-                       (void *)(j + phdr->vaddr + voffs_if_pic), (void *)(phdr->offset + j));
+                /* printf("Mapping PT_DYNAMIC segment page at vaddr %p (file offset %p)\n",
+                       (void *)(j + phdr->vaddr + voffs_if_pic), (void *)(phdr->offset + j)); */
             }
 
             if (!p) {
+                // TODO: handle this instead of halting
                 printf("Couldn't allocate memory at vaddr %p for user process. Halt!\n",
                        j + phdr->vaddr + voffs_if_pic);
                 hcf();
@@ -104,25 +103,6 @@ void loadelf(void *elf_base, pml4_t *pml4, uint64_t *entry_out, uint64_t voffs_i
         }
 
         elf_copy((void *)(phdr->vaddr + voffs_if_pic), (void *)((uint64_t)elf_base + phdr->offset), len, pml4);
-
-        /* if (phdr->type == PT_DYNAMIC) {
-            printf("Finished mapping PT_DYNAMIC segment\nElfbase addr %p, vaddr %p, starting paddr %p, user "
-                   "calculated paddr %p, memsz %p\n",
-                   elf_base, (void *)(phdr->vaddr + voffs_if_pic), p_start,
-                   get_physaddr((uint64_t)(phdr->vaddr + voffs_if_pic), pml4), (void *)phdr->memsz);
-        
-            // Verify the mapping by reading back
-            ELF_dyn_t *dyn = (ELF_dyn_t *)phys_to_virt(get_physaddr((phdr->vaddr + voffs_if_pic), pml4));
-            size_t dyn_count = phdr->memsz / sizeof(ELF_dyn_t);
-            for (size_t j = 0; j < dyn_count; j++) {
-                ELF_dyn_t *d = &dyn[j];
-                printf(" Verified Dynamic Entry %p: d_tag=%p, d_un.d_val=%p, d_un.d_ptr=%p\n", (void *)j,
-                       (void *)d->d_tag, (void *)d->d_un.d_val, (void *)d->d_un.d_ptr);
-            }
-        } */
-
-        // memcpy((void *)phdr->vaddr, elf_base + phdr->offset, phdr->filesz);
-        // memset((void *)phdr->vaddr + phdr->filesz, 0, phdr->memsz - phdr->filesz);
     }
 
     if (!ehdr_mapped) {

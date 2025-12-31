@@ -58,6 +58,7 @@ void init_x86_64() {
     irq_register_routine(IPI_TLB_SHOOTDOWN_IRQ, &ipi_tlb_shootdown_routine);
     irq_register_routine(IPI_TLB_FLUSH_IRQ, &ipi_tlb_flush_routine);
     irq_register_routine(IPI_KILL_IRQ, &ipi_kill_routine);
+    irq_register_routine(IPI_WAKEUP_IRQ, &ipi_wakeup_routine);
 
     asm volatile("sti");
 
@@ -66,7 +67,7 @@ void init_x86_64() {
     // ReadRegister(0x60);
 }
 
-inline bool are_interrupts_enabled() {
+bool are_interrupts_enabled() {
     unsigned long flags;
     asm volatile("pushf\n\t"
                  "pop %0"

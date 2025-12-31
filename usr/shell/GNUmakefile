@@ -1,7 +1,7 @@
 
 FILE_NAME = user_shell
 
-override OUTPUT = user_shell.elf
+override OUTPUT = init
 
 
 # ====== Compiler & Linker ======

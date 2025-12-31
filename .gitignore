@@ -2,6 +2,8 @@ bin
 lib
 obj
 
+root
+
 usr/ldso/bin
 usr/ldso/lib
 usr/ldso/obj

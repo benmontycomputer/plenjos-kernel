@@ -5,18 +5,20 @@
 
 #include "cpu/cpu.h"
 
+typedef void (*kernel_task_func_t)(void *);
+
 extern volatile thread_t * volatile cores_threads[MAX_CORES];
 
 void thread_ready(thread_t *thread);
 void thread_unready(thread_t *thread);
 
 void assign_thread_to_cpu(thread_t *thread);
-
 void cpu_scheduler_task();
 
 uint32_t lock_ready_threads();
-
 void unlock_ready_threads();
+
+int delegate_kernel_task(kernel_task_func_t func, void *arg);
 
 __attribute__((noreturn)) //
 void start_scheduler();

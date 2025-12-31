@@ -1,20 +1,28 @@
-#include "devices/storage/ide.h"
+#include "ide.h"
 
-#include "arch/x86_64/irq.h"
-#include "devices/io/ports.h"
-#include "devices/pci/pci.h"
-#include "devices/storage/ata/ata.h"
-#include "kernel.h"
-#include "lib/lock.h"
-#include "lib/stdio.h"
-#include "lib/string.h"
-#include "mbr.h"
-#include "memory/kmalloc.h"
-#include "timer/pit.h"
+#ifdef __KERNEL_SUPPORT_DEV_STORAGE_IDE
 
-#include <stdatomic.h>
-#include <stdbool.h>
-#include <stdint.h>
+# include "arch/x86_64/irq.h"
+# include "devices/io/ports.h"
+# include "kernel.h"
+# include "lib/lock.h"
+# include "lib/stdio.h"
+# include "lib/string.h"
+# include "mbr.h"
+# include "memory/kmalloc.h"
+# include "timer/pit.h"
+
+# ifdef __KERNEL_SUPPORT_DEV_STORAGE_ATA
+#  include "devices/storage/ata/ata.h"
+# endif
+
+# ifdef __KERNEL_SUPPORT_DEV_PCI
+#  include "devices/pci/pci.h"
+# endif
+
+# include <stdatomic.h>
+# include <stdbool.h>
+# include <stdint.h>
 
 // https://wiki.osdev.org/ATA_PIO_Mode
 
@@ -274,38 +282,7 @@ void ide_secondary_irq_routine(registers_t *regs) {
 }
 
 void ide_init() {
-    // Scanning PCI bus for IDE controllers
-    for (uint32_t i = 0; i < pci_mass_storage_controller_count; i++) {
-        pci_device_t dev = pci_mass_storage_controllers[i];
-
-        if (dev.subclass_code == PCI_SUBCLASS_IDE) {
-            // Initialize IDE controller
-            printf("Found IDE Controller: %s %s (Bus %d, Device %d, Function %d)\n", get_vendor_pretty(dev.vendor_id),
-                   /* dev.device_name */ "{unknown}", dev.bus, dev.device, dev.function);
-
-            printf("  Mode: %s\n", (dev.prog_if & PCI_PROGIF_IDE_MASTER_DMA) ? "Master/DMA" : "No DMA");
-
-            // If PCI native is supported, these BARs represent the following:
-            printf("  BAR0: %x\n", dev.bar0); // Primary channel command block
-            printf("  BAR1: %x\n", dev.bar1); // Primary channel control block
-            printf("  BAR2: %x\n", dev.bar2); // Secondary channel command block
-            printf("  BAR3: %x\n", dev.bar3); // Secondary channel control block
-            printf("  BAR4: %x\n", dev.bar4); // Bus master IDE registers
-            printf("  BAR5: %x\n", dev.bar5);
-            printf("  Primary channel status: %s mode, %s\n",
-                   (dev.prog_if & PCI_PROGIF_IDE_C0_PCI_NATIVE_MODE) ? "PCI Native" : "Compatibility",
-                   (dev.prog_if & PCI_PROGIF_IDE_C0_SWITCHABLE) ? "Switchable" : "Not Switchable");
-            printf("  Secondary channel status: %s mode, %s\n",
-                   (dev.prog_if & PCI_PROGIF_IDE_C1_PCI_NATIVE_MODE) ? "PCI Native" : "Compatibility",
-                   (dev.prog_if & PCI_PROGIF_IDE_C1_SWITCHABLE) ? "Switchable" : "Not Switchable");
-        }
-
-        /* printf("enum: %d\n", ide_probe_device(IDE_PRIMARY_CMD_BASE, IDE_PRIMARY_CTRL_BASE, 0));
-        printf("enum: %d\n", ide_probe_device(IDE_PRIMARY_CMD_BASE, IDE_PRIMARY_CTRL_BASE, 1));
-        printf("enum: %d\n", ide_probe_device(IDE_SECONDARY_CMD_BASE, IDE_SECONDARY_CTRL_BASE, 0));
-        printf("enum: %d\n", ide_probe_device(IDE_SECONDARY_CMD_BASE, IDE_SECONDARY_CTRL_BASE, 1)); */
-    }
-
+    // IDE currently only supports legacy channels, not PCI IDE controllers w/ different I/O bases
     irq_register_routine(IDE_PRIMARY_IRQ, ide_primary_irq_routine);
     irq_register_routine(IDE_SECONDARY_IRQ, ide_secondary_irq_routine);
 
@@ -355,3 +332,5 @@ int ide_wait_for_irq(struct ide_device *dev) {
     }
     return 0;
 }
+
+#endif // __KERNEL_SUPPORT_DEV_STORAGE_IDE

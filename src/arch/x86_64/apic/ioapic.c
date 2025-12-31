@@ -57,7 +57,7 @@ void ioapic_route_irq(uint8_t irq_no, uint8_t apic_id, uint8_t vector_no, uint32
 }
 
 void ioapic_route_all_irq(uint8_t lapic_id, uint32_t flags) {
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 21; i++) {
         // Skip mouse interrupts for now
         // if (i == 2) continue;
         ioapic_route_irq(i, lapic_id, 32 + i, flags);

@@ -265,7 +265,7 @@ void _start(uint64_t stack, uint64_t linker_ehdr, uint64_t target_ehdr) {
         relaent = sizeof(ELF_rela_t);
     }
 
-    _prereloc_syscall_print("\nldso: Starting self-relocations...\n");
+    /* _prereloc_syscall_print("\nldso: Starting self-relocations...\n");
     _prereloc_syscall_print("rela = ");
     _prereloc_syscall_print_ptr((uint64_t)rela);
     _prereloc_syscall_print(", rela_sz = ");
@@ -282,7 +282,7 @@ void _start(uint64_t stack, uint64_t linker_ehdr, uint64_t target_ehdr) {
     _prereloc_syscall_print_ptr((uint64_t)symtab);
     _prereloc_syscall_print(", strtab = ");
     _prereloc_syscall_print_ptr((uint64_t)strtab);
-    _prereloc_syscall_print("\n");
+    _prereloc_syscall_print("\n"); */
 
     // Apply relocations
     if (rela_sz > 0) {
@@ -293,9 +293,9 @@ void _start(uint64_t stack, uint64_t linker_ehdr, uint64_t target_ehdr) {
         _apply_relocations(linker_ehdr, symtab, strtab, relaent, pltgot, rela_plt, rela_plt_sz, 1, 1);
     }
 
-    _prereloc_syscall_print("ldso: Self-relocations complete.\ninit_dso_base resolves to ");
+    /* _prereloc_syscall_print("ldso: Self-relocations complete.\ninit_dso_base resolves to ");
     _prereloc_syscall_print_ptr((uint64_t)init_dso_base);
-    _prereloc_syscall_print("\n");
+    _prereloc_syscall_print("\n"); */
 
 finish_relocations:
     init_dso_base();

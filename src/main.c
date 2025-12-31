@@ -2,10 +2,7 @@
 
 #include "arch/platform.h"
 #include "cpu/cpu.h"
-#include "devices/input/keyboard/drivers/ps2kbd.h"
-#include "devices/input/keyboard/keyboard.h"
-#include "devices/pci/pci.h"
-#include "devices/storage/ide.h"
+#include "devices/manager.h"
 #include "exec/elf.h"
 #include "lib/serial.h"
 #include "lib/stdio.h"
@@ -151,6 +148,17 @@ void hcf(void) {
     }
 }
 
+_Noreturn void panic(const char *message) {
+    printf("KERNEL PANIC: %s\n", message);
+    printf("System Halted!\n");
+    debug_serial = false;
+    printf("KERNEL PANIC: %s\n", message);
+    debug_serial = true;
+
+    // TODO: halt all threads
+    hcf();
+}
+
 #define LINKER_OFFS 0x7fff80000000ULL
 
 // The following will be our kernel's entry point.
@@ -198,6 +206,7 @@ void kmain(void) {
 
     debug_serial = true;
 
+    // TODO: integrate this into device manager
     init_serial();
 
     printf("Debugging to serial output now...\n");
@@ -206,12 +215,7 @@ void kmain(void) {
 
     vfs_init();
 
-    init_keyboard();
-
-    // TODO: make this part of a device manager
-    init_ps2_keyboard();
-    pci_scan();
-    ide_init();
+    device_manager_init();
 
 #define helloworld "Hello World!\n"
 

@@ -2,32 +2,26 @@
 
 #define LIMINE_API_REVISION 3
 
-#include "cpu/cpu.h"
-
-#include "kernel.h"
-#include "limine.h"
-
-#include "timer/pit.h"
-
-#include "memory/mm.h"
-#include "memory/detect.h"
-
-#include "lib/stdio.h"
-
-#include "arch/x86_64/cpuid/cpuid.h"
 #include "arch/x86_64/apic/apic.h"
-#include "arch/x86_64/irq.h"
-#include "proc/scheduler.h"
-
-#include "arch/x86_64/idt.h"
-#include "arch/x86_64/pic/pic.h"
-#include "arch/x86_64/gdt/gdt.h"
+#include "arch/x86_64/apic/ioapic.h"
 #include "arch/x86_64/common.h"
+#include "arch/x86_64/cpuid/cpuid.h"
+#include "arch/x86_64/gdt/gdt.h"
+#include "arch/x86_64/idt.h"
+#include "arch/x86_64/irq.h"
+#include "arch/x86_64/pic/pic.h"
+#include "cpu/cpu.h"
+#include "kernel.h"
+#include "lib/stdio.h"
+#include "limine.h"
+#include "memory/detect.h"
+#include "memory/mm.h"
+#include "proc/scheduler.h"
+#include "timer/pit.h"
 
 // TODO: do we want to enable sse/sse2/avx instructions?
 
-__attribute__((used, section(".limine_requests")))
-static volatile LIMINE_BASE_REVISION(0);
+__attribute__((used, section(".limine_requests"))) static volatile LIMINE_BASE_REVISION(0);
 
 __attribute__((used, section(".limine_requests"))) //
 static volatile struct limine_mp_request mp_request
@@ -44,10 +38,10 @@ static gsbase_t *new_kernel_gs_base(uint32_t processor_id) {
     gsbase_t *base = (gsbase_t *)phys_to_virt(find_next_free_frame());
     memset(base, 0, PAGE_LEN);
 
-    base->proc = (uint64_t)NULL;
-    base->cr3 = kernel_pml4_phys;
-    base->stack = TSS_STACK_ADDR;
-    base->processor_id = processor_id;
+    base->proc             = (uint64_t)NULL;
+    base->cr3              = kernel_pml4_phys;
+    base->stack            = TSS_STACK_ADDR;
+    base->processor_id     = processor_id;
     base->kernel_pml4_phys = (uint64_t)kernel_pml4_phys;
 
     return base;
@@ -55,7 +49,7 @@ static gsbase_t *new_kernel_gs_base(uint32_t processor_id) {
 
 void setup_bs_gs_base() {
     cpu_cores[0].kernel_gs_base = new_kernel_gs_base(0);
-    gs_bases[0] = (uint64_t)cpu_cores[0].kernel_gs_base;
+    gs_bases[0]                 = (uint64_t)cpu_cores[0].kernel_gs_base;
 
     printf("base: %p %p\n", gs_bases[0], cpu_cores[0].kernel_gs_base);
 
@@ -63,7 +57,8 @@ void setup_bs_gs_base() {
     write_msr(IA32_KERNEL_GS_BASE, (uint64_t)cpu_cores[0].kernel_gs_base);
 }
 
-// We reload the entire TLB on every shootdown because the IPI latency dwarfs the difference between single and full shootdown.
+// We reload the entire TLB on every shootdown because the IPI latency dwarfs the difference between single and full
+// shootdown.
 
 void ipi_tlb_shootdown_routine(registers_t *regs) {
     // printf("IPI on core %d\n", get_curr_core());
@@ -103,19 +98,24 @@ void ipi_kill_routine(registers_t *regs) {
     cpu_scheduler_task();
 }
 
+void ipi_wakeup_routine(registers_t *regs) {
+    printf("Received IPI wakeup on core %d\n", get_curr_core());
+    apic_send_eoi();
+}
+
 void setup_other_core(struct limine_mp_info *mp_info) {
     set_cr3_addr(kernel_pml4_phys);
 
     asm volatile("cli");
 
     cpu_cores[mp_info->processor_id].lapic_id = mp_info->lapic_id;
-    cpu_cores[mp_info->processor_id].mp_info = mp_info;
+    cpu_cores[mp_info->processor_id].mp_info  = mp_info;
 
     gdt_tss_init();
     enable_apic();
 
     idt_load();
-    
+
     // hpet_init();
     // pit_init();
     // apic_start_timer();
@@ -126,7 +126,7 @@ void setup_other_core(struct limine_mp_info *mp_info) {
     printf("Setting up core id %d lapic id %d\n", mp_info->processor_id, mp_info->lapic_id);
 
     cpu_cores[mp_info->processor_id].kernel_gs_base = new_kernel_gs_base(mp_info->processor_id);
-    gs_bases[mp_info->processor_id] = (uint64_t)cpu_cores[mp_info->processor_id].kernel_gs_base;
+    gs_bases[mp_info->processor_id]                 = (uint64_t)cpu_cores[mp_info->processor_id].kernel_gs_base;
 
     write_msr(IA32_GS_BASE, (uint64_t)cpu_cores[mp_info->processor_id].kernel_gs_base);
     write_msr(IA32_KERNEL_GS_BASE, (uint64_t)cpu_cores[mp_info->processor_id].kernel_gs_base);
@@ -147,24 +147,24 @@ void setup_other_cores() {
         printf("No mp info. Can't setup other cores. Halt!\n");
         hcf();
     }
-    
+
     for (uint32_t i = 1; i < MAX_CORES; i++) {
-        gs_bases[i] = 0;
-        cores_threads[i] = NULL;
+        gs_bases[i]         = 0;
+        cores_threads[i]    = NULL;
         cpu_cores[i].online = false;
     }
 
-    cpu_cores[0].online = true;
+    cpu_cores[0].online   = true;
     cpu_cores[0].lapic_id = mp_response->bsp_lapic_id;
-    cpu_cores[0].mp_info = mp_response->cpus[0];
+    cpu_cores[0].mp_info  = mp_response->cpus[0];
 
     for (uint64_t i = 1; i < mp_response->cpu_count; i++) {
         struct limine_mp_info *mp_info = mp_response->cpus[i];
 
         mp_info->extra_argument = (uint64_t)mp_info;
-        mp_info->goto_address = (limine_goto_address)setup_other_core;
-        
-        while(!cpu_cores[i].online) {
+        mp_info->goto_address   = (limine_goto_address)setup_other_core;
+
+        while (!cpu_cores[i].online) {
             // Wait for core to come online
             pit_sleep(5);
         }
@@ -188,7 +188,9 @@ uint32_t get_curr_core() {
     uint32_t lapic_id = ReadRegister(LAPIC_ID_REG) >> 24;
 
     for (int i = 0; i < MAX_CORES; i++) {
-        if (cpu_cores[i].lapic_id == lapic_id) { return i; }
+        if (cpu_cores[i].lapic_id == lapic_id) {
+            return i;
+        }
     }
 
     return -1; // Should never happen
