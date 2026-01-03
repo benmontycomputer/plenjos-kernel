@@ -1,8 +1,8 @@
-bin
-lib
-obj
+/bin
+/lib
+/obj
 
-root
+/root
 
 usr/ldso/bin
 usr/ldso/lib

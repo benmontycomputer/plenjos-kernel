@@ -195,11 +195,14 @@ void printf_hex(uint32_t hex, uint16_t pad_to) {
 
     printf_str("0x", 2);
 
+    bool started_printing = false;
     for (int i = 0; i < 8; i++) {
-        if (pad_to && (8 - i) > pad_to && ((adj & 0xf0000000) == 0)) {
+        if (pad_to && (8 - i) > pad_to && ((adj & 0xf0000000) == 0) && !started_printing) {
             adj = (adj << 4);
             continue;
         }
+
+        started_printing = true;
 
         printf_ch(hex_indices[(adj & 0xf0000000) >> 28]);
 
@@ -212,11 +215,15 @@ void printf_hex_long(uint64_t hex, uint16_t pad_to) {
 
     printf_str("0x", 2);
 
+    bool started_printing = false;
     for (int i = 0; i < 16; i++) {
-        if (pad_to && (16 - i) > pad_to && ((adj & 0xf000000000000000) == 0)) {
+        if (pad_to && (16 - i) > pad_to && ((adj & 0xf000000000000000) == 0) && !started_printing) {
             adj = (adj << 4);
             continue;
         }
+
+        started_printing = true;
+
         printf_ch(hex_indices[(adj & 0xf000000000000000) >> 60]);
 
         adj = ((adj & 0x0fffffffffffffff) << 4);
