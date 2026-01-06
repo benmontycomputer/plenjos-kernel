@@ -252,6 +252,17 @@ uint64_t get_physaddr(uint64_t virt, pml4_t *pml4) {
     return (page.frame << 12) + (virt & 0xFFF);
 }
 
+uint32_t get_physaddr32(uint64_t virt, pml4_t *pml4) {
+    uint64_t phys = get_physaddr(virt, pml4);
+
+    if (phys >> 32) {
+        printf("WARNING: get_physaddr32() called, but resulting physaddr is >32bit\n");
+        return 0U;
+    }
+
+    return phys & 0xFFFFFFFF;
+}
+
 void init_paging() {
     kernel_pml4_phys = get_cr3_addr();
     kernel_pml4      = (pml4_t *)phys_to_virt(kernel_pml4_phys);

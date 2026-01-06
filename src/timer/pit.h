@@ -9,3 +9,4 @@ extern volatile uint64_t pit_count;
 
 void pit_init();
 void pit_sleep(uint64_t mills);
+void pit_sleep_nohlt(uint64_t mills);

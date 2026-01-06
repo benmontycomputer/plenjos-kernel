@@ -26,8 +26,15 @@
 #  include "devices/pci/pci.h"
 # endif
 
+# include "kernel.h"
+# include "lib/lock.h"
+
 # include <stddef.h>
 # include <stdint.h>
+
+/* Recommended: 100ms per TD, but 500ms total for a control transfer */
+/* TODO: implement some sort of adaptive timeout system (slow devices might need more time than this) */
+# define UHCI_DEFAULT_CONTROL_TIMEOUT 500U /* ms */
 
 // https://wiki.osdev.org/Universal_Host_Controller_Interface
 
@@ -144,63 +151,122 @@
 # define UHCI_PORTSCREG_CONN_STATUS_CHANGED 0x0002
 # define UHCI_PORTSCREG_CONN_STATUS         0x0001
 
+# define UHCI_FRAME_LIST_ENTRY_TYPE_TD 0
+# define UHCI_FRAME_LIST_ENTRY_TYPE_QH 1
+
 struct uhci_frame_list_entry {
-    int enable   : 1; /* 0 = valid, 1 = empty */
-    int type     : 1;
-    int reserved : 2;
-    uint32_t ptr : 28;
+    unsigned enable : 1; /* 0 = valid, 1 = empty */
+    unsigned type   : 1; /* 0 = TD, 1 = QH */
+    int reserved    : 2;
+    uint32_t ptr    : 28;
 } __attribute__((packed));
 
-struct uhci_queue_head {
-    struct uhci_frame_list_entry horiz_link_ptr;
-    struct uhci_frame_list_entry element_link_ptr;
-} __attribute__((packed));
+struct uhci_qh {
+    volatile struct uhci_frame_list_entry horiz_link_ptr;
+    volatile struct uhci_frame_list_entry element_link_ptr;
+    uint64_t padding;
+
+    /* Not accessible by the controller; for kernel use only */
+    uint64_t data_prev;
+    uint64_t data_first_td;
+} __attribute__((aligned(16))) __attribute__((packed));
+
+# define UHCI_TD_BITSTUFF_ERR 1 << 17
+# define UHCI_TD_CRCTO_ERR    1 << 18
+# define UHCI_TD_NAK_ERR      1 << 19
+# define UHCI_TD_BABBLE_ERR   1 << 20
+# define UHCI_TD_BUF_ERR      1 << 21
+# define UHCI_TD_STALLED      1 << 22
+# define UHCI_TD_ACTIVE       1 << 23
+# define UHCI_TD_IOC          1 << 24
+# define UHCI_TD_SPD          1 << 29
+
+# define UHCI_TD_ERR_MASK \
+     (UHCI_TD_BITSTUFF_ERR | UHCI_TD_CRCTO_ERR | UHCI_TD_NAK_ERR | UHCI_TD_BABBLE_ERR | UHCI_TD_BUF_ERR | UHCI_TD_STALLED)
 
 enum uhci_td_pid { UHCI_TD_PID_OUT = 0xE1, UHCI_TD_PID_IN = 0x69, UHCI_TD_PID_SETUP = 0x2D };
 
-struct uhci_transfer_descriptor {
-    struct uhci_transfer_descriptor_next {
-        int terminate   : 1; /* 0 = valid, 1 = doesn't point to anything */
-        int type        : 1; /* 0 = transfer descriptor, 1 = queue head */
-        int depth_first : 1; /* Controller will continue execution to next TD pointed by this TD */
-        uint32_t ptr    : 29;
+struct uhci_td_packet_header {
+    enum uhci_td_pid packet_type : 8; /* See UHCI_TD_PID_* */
+    uint8_t device_address       : 7; /* USB device address (0-127) */
+    uint8_t endpoint_number      : 4; /* Endpoint number (0-15) */
+    uint8_t data_toggle          : 1; /* Data toggle (0 or 1) */
+    uint16_t reserved            : 1;
+    uint16_t max_length          : 11; /* Maximum length of data to transfer (in bytes) */
+} __attribute__((packed));
+
+struct uhci_td_status {
+    unsigned actual_length         : 11; /* Actual length of data transferred (in bytes) */
+    int reserved2                  : 6;
+    unsigned bitstuff_error        : 1;
+    unsigned crc_timeout_error     : 1;
+    unsigned non_ack_received      : 1;
+    unsigned babble_detected       : 1;
+    unsigned data_buffer_error     : 1;
+    unsigned stalled               : 1;
+    unsigned active                : 1; /* This packet waits to be transferred by UHCI controller */
+    unsigned interrupt_on_complete : 1;
+    unsigned isochronous           : 1;
+    unsigned low_speed             : 1; /* 1 = low speed device */
+    unsigned error_count           : 2; /* Number of errors (max 3) */
+    unsigned short_packet_detect   : 1; /* 1 = if SPD, continue execution from horizontal QH pointer */
+    int reserved1                  : 2;
+} __attribute__((packed));
+
+struct uhci_td {
+    volatile struct uhci_td_next {
+        unsigned terminate   : 1; /* 0 = valid, 1 = doesn't point to anything */
+        unsigned type        : 1; /* 0 = transfer descriptor, 1 = queue head */
+        unsigned depth_first : 1; /* Controller will continue execution to next TD pointed by this TD */
+        unsigned reserved    : 1;
+        uint32_t ptr         : 28;
     } __attribute__((packed)) next_td;
 
-    struct uhci_transfer_descriptor_status {
-        unsigned actual_length    : 11; /* Actual length of data transferred (in bytes) */
-        int reserved2             : 6;
-        int bitstuff_error        : 1;
-        int crc_timeout_error     : 1;
-        int non_ack_received      : 1;
-        int babble_detected       : 1;
-        int data_buffer_error     : 1;
-        int stalled               : 1;
-        int active                : 1; /* This packet waits to be transferred by UHCI controller */
-        int interrupt_on_complete : 1;
-        int isochronous           : 1;
-        int low_speed             : 1; /* 1 = low speed device */
-        unsigned error_count      : 2; /* Number of errors (max 3) */
-        int short_packet_detect   : 1; /* 1 = if SPD, continue execution from horizontal QH pointer */
-        int reserved1             : 2;
-    } __attribute__((packed)) status;
+    uint32_t status;
 
-    struct uhci_transfer_descriptor_packet_header {
-        enum uhci_td_pid packet_type : 8; /* See UHCI_TD_PID_* */
-        uint8_t device_address       : 7; /* USB device address (0-127) */
-        uint8_t endpoint_number      : 4; /* Endpoint number (0-15) */
-        uint8_t data_toggle          : 1; /* Data toggle (0 or 1) */
-        uint16_t reserved            : 1;
-        uint16_t max_length          : 11; /* Maximum length of data to transfer (in bytes) */
-    } __attribute__((packed)) packet_header;
+    uint32_t packet_header;
+
+    uint32_t buffer_pointer; /* Physical address of data buffer */
+
+    /* Not accessible by the controller; for kernel use only */
+    uint64_t data_next;
+    uint64_t padding;
 } __attribute__((packed));
 
 struct uhci_controller {
     pci_device_t *pci_dev;
     uint16_t io_base; /* I/O base address from PCI BAR */
-};
+    physptr_t frame_list_phys;
+    struct uhci_frame_list_entry *frame_list_base;
+
+    struct usb_bus bus;
+
+    uint8_t dev_addresses[127]; /* address = index + 1; 1 = used */
+    mutex dev_addresses_lock;
+
+    mutex qh_lock;
+
+    /* These must be 16-byte aligned */
+    struct uhci_qh qh_1ms __attribute__((aligned(16)));
+    struct uhci_qh qh_2ms __attribute__((aligned(16)));
+    struct uhci_qh qh_4ms __attribute__((aligned(16)));
+    struct uhci_qh qh_8ms __attribute__((aligned(16)));
+    struct uhci_qh qh_16ms __attribute__((aligned(16)));
+    struct uhci_qh qh_32ms __attribute__((aligned(16)));
+} __attribute__((aligned(16)));
 
 typedef struct uhci_controller uhci_controller_t;
 
+typedef uhci_controller_t uhci_host_driver_data_t;
+
 int uhci_init(uhci_controller_t *controller, pci_device_t *pci_dev);
+
+int uhci_insert_qh(uhci_controller_t *controller, struct uhci_qh *qh);
+
+void *uhci_alloc_td();
+void *uhci_alloc_qh();
+
+void uhci_free_td(void *td);
+void uhci_free_qh(void *qh);
 
 #endif // __KERNEL_SUPPORT_DEV_USB_HOST_UHCI

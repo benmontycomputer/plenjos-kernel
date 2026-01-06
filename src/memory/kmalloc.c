@@ -1,11 +1,11 @@
 #include "memory/kmalloc.h"
 
+#include "arch/x86_64/common.h"
 #include "kernel.h"
 #include "lib/stdio.h"
 #include "lib/string.h"
 #include "memory/detect.h"
 #include "memory/mm.h"
-#include "arch/x86_64/common.h"
 
 #include <stdatomic.h>
 #include <stdbool.h>
@@ -14,10 +14,14 @@
 // TODO: make sure all sizes are less than uint64_t max?
 // Shouldn't be a huge security issue since this is kernel memory allocation
 
+// TODO: align everything to 16 bytes by default for performance
+
 atomic_uintptr_t kheap_start = ATOMIC_VAR_INIT(0);
 atomic_uintptr_t kheap_end   = ATOMIC_VAR_INIT(0);
 
 typedef struct heap_segment_info heap_segment_info_t;
+
+#define HEAP_GRANULARITY 0x10
 
 struct heap_segment_info {
     size_t size;
@@ -26,7 +30,7 @@ struct heap_segment_info {
     _Atomic(heap_segment_info_t *) prev;
 
     bool free;
-};
+} __attribute__((aligned(HEAP_GRANULARITY)));
 
 _Atomic(heap_segment_info_t *) kheap_last_segment = ATOMIC_VAR_INIT(NULL);
 
@@ -38,7 +42,7 @@ static inline bool is_page_misaligned(uint64_t ptr) {
 #define KHEAP_INIT_PAGES 160
 #define KHEAP_INIT_SIZE  (PAGE_LEN * KHEAP_INIT_PAGES)
 
-#define HEAP_ALLOC_MIN 0x10
+#define HEAP_ALLOC_MIN   0x10
 
 #define HEAP_HEADER_LEN sizeof(heap_segment_info_t)
 
@@ -105,7 +109,8 @@ static heap_segment_info_t *kheap_add_segment(size_t len) {
     /* Align the next mapping address up to a page boundary. */
     uint64_t pg_addr = atomic_load(&kheap_end);
     if (pg_addr & (PAGE_LEN - 1)) {
-        pg_addr = (pg_addr + PAGE_LEN - 1) & ~((uint64_t)(PAGE_LEN - 1));
+        panic("ERROR: kheap_end was not page-aligned!\n");
+        // pg_addr = (pg_addr + PAGE_LEN - 1) & ~((uint64_t)(PAGE_LEN - 1));
     }
 
     /* Map the pages */
@@ -122,7 +127,7 @@ static heap_segment_info_t *kheap_add_segment(size_t len) {
     new_segment->free = true;
     atomic_store(&new_segment->prev, last_segment);
     atomic_store(&new_segment->next, NULL);
-    new_segment->size = len;
+    new_segment->size = (pages * PAGE_LEN) - HEAP_HEADER_LEN;
 
     atomic_store(&kheap_end, pg_addr + (pages * PAGE_LEN));
 
@@ -131,6 +136,7 @@ static heap_segment_info_t *kheap_add_segment(size_t len) {
 
 static heap_segment_info_t *kheap_segment_split(heap_segment_info_t *segment, size_t keep_size) {
     if (!segment) return NULL;
+    if (keep_size % HEAP_GRANULARITY) keep_size = keep_size + HEAP_GRANULARITY - (keep_size % HEAP_GRANULARITY);
     if (keep_size < HEAP_ALLOC_MIN) keep_size = HEAP_ALLOC_MIN;
     // This next line is needed because we use signed integers instead of unsigned
     if (keep_size + HEAP_HEADER_LEN >= segment->size) return NULL;
@@ -158,7 +164,7 @@ static heap_segment_info_t *kheap_segment_split(heap_segment_info_t *segment, si
 // TODO: use refing/unrefing frames for extremely large allocations?
 void *kmalloc_heap(uint64_t size) {
     if (size == 0) return NULL;
-    if (size % 2) size++; // Align to 2 bytes
+    if (size % HEAP_GRANULARITY) size = size + HEAP_GRANULARITY - (size % HEAP_GRANULARITY); // Align to 2 bytes
     if (size < HEAP_ALLOC_MIN) size = HEAP_ALLOC_MIN;
 
     bool ints = are_interrupts_enabled();
@@ -181,6 +187,10 @@ void *kmalloc_heap(uint64_t size) {
                 if (ints) {
                     asm volatile("sti");
                 }
+                // TODO: once this code is well-tested, these checks can be removed
+                if ((uint64_t)cur_seg % HEAP_GRANULARITY) {
+                    panic("ERROR: cur_seg is not aligned to HEAP_GRANULARITY.\n");
+                }
                 return (void *)((uint64_t)cur_seg + HEAP_HEADER_LEN);
             } else if (cur_seg->size == size) {
                 cur_seg->free = false;
@@ -188,6 +198,9 @@ void *kmalloc_heap(uint64_t size) {
                 unlock_kheap();
                 if (ints) {
                     asm volatile("sti");
+                }
+                if ((uint64_t)cur_seg % HEAP_GRANULARITY) {
+                    panic("ERROR: cur_seg is not aligned to HEAP_GRANULARITY.\n");
                 }
                 return (void *)((uint64_t)cur_seg + HEAP_HEADER_LEN);
             }
@@ -209,6 +222,9 @@ void *kmalloc_heap(uint64_t size) {
         asm volatile("sti");
     }
 
+    if ((uint64_t)seg % HEAP_GRANULARITY) {
+        panic("ERROR: cur_seg is not aligned to HEAP_GRANULARITY.\n");
+    }
     return (void *)((uint64_t)seg + HEAP_HEADER_LEN);
 
     // return kmalloc_heap(size);

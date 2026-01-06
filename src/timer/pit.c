@@ -5,6 +5,7 @@
 #include "arch/x86_64/apic/apic.h"
 #include "arch/x86_64/common.h"
 #include "arch/x86_64/irq.h"
+#include "arch/x86_64/apic/ioapic.h"
 #include "devices/io/ports.h"
 #include "lib/stdio.h"
 #include "timer.h"
@@ -39,7 +40,13 @@ void pit_irq(registers_t *regs) {
                 // Timeout reached
                 // Clear the timeout first to avoid re-entrancy issues
                 atomic_store(&(timer->milliseconds), UINT64_MAX);
-                delegate_kernel_task(pit_timer_callback, timer);
+                if (timer->callback == NULL) {
+                    // IPI wakeup
+                    send_ipi((uint32_t)(timer->core_id), IPI_WAKEUP_IRQ + 32);
+                    atomic_store(&(timer->milliseconds), 0);
+                } else {
+                    delegate_kernel_task(pit_timer_callback, timer);
+                }
             }
         }
     }
@@ -91,5 +98,22 @@ void pit_sleep(uint64_t mills) {
 
     while (pit_count < end) {
         asm volatile("hlt");
+    }
+}
+
+void pit_sleep_nohlt(uint64_t mills) {
+    uint64_t end;
+
+    // Same calculation; potentially avoid multiplication overflow
+    // TODO: better way to avoid overflow?
+    if (PIT_INTERR_FREQ % 1000) {
+        end = pit_count + ((PIT_INTERR_FREQ * mills) / 1000);
+    } else {
+        end = pit_count + (PIT_INTERR_FREQ / 1000) * mills;
+    }
+
+    while (pit_count < end) {
+        asm volatile("pause"); // Use pause instead of hlt because this core doesn't receive interrupts
+        // TODO: should we have some mechanism for the interrupt core to send IPI to wake this one instead?
     }
 }

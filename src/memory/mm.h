@@ -33,6 +33,7 @@ page_t *find_page_using_alloc(uint64_t virt, bool autocreate, uint64_t *alloc_fu
 page_t *find_page(uint64_t virt, bool autocreate, pml4_t *pml4);
 
 uint64_t get_physaddr(uint64_t virt, pml4_t *pml4);
+uint32_t get_physaddr32(uint64_t virt, pml4_t *pml4);
 
 void free_page_table(pml4_t *pml4_virt);
 
