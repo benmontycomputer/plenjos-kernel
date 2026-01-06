@@ -36,7 +36,7 @@ static const uint8_t setup_packet_get_config[8] = {
 };
 
 /*
-uint8_t setup_packet_get_hid[8] = {
+static const uint8_t setup_packet_get_hid[8] = {
     0x81,       // IN, standard, interface
     0x06,       // GET_DESCRIPTOR
     0x2200,     // wValue: 0x2200 → HID descriptor, index 0
@@ -44,7 +44,7 @@ uint8_t setup_packet_get_hid[8] = {
     sizeof(hid_desc),0x00 // wLength
 };
 
-uint8_t setup_packet_get_report[8] = {
+static const uint8_t setup_packet_get_report[8] = {
     0x81,       // IN, class, interface
     0x06,       // GET_DESCRIPTOR
     0x2200,     // wValue: 0x2200 = report descriptor
@@ -120,15 +120,6 @@ usb_device_t *usb_setup_device(usb_device_t *parent, struct usb_bus *bus, uint8_
 
     if (res == 0) {
         dev->device_desc = *(struct usb_device_descriptor *)desc_buf;
-        /* printf("usb_setup_device: device descriptor for device on bus %d port %d:\n", bus.id, port);
-        printf("  - USB version: %.4x\n", dev->device_desc.bcd_USB);
-        printf("  - Vendor ID: %.4x\n", dev->device_desc.id_vendor_le);
-        printf("  - Product ID: %.4x\n", dev->device_desc.id_product_le);
-        printf("  - Device class: %.2x\n", dev->device_desc.b_device_class);
-        printf("  - Device subclass: %.2x\n", dev->device_desc.b_device_subclass);
-        printf("  - Device protocol: %.2x\n", dev->device_desc.b_device_protocol);
-        printf("  - Max packet size (ep0): %d\n", dev->device_desc.b_max_packet_size_0);
-        printf("  - Number of configurations: %d\n", dev->device_desc.b_num_configurations); */
     } else {
         printf("ERROR: usb_setup_device: get device descriptor failed.\n");
         goto err_res;
