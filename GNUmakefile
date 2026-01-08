@@ -192,17 +192,12 @@ uefi_run:
 		-boot d \
 		-drive file=../image.iso,if=ide,media=cdrom \
 		-d guest_errors,cpu_reset,invalid_mem,unimp \
-		-trace usb_uhci_packet_add \
-		-trace usb_uhci_packet_complete_success \
-		-trace usb_uhci_packet_complete_shortxfer \
-		-trace usb_uhci_packet_complete_stall \
-		-trace usb_uhci_packet_complete_babble \
-		-trace usb_uhci_packet_complete_error \
 		-vga std \
 		-serial stdio \
 		-smbios type=0,uefi=on \
 		-rtc base=utc,clock=host \
 		-usb \
+		-device usb-kbd \
 		-device usb-mouse \
         -no-reboot
 
@@ -213,17 +208,12 @@ uefi_run_gdb:
 		-boot d \
 		-drive file=../image.iso,if=ide,media=cdrom \
 		-d guest_errors,cpu_reset,invalid_mem,unimp \
-		-trace usb_uhci_packet_add \
-		-trace usb_uhci_packet_complete_success \
-		-trace usb_uhci_packet_complete_shortxfer \
-		-trace usb_uhci_packet_complete_stall \
-		-trace usb_uhci_packet_complete_babble \
-		-trace usb_uhci_packet_complete_error \
 		-vga std \
 		-serial stdio \
 		-smbios type=0,uefi=on \
 		-rtc base=utc,clock=host \
 		-usb \
+		-device usb-kbd \
 		-device usb-mouse \
         -no-reboot \
         -s -S

@@ -55,10 +55,10 @@ void init_x86_64() {
     PIC_remap(PIC1, PIC2);
     pic_disable();
 
-    irq_register_routine(IPI_TLB_SHOOTDOWN_IRQ, &ipi_tlb_shootdown_routine);
-    irq_register_routine(IPI_TLB_FLUSH_IRQ, &ipi_tlb_flush_routine);
-    irq_register_routine(IPI_KILL_IRQ, &ipi_kill_routine);
-    irq_register_routine(IPI_WAKEUP_IRQ, &ipi_wakeup_routine);
+    irq_register_routine(IPI_TLB_SHOOTDOWN_IRQ, &ipi_tlb_shootdown_routine, NULL);
+    irq_register_routine(IPI_TLB_FLUSH_IRQ, &ipi_tlb_flush_routine, NULL);
+    irq_register_routine(IPI_KILL_IRQ, &ipi_kill_routine, NULL);
+    irq_register_routine(IPI_WAKEUP_IRQ, &ipi_wakeup_routine, NULL);
 
     asm volatile("sti");
 

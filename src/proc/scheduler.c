@@ -1,10 +1,10 @@
 #include "proc/scheduler.h"
 
 #include "arch/x86_64/apic/apic.h"
+#include "arch/x86_64/common.h"
 #include "arch/x86_64/cpuid/cpuid.h"
 #include "arch/x86_64/irq.h"
 #include "cpu/cpu.h"
-#include "arch/x86_64/common.h"
 #include "lib/stdio.h"
 #include "memory/mm.h"
 #include "proc/proc.h"
@@ -16,6 +16,10 @@
 #include <stdint.h>
 
 #define MAX_KERNEL_TASKS 8192
+
+/* TODO: IMPORTANT: if we have 2 kernel tasks alternating time on one CPU, their stacks would currently be the same,
+ * leading to corruption as RSP is switched but push/pop could interfere with the other process' stack. Each kernel task
+ * should have its own stack if it can alternate time with another. */
 
 typedef struct {
     _Atomic(kernel_task_func_t) func;
@@ -185,7 +189,7 @@ void cpu_scheduler_task() {
         lock_kernel_tasks();
         if (ready_kernel_tasks_head != ready_kernel_tasks_tail) {
             // There's a kernel task to run
-            printf("SCHEDULER: core %d executing kernel task\n", curr_core);
+            // printf("SCHEDULER: core %d executing kernel task\n", curr_core);
             kernel_task_func_t func = ready_kernel_tasks[ready_kernel_tasks_tail].func;
             void *arg               = ready_kernel_tasks[ready_kernel_tasks_tail].arg;
             ready_kernel_tasks_tail = (ready_kernel_tasks_tail + 1) % MAX_KERNEL_TASKS;
@@ -240,7 +244,7 @@ void assign_thread_to_cpu(thread_t *thread) {
     asm volatile("cli");
     // Check if kernel page table needs to be flushed
     if (get_physaddr((uint64_t)&thread->regs, kernel_pml4) == 0x0) {
-        ipi_tlb_flush_routine(NULL);
+        ipi_tlb_flush_routine(NULL, NULL);
     }
 
     thread->base->processor_id     = get_curr_core();

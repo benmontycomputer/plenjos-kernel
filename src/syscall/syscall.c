@@ -70,7 +70,7 @@ extern int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
     return true;
 } */
 
-registers_t *syscall_routine(registers_t *regs) {
+void syscall_routine(registers_t *regs, void *data) {
     uint64_t call = regs->rax;
     // printf("syscall %d\n", (int)call);
 
@@ -85,12 +85,12 @@ registers_t *syscall_routine(registers_t *regs) {
         // TODO: handle this more gracefully (we might actually want to panic; this indicates a serious kernel issue)
         // TODO: is this the correct errno?
         regs->rax = (uint64_t)-1;
-        return regs;
+        return;
     }
 
     if (call >= SYSCALL_FS_FIRST && call <= SYSCALL_FS_LAST) {
         syscall_handle_fs_call(regs, proc, current_pml4);
-        return regs;
+        return;
     }
 
     switch (call) {
@@ -261,14 +261,12 @@ registers_t *syscall_routine(registers_t *regs) {
     default:
         break;
     }
-
-    return regs;
 }
 
 void syscall_routine_noret(registers_t *regs) {
-    syscall_routine(regs);
+    syscall_routine(regs, NULL);
 }
 
 void syscalls_init() {
-    irq_register_routine(SYSCALL_IRQ, (void *)&syscall_routine);
+    irq_register_routine(SYSCALL_IRQ, &syscall_routine, NULL);
 }

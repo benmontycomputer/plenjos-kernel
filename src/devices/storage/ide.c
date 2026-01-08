@@ -247,7 +247,9 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive_no,
     return type;
 }
 
-void ide_irq_routine(registers_t *regs, struct ide_channel *channel) {
+void ide_irq_routine(registers_t *regs, void *data) {
+    struct ide_channel *channel = (struct ide_channel *)data;
+
     if (!mutex_is_locked(&channel->lock)) {
         // Spurious IRQ?
         printf_nolock(
@@ -273,18 +275,10 @@ void ide_irq_routine(registers_t *regs, struct ide_channel *channel) {
     }
 }
 
-void ide_primary_irq_routine(registers_t *regs) {
-    ide_irq_routine(regs, &legacy_ide_channels[0]);
-}
-
-void ide_secondary_irq_routine(registers_t *regs) {
-    ide_irq_routine(regs, &legacy_ide_channels[1]);
-}
-
 void ide_init() {
     // IDE currently only supports legacy channels, not PCI IDE controllers w/ different I/O bases
-    irq_register_routine(IDE_PRIMARY_IRQ, ide_primary_irq_routine);
-    irq_register_routine(IDE_SECONDARY_IRQ, ide_secondary_irq_routine);
+    irq_register_routine(IDE_PRIMARY_IRQ, ide_irq_routine, &legacy_ide_channels[0]);
+    irq_register_routine(IDE_SECONDARY_IRQ, ide_irq_routine, &legacy_ide_channels[1]);
 
     if (!(ide_probe_device(&legacy_ide_channels[0], 0, &legacy_ide_devices[0])
           || ide_probe_device(&legacy_ide_channels[0], 1, &legacy_ide_devices[1]))) {

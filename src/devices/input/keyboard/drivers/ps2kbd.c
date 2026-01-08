@@ -69,7 +69,7 @@ static uint8_t get_mods() {
     return mods;
 }
 
-void keyboard_irq_routine(registers_t *regs) {
+void keyboard_irq_routine(registers_t *regs, void *data) {
     uint8_t in = inb(PS2_DATA);
     // printf("kbd: scancode %x\n", in);
 
@@ -226,7 +226,7 @@ static int ps2_reset_device(int port) {
 }
 
 void register_keyboard_irq() {
-    irq_register_routine(KEYBOARD_IRQ, keyboard_irq_routine);
+    irq_register_routine(KEYBOARD_IRQ, keyboard_irq_routine, NULL);
 }
 
 void unregister_keyboard_irq() {

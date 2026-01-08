@@ -13,5 +13,5 @@
 #define IPI_KILL_IRQ          19
 #define IPI_WAKEUP_IRQ        20
 
-void irq_register_routine(int index, void (*routine)(registers_t *r));
+void irq_register_routine(int index, void (*routine)(registers_t *r, void *data), void *data);
 void irq_unregister_routine(int index);

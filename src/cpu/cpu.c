@@ -60,7 +60,7 @@ void setup_bs_gs_base() {
 // We reload the entire TLB on every shootdown because the IPI latency dwarfs the difference between single and full
 // shootdown.
 
-void ipi_tlb_shootdown_routine(registers_t *regs) {
+void ipi_tlb_shootdown_routine(registers_t *regs, void *data) {
     // printf("IPI on core %d\n", get_curr_core());
     uint64_t cr3;
     // Get the current value of CR3 (the base of the PML4 table)
@@ -71,7 +71,7 @@ void ipi_tlb_shootdown_routine(registers_t *regs) {
     // apic_send_eoi();
 }
 
-void ipi_tlb_flush_routine(registers_t *regs) {
+void ipi_tlb_flush_routine(registers_t *regs, void *data) {
     // printf("IPI on core %d\n", get_curr_core());
     uint64_t cr3;
     // Get the current value of CR3 (the base of the PML4 table)
@@ -82,7 +82,7 @@ void ipi_tlb_flush_routine(registers_t *regs) {
     // apic_send_eoi();
 }
 
-void ipi_kill_routine(registers_t *regs) {
+void ipi_kill_routine(registers_t *regs, void *data) {
     printf("Received kill IPI on core %d, halting...\n", get_curr_core());
 
     // TODO: actually kill the thread and go to the right address
@@ -98,8 +98,8 @@ void ipi_kill_routine(registers_t *regs) {
     cpu_scheduler_task();
 }
 
-void ipi_wakeup_routine(registers_t *regs) {
-    printf("Received IPI wakeup on core %d\n", get_curr_core());
+void ipi_wakeup_routine(registers_t *regs, void *data) {
+    // printf("Received IPI wakeup on core %d\n", get_curr_core());
     apic_send_eoi();
 }
 

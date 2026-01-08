@@ -3,6 +3,7 @@
 #ifdef __KERNEL_SUPPORT_DEV_USB_HOST_UHCI
 
 # include "arch/x86_64/common.h"
+# include "arch/x86_64/irq.h"
 # include "devices/io/ports.h"
 # include "kernel.h"
 # include "lib/stdio.h"
@@ -73,8 +74,8 @@ int uhci_insert_qh(uhci_controller_t *controller, struct uhci_qh *qh) {
         asm volatile("cli");
     }
     mutex_lock(&controller->qh_lock);
-    printf("uhci packet: %p, td %p\n\n", get_physaddr32((uint64_t)qh, kernel_pml4),
-           get_physaddr(qh->data_first_td, kernel_pml4));
+    /* printf("uhci packet: %p, td %p\n\n", get_physaddr32((uint64_t)qh, kernel_pml4),
+           get_physaddr(qh->data_first_td, kernel_pml4)); */
 
     qh->horiz_link_ptr = controller->qh_1ms.horiz_link_ptr;
     if (!controller->qh_1ms.horiz_link_ptr.enable)
@@ -210,8 +211,15 @@ static void uhci_free_dev_address(uhci_controller_t *controller, uint8_t addr) {
 
 int uhci_control_transfer(uhci_controller_t *controller, uint8_t device_address, uint8_t ep0_max_packet,
                           uint8_t *setup_data /* 8 bytes; physaddr must be sub-4G */, uint8_t *data_buffer,
-                          uint16_t data_length, bool data_in) {
+                          size_t data_length, bool data_in, uint32_t timeout_ms) {
     int res = 0;
+
+    if (timeout_ms == 0) timeout_ms = UHCI_DEFAULT_CONTROL_TIMEOUT;
+
+    if (ep0_max_packet == 0) {
+        printf("ERROR: uhci_control_transfer: ep0_max_packet is zero!\n");
+        return -EINVAL;
+    }
 
     /* Setup packet */
     struct uhci_qh *qh = uhci_alloc_qh();
@@ -307,7 +315,7 @@ int uhci_control_transfer(uhci_controller_t *controller, uint8_t device_address,
     /* Add into QH schedule */
     uhci_insert_qh(controller, qh);
 
-    res = uhci_wait_td(status_td, UHCI_DEFAULT_CONTROL_TIMEOUT);
+    res = uhci_wait_td(status_td, timeout_ms);
 
     if (res == -1) {
         /* Timeout */
@@ -321,6 +329,105 @@ int uhci_control_transfer(uhci_controller_t *controller, uint8_t device_address,
 
 cleanup:
     uhci_free_td_chain(setup_td);
+    uhci_free_qh(qh);
+
+    return res;
+}
+
+/* Only call this through usb_bulk_transfer()! This relies on the NULL checks from that function. */
+int uhci_bulk_transfer(usb_endpoint_t *endpoint, uint8_t *buffer, size_t length, uint32_t timeout_ms) {
+    int res = 0;
+
+    /* Split the buffer into chunks */
+    uint16_t max_packet_size = endpoint->max_packet_size;
+
+    if (max_packet_size == 0) {
+        printf("ERROR: KERNEL FAULT: uhci_bulk_transfer: max_packet_size is 0!\n");
+        return -EINVAL;
+    }
+
+    bool data_in  = (endpoint->address & 0x80) ? true : false;
+    uint8_t ep_no = endpoint->address & 0x7F;
+    usb_device_t *dev
+        = endpoint->interface->device; /* This is NULL-checked in usb_bulk_transfer() before this function is called */
+    uint8_t dev_addr = dev->address;
+
+    uhci_host_driver_data_t *host_driver_data = (uhci_host_driver_data_t *)dev->host_driver_data;
+    if (!host_driver_data) {
+        printf("ERROR: uhci_bulk_transfer: host driver data is NULL!\n");
+        return -EIO;
+    }
+
+    if (timeout_ms == 0)
+        timeout_ms = ((length + max_packet_size - 1) / max_packet_size) * UHCI_DEFAULT_BULK_TIMEOUT_PER_PACKET;
+
+    /* Setup packet */
+    struct uhci_qh *qh = uhci_alloc_qh();
+    if (!qh) {
+        printf("ERROR: uhci_bulk_transfer: failed to allocate QH for bulk transfer.\n");
+        return -1;
+    }
+
+    qh->horiz_link_ptr.enable   = 1;
+    qh->element_link_ptr.enable = 1; /* This will be re-enabled once the first TD is linked */
+
+    struct uhci_td *prev = NULL;
+
+    size_t offs = 0;
+    int toggle  = 1;
+    while (offs < length) {
+        uint16_t packet_len = min(max_packet_size, length - offs);
+
+        struct uhci_td *td_next = uhci_alloc_td();
+        if (!td_next) {
+            printf("ERROR: uhci_bulk_transfer: couldn't allocate transfer descriptor.\n");
+            res = -ENOMEM;
+            goto cleanup;
+        }
+
+        if (prev) {
+            link_td(prev, td_next);
+        } else {
+            qh->data_first_td           = (uint64_t)td_next;
+            qh->element_link_ptr.enable = 0;
+            qh->element_link_ptr.type   = UHCI_FRAME_LIST_ENTRY_TYPE_TD;
+            qh->element_link_ptr.ptr    = (get_physaddr32((uint64_t)td_next, kernel_pml4)) >> 4;
+        }
+
+        td_next->next_td.terminate = 1;
+        td_next->packet_header
+            = UHCI_TD_HEADER(data_in ? UHCI_TD_PID_IN : UHCI_TD_PID_OUT, dev_addr, ep_no, toggle, packet_len);
+        td_next->status = UHCI_TD_ACTIVE | UHCI_TD_SPD;
+
+        td_next->buffer_pointer = get_physaddr32((uint64_t)buffer + offs, kernel_pml4);
+        if (td_next->buffer_pointer == 0) {
+            printf("ERROR: uhci_bulk_transfer: buffer pointer is NULL or above-4G.\n");
+            res = -EINVAL;
+            goto cleanup;
+        }
+
+        prev = td_next;
+
+        offs   += packet_len;
+        toggle ^= 1;
+    }
+
+    /* Add into QH schedule */
+    uhci_insert_qh(dev->host_driver_data, qh);
+    res = uhci_wait_td(prev, timeout_ms);
+
+    if (res == -1) {
+        /* Timeout */
+        printf("ERROR: uhci_bulk_transfer: timeout reached\n");
+        printf("cmdreg: %.4x, stsreg: %.4x\n", uhci_read_register(dev->host_driver_data, UHCI_IO_USBCMD),
+               uhci_read_register(dev->host_driver_data, UHCI_IO_USBSTS));
+    } else if (res == -2) {
+        printf("ERROR: uhci_bulk_transfer: TD error mask set\n");
+        res = -1;
+    }
+
+cleanup:
+    if (qh->data_first_td) uhci_free_td_chain((struct uhci_td *)qh->data_first_td);
     uhci_free_qh(qh);
 
     return res;
@@ -372,10 +479,10 @@ static bool uhci_host_driver_populated         = false;
 static struct usb_host_driver uhci_host_driver = (struct usb_host_driver) { 0 };
 
 static int uhci_host_driver_control_transfer_func(usb_device_t *dev, uint8_t *setup_packet, uint8_t *data_buffer,
-                                                  uint16_t data_length, bool data_in) {
+                                                  size_t data_length, bool data_in, uint32_t timeout_ms) {
     return uhci_control_transfer((uhci_host_driver_data_t *)dev->host_driver_data, dev->address,
                                  data_in ? dev->ep0_in.max_packet_size : dev->ep0_out.max_packet_size, setup_packet,
-                                 data_buffer, data_length, data_in);
+                                 data_buffer, data_length, data_in, timeout_ms);
 }
 
 void uhci_device_connected_callback_func(void *data) {
@@ -434,7 +541,7 @@ void uhci_device_connected_callback_func(void *data) {
     }
 
     if (!uhci_host_driver_populated) {
-        uhci_host_driver           = usb_populate_host_driver(uhci_host_driver_control_transfer_func);
+        uhci_host_driver = usb_populate_host_driver(uhci_host_driver_control_transfer_func, uhci_bulk_transfer);
         uhci_host_driver_populated = true;
     }
 
@@ -445,6 +552,15 @@ void uhci_device_connected_callback_func(void *data) {
         printf("ERROR: uhci_device_connected_callback_func: usb_setup_device() failed.\n");
         uhci_free_dev_address(args->controller, addr_res);
     }
+}
+
+void uhci_irq_routine(registers_t *regs, void *data) {
+    uhci_controller_t *controller = (uhci_controller_t *)data;
+
+    uint16_t status = uhci_read_register(controller, UHCI_IO_USBSTS);
+    uhci_write_register(controller, UHCI_IO_USBSTS, status & 0x07); /* Clear INT, ERR, etc. */
+
+    printf("uhci: irq: status = %.4x", status);
 }
 
 int uhci_init(uhci_controller_t *controller, pci_device_t *pci_dev) {
@@ -657,6 +773,12 @@ int uhci_init(uhci_controller_t *controller, pci_device_t *pci_dev) {
         printf("ERROR: uhci_init failed to allocate memory for device status poll args!\n");
         return -1;
     }
+
+    /* Register IRQ */
+    uint32_t irq_no = pci_read(pci_dev->bus, pci_dev->device, pci_dev->function, PCI_REG_INTERRUPT_NO);
+
+    printf("uhci: registering irq %u\n", irq_no);
+    irq_register_routine(irq_no, uhci_irq_routine, controller);
 
     data->controller                = controller;
     data->desired_status_set_mask   = UHCI_PORTSCREG_CONN_STATUS_CHANGED;

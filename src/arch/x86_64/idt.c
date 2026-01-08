@@ -80,7 +80,7 @@ void page_fault_handler(registers_t *regs) {
 
 void gpf_handler(registers_t *regs) {
     printf("%s\n", "gpf error");
-    printf("recieved interrupt: %d\n", regs->int_no);
+    printf("received interrupt: %d\n", regs->int_no);
     printf("Error Code: %p\n", regs->err_code);
     printf("CS: %p, RIP : %p\n", regs->iret_cs, regs->iret_rip);
 

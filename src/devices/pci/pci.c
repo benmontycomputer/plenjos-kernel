@@ -28,20 +28,21 @@ uint32_t pci_read(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset)
 }
 
 int pci_set_command_bits(uint8_t bus, uint8_t device, uint8_t function, uint16_t bits) {
-    uint32_t cmd_reg  = pci_read(bus, device, function, 0x04);
+    uint32_t cmd_reg  = pci_read(bus, device, function, PCI_REG_CMD);
     cmd_reg          |= bits;
-    pci_write(bus, device, function, 0x04, cmd_reg);
+    pci_write(bus, device, function, PCI_REG_CMD, cmd_reg);
     return 0;
 }
 
 int pci_clear_command_bits(uint8_t bus, uint8_t device, uint8_t function, uint16_t bits) {
-    uint32_t cmd_reg  = pci_read(bus, device, function, 0x04);
+    uint32_t cmd_reg  = pci_read(bus, device, function, PCI_REG_CMD);
     cmd_reg          &= ~bits;
-    pci_write(bus, device, function, 0x04, cmd_reg);
+    pci_write(bus, device, function, PCI_REG_CMD, cmd_reg);
     return 0;
 }
 
 uint8_t pci_get_header_type(uint8_t bus, uint8_t device, uint8_t function) {
+    /* 0x0C is not the header_type reg; 0x0E is (is that why we do (>> 16)?) */
     uint32_t header_type_reg = pci_read(bus, device, function, 0x0C);
     return (header_type_reg >> 16) & 0xFF;
 }

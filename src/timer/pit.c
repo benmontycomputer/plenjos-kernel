@@ -23,7 +23,7 @@ void pit_timer_callback(void *data) {
     atomic_store(&(timeout->milliseconds), 0);
 }
 
-void pit_irq(registers_t *regs) {
+void pit_irq(registers_t *regs, void *data) {
     if (pit_count >= UINT64_MAX) pit_count = 0;
 
     pit_count++;
@@ -55,8 +55,8 @@ void pit_irq(registers_t *regs) {
 }
 
 void pit_timer_install() {
-    irq_register_routine(0, pit_irq);
-    irq_register_routine(2, pit_irq);
+    irq_register_routine(0, pit_irq, NULL);
+    irq_register_routine(2, pit_irq, NULL);
 }
 
 void pit_timer_remove() {

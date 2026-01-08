@@ -20,6 +20,10 @@
 
 # define PCI_MAX_DEVICES 256
 
+# define PCI_REG_CMD           0x04
+# define PCI_REG_INTERRUPT_PIN 0x3C
+# define PCI_REG_INTERRUPT_NO  0x3D
+
 typedef enum {
     PCI_CMD_IO_SPACE                 = 1 << 0,
     PCI_CMD_MEMORY_SPACE             = 1 << 1,

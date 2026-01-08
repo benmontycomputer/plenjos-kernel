@@ -74,7 +74,7 @@ void apic_calibrate_timer() {
 
 // static volatile uint64_t apic_timer_ticks[MAX_CORES] = {0};
 
-void apic_timer_irq_handler(registers_t *regs) {
+void apic_timer_irq_handler(registers_t *regs, void *data) {
     // apic_timer_ticks[get_curr_core()]++;
     // apic_send_eoi();
     // TODO: implement this
@@ -89,7 +89,7 @@ void apic_timer_irq_handler(registers_t *regs) {
 } */
 
 void apic_start_timer() {
-    irq_register_routine(16, apic_timer_irq_handler);
+    irq_register_routine(16, apic_timer_irq_handler, NULL);
 
     apic_calibrate_timer();
 

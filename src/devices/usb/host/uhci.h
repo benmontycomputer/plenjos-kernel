@@ -35,6 +35,7 @@
 /* Recommended: 100ms per TD, but 500ms total for a control transfer */
 /* TODO: implement some sort of adaptive timeout system (slow devices might need more time than this) */
 # define UHCI_DEFAULT_CONTROL_TIMEOUT 500U /* ms */
+# define UHCI_DEFAULT_BULK_TIMEOUT_PER_PACKET 100U
 
 // https://wiki.osdev.org/Universal_Host_Controller_Interface
 

@@ -7,6 +7,10 @@
 # include "memory/kmalloc.h"
 # include "plenjos/errno.h"
 
+# ifdef __KERNEL_SUPPORT_DEV_USB_DEVICE_HID
+#  include "devices/hid/usbhid/usbhid.h"
+# endif // __KERNEL_SUPPORT_DEV_USB_DEVICE_HID
+
 static const uint8_t setup_packet_get_device_descriptor[8] = {
     0x80,       // bm_request_type: IN, standard, device
     0x06,       // b_request: GET_DESCRIPTOR
@@ -66,16 +70,95 @@ void usb_generate_setup_packet_get_config_full(uint8_t *out, uint16_t len) {
 
 int usb_control_transfer(usb_device_t *dev,
                          uint8_t *setup_packet /* 8 bytes; physaddr must be sub-4G for some controllers */,
-                         uint8_t *data_buffer, uint16_t data_length, bool data_in) {
-    if (dev->host_driver->control_transfer_func) {
-        return dev->host_driver->control_transfer_func(dev, setup_packet, data_buffer, data_length, data_in);
-    } else {
-        printf("ERROR: usb_control_transfer called but the driver doesn't support it!\n");
+                         uint8_t *data_buffer, size_t data_length, bool data_in, uint32_t timeout_ms) {
+    if (!dev) {
+        printf("ERROR: usb_control_transfer: dev is NULL!\n");
+        return -EINVAL;
+    } else if (!dev->host_driver) {
+        printf("ERROR: KERNEL FAULT: usb_control_transfer: dev->host_driver is NULL!\n");
         return -EIO;
+    } else if (!dev->host_driver->control_transfer_func) {
+        printf("ERROR: usb_control_transfer called but the host driver doesn't support it!\n");
+        return -EIO;
+    } else {
+        return dev->host_driver->control_transfer_func(dev, setup_packet, data_buffer, data_length, data_in,
+                                                       timeout_ms);
     }
 }
 
-struct usb_host_driver usb_populate_host_driver(usb_host_driver_control_transfer_func_t ctrl_transfer) {
+int usb_bulk_transfer(usb_endpoint_t *ep, uint8_t *buffer, size_t length, uint32_t timeout_ms) {
+    if (!ep) {
+        printf("ERROR: usb_bulk_transfer: ep is NULL!\n");
+        return -EINVAL;
+    } else if ((ep->attributes & USB_ENDPOINT_ATTR_MASK_TYPE) != USB_ENDPOINT_ATTR_BULK) {
+        printf("ERROR: usb_bulk_transfer called on a non-bulk-transfer endpoint!\n");
+        return -EINVAL;
+    } else if (!ep->interface) {
+        printf("ERROR: KERNEL FAULT: usb_bulk_transfer: ep->interface is NULL!\n");
+        return -EIO;
+    } else if (!ep->interface->device) {
+        printf("ERROR: KERNEL FAULT: usb_bulk_transfer: ep->interface->device is NULL!\n");
+        return -EIO;
+    } else if (!ep->interface->device->host_driver) {
+        printf("ERROR: KERNEL FAULT: usb_bulk_transfer: ep->interface->device->host_driver is NULL!\n");
+        return -EIO;
+    } else if (!ep->interface->device->host_driver->bulk_transfer_func) {
+        printf("ERROR: usb_bulk_transfer called but the host driver doesn't support it!\n");
+        return -EIO;
+    } else {
+        return ep->interface->device->host_driver->bulk_transfer_func(ep, buffer, length, timeout_ms);
+    }
+}
+
+int usb_interrupt_transfer(usb_endpoint_t *ep, uint8_t *buffer, size_t length, uint32_t timeout_ms) {
+    if (!ep) {
+        printf("ERROR: usb_interrupt_transfer: ep is NULL!\n");
+        return -EINVAL;
+    } else if ((ep->attributes & USB_ENDPOINT_ATTR_MASK_TYPE) != USB_ENDPOINT_ATTR_INT) {
+        printf("ERROR: usb_interrupt_transfer called on a non-interrupt-transfer endpoint!\n");
+        return -EINVAL;
+    } else if (!ep->interface) {
+        printf("ERROR: KERNEL FAULT: usb_interrupt_transfer: ep->interface is NULL!\n");
+        return -EIO;
+    } else if (!ep->interface->device) {
+        printf("ERROR: KERNEL FAULT: usb_interrupt_transfer: ep->interface->device is NULL!\n");
+        return -EIO;
+    } else if (!ep->interface->device->host_driver) {
+        printf("ERROR: KERNEL FAULT: usb_interrupt_transfer: ep->interface->device->host_driver is NULL!\n");
+        return -EIO;
+    } else if (!ep->interface->device->host_driver->interrupt_transfer_func) {
+        printf("ERROR: usb_interrupt_transfer called but the host driver doesn't support it!\n");
+        return -EIO;
+    } else {
+        return ep->interface->device->host_driver->interrupt_transfer_func(ep, buffer, length, timeout_ms);
+    }
+}
+
+int usb_iso_transfer(usb_endpoint_t *ep, uint8_t *buffer, size_t length, uint32_t timeout_ms) {
+    if (!ep) {
+        printf("ERROR: usb_iso_transfer: ep is NULL!\n");
+        return -EINVAL;
+    } else if ((ep->attributes & USB_ENDPOINT_ATTR_MASK_TYPE) != USB_ENDPOINT_ATTR_ISO) {
+        printf("ERROR: usb_iso_transfer called on a non-iso-transfer endpoint!\n");
+        return -EINVAL;
+    } else if (!ep->interface) {
+        printf("ERROR: KERNEL FAULT: usb_iso_transfer: ep->interface is NULL!\n");
+        return -EIO;
+    } else if (!ep->interface->device) {
+        printf("ERROR: KERNEL FAULT: usb_iso_transfer: ep->interface->device is NULL!\n");
+        return -EIO;
+    } else if (!ep->interface->device->host_driver) {
+        printf("ERROR: KERNEL FAULT: usb_iso_transfer: ep->interface->device->host_driver is NULL!\n");
+        return -EIO;
+    } else if (!ep->interface->device->host_driver->iso_transfer_func) {
+        printf("ERROR: usb_iso_transfer called but the host driver doesn't support it!\n");
+        return -EIO;
+    } else {
+        return ep->interface->device->host_driver->iso_transfer_func(ep, buffer, length, timeout_ms);
+    }
+}
+
+struct usb_host_driver usb_populate_host_driver(usb_host_driver_control_transfer_func_t ctrl_transfer, usb_host_driver_bulk_transfer_func_t bulk_transfer) {
     return (struct usb_host_driver) { .control_transfer_func = ctrl_transfer };
 }
 
@@ -116,7 +199,7 @@ usb_device_t *usb_setup_device(usb_device_t *parent, struct usb_bus *bus, uint8_
     /* Get device descriptor */
     uint8_t desc_buf[18];
 
-    int res = usb_control_transfer(dev, setup_packet_get_device_descriptor, desc_buf, 18, true);
+    int res = usb_control_transfer(dev, setup_packet_get_device_descriptor, desc_buf, 18, true, 0);
 
     if (res == 0) {
         dev->device_desc = *(struct usb_device_descriptor *)desc_buf;
@@ -129,7 +212,7 @@ usb_device_t *usb_setup_device(usb_device_t *parent, struct usb_bus *bus, uint8_
     uint8_t set_addr_packet[8];
     usb_generate_setup_packet_set_address(set_addr_packet, new_address);
 
-    res = usb_control_transfer(dev, set_addr_packet, NULL, 0, false);
+    res = usb_control_transfer(dev, set_addr_packet, NULL, 0, false, 0);
 
     if (res == 0) {
         printf("usb_setup_device: set device address to %d\n", (int)new_address);
@@ -140,7 +223,7 @@ usb_device_t *usb_setup_device(usb_device_t *parent, struct usb_bus *bus, uint8_
     }
 
     /* Re-read device descriptor (sanity check) */
-    res = usb_control_transfer(dev, setup_packet_get_device_descriptor, desc_buf, 18, true);
+    res = usb_control_transfer(dev, setup_packet_get_device_descriptor, desc_buf, 18, true, 0);
 
     if (res == 0) {
         dev->device_desc = *(struct usb_device_descriptor *)desc_buf;
@@ -166,7 +249,7 @@ usb_device_t *usb_setup_device(usb_device_t *parent, struct usb_bus *bus, uint8_
      * thing. */
     uint8_t cfg_header_buf_small[9];
 
-    res = usb_control_transfer(dev, setup_packet_get_config, cfg_header_buf_small, 9, true);
+    res = usb_control_transfer(dev, setup_packet_get_config, cfg_header_buf_small, 9, true, 0);
     if (res != 0) {
         printf("ERROR: usb_setup_device: first get of config header failed.\n");
         goto err_res;
@@ -183,7 +266,7 @@ usb_device_t *usb_setup_device(usb_device_t *parent, struct usb_bus *bus, uint8_
     uint8_t cfg_header_full_packet[8];
     usb_generate_setup_packet_get_config_full(cfg_header_full_packet, cfg_header_len);
 
-    res = usb_control_transfer(dev, cfg_header_full_packet, (uint8_t *)dev->config_desc, cfg_header_len, true);
+    res = usb_control_transfer(dev, cfg_header_full_packet, (uint8_t *)dev->config_desc, (size_t)cfg_header_len, true, 0);
     if (res != 0) {
         printf("ERROR: usb_setup_device: full get of config header failed (size %d).\n", cfg_header_len);
         goto err_res;
@@ -202,6 +285,7 @@ usb_device_t *usb_setup_device(usb_device_t *parent, struct usb_bus *bus, uint8_
     uint8_t *desc     = (uint8_t *)((uint64_t)dev->config_desc + dev->config_desc->b_length);
     uint8_t *desc_end = (uint8_t *)((uint64_t)dev->config_desc + dev->config_desc->w_total_length);
     for (uint8_t i = 0; i < dev->num_interfaces; i++) {
+        /* Populate interface */
         struct usb_interface_descriptor *iface_desc = (struct usb_interface_descriptor *)desc;
         usb_interface_t *iface                      = &dev->interfaces[i];
 
@@ -212,25 +296,66 @@ usb_device_t *usb_setup_device(usb_device_t *parent, struct usb_bus *bus, uint8_
         iface->i_subclass    = iface_desc->i_subclass;
         iface->i_protocol    = iface_desc->i_protocol;
 
-        iface->device = dev;
+        iface->device    = dev;
+        iface->endpoints = kmalloc_heap(iface->num_endpoints * sizeof(usb_endpoint_t));
+        memset(iface->endpoints, 0, iface->num_endpoints * sizeof(usb_endpoint_t));
 
-        /* TODO: populate interface */
-        printf("uhci: found interface %d\n", i);
+        printf("usb: found interface %d\n", i);
         printf(" - class: %.2x\n", iface->i_class);
         printf(" - subclass: %.2x\n", iface->i_subclass);
         printf(" - protocol: %.2x\n", iface->i_protocol);
 
-        desc += iface_desc->b_length;
+        uint8_t ep_no  = 0;
+        desc          += iface_desc->b_length;
         while (desc[1] != USB_DESC_TYPE_INTERFACE && desc < desc_end) {
             if (desc[1] == USB_DESC_TYPE_ENDPOINT) {
                 /* TODO: populate endpoint */
-                printf(" - uhci: found endpoint under interface %d\n", i);
+                printf(" - usb: found endpoint under interface %d", i);
+                if (ep_no >= iface->num_endpoints) {
+                    /* TODO: should we increase num_endpoints and realloc the array instead? */
+                    printf("\nWARN: usb: potentially non-compliant device; endpoint %d >= num_endpoints (%d). Skipping "
+                           "this endpoint.\n",
+                           ep_no, iface->num_endpoints);
+                } else {
+                    usb_endpoint_t *ep = &iface->endpoints[ep_no];
+
+                    ep->address         = desc[2];
+                    ep->attributes      = desc[3];
+                    ep->max_packet_size = desc[4] | (desc[5] << 8);
+                    ep->interval        = desc[6];
+                    ep->interface       = iface;
+
+                    printf(" with address %.2x (direction=%s)\n", ep->address & 0x7F,
+                           ep->address & 0x80 ? "in" : "out");
+                }
             } else {
                 /* TODO: handle unknown desc type */
-                printf(" - uhci: found unknown descriptor under interface %d\n", i);
+                printf(" - usb: found unknown descriptor %d under interface %d\n", desc[1], i);
             }
 
             desc += desc[0];
+        }
+
+        if (iface->endpoints[iface->num_endpoints - 1].address == 0) {
+            printf("WARN: usb: potentially non-compliant device; not all endpoints have been populated.\n");
+        }
+
+        /* TODO: Load the interface driver */
+        /* TODO: have some sort of driver bank allowing us to register drivers instead of hardcoding values */
+        switch (iface->i_class) {
+# ifdef __KERNEL_SUPPORT_DEV_USB_DEVICE_HID
+        case USB_IFACE_CLASS_HID: {
+            printf("usb: binding HID driver...\n");
+            res = usbhid_bind_driver(iface);
+            break;
+        }
+# endif // __KERNEL_SUPPORT_DEV_USB_DEVICE_HID
+        default: {
+            printf("INFO: usb: no driver found for interface class=%d.\n", iface->i_class);
+        }
+        }
+        if (res != 0) {
+            printf("WARN: usb: failed to bind driver!\n");
         }
     }
 

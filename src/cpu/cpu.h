@@ -34,9 +34,9 @@ void load_smp();
 uint32_t get_curr_core();
 uint32_t get_curr_lapic_id();
 
-void ipi_tlb_shootdown_routine(registers_t *regs);
-void ipi_tlb_flush_routine(registers_t *regs);
-void ipi_kill_routine(registers_t *regs);
-void ipi_wakeup_routine(registers_t *regs);
+void ipi_tlb_shootdown_routine(registers_t *regs, void *data);
+void ipi_tlb_flush_routine(registers_t *regs, void *data);
+void ipi_kill_routine(registers_t *regs, void *data);
+void ipi_wakeup_routine(registers_t *regs, void *data);
 
 int get_n_cores();
