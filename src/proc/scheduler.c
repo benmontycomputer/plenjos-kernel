@@ -189,7 +189,6 @@ void cpu_scheduler_task() {
         lock_kernel_tasks();
         if (ready_kernel_tasks_head != ready_kernel_tasks_tail) {
             // There's a kernel task to run
-            // printf("SCHEDULER: core %d executing kernel task\n", curr_core);
             kernel_task_func_t func = ready_kernel_tasks[ready_kernel_tasks_tail].func;
             void *arg               = ready_kernel_tasks[ready_kernel_tasks_tail].arg;
             ready_kernel_tasks_tail = (ready_kernel_tasks_tail + 1) % MAX_KERNEL_TASKS;
@@ -201,7 +200,6 @@ void cpu_scheduler_task() {
         }
         unlock_kernel_tasks();
 
-        // printf("core %d scheduler tick\n", get_curr_core());
         lock_ready_threads();
         if (cores_threads[curr_core]) {
             cores_threads[curr_core]->state = RUNNING;
@@ -218,10 +216,6 @@ void cpu_scheduler_task() {
             unlock_ready_threads();
         }
 
-        // printf("No threads to schedule on core %d, halting...\n", curr_core);
-        // asm volatile("sti");
-        // asm volatile("hlt");
-
         lock_ready_threads();
 
         if (ready_threads) {
@@ -234,7 +228,6 @@ void cpu_scheduler_task() {
 
         unlock_ready_threads();
 
-        // printf("No threads to schedule on core %d, halting...\n", curr_core);
         asm volatile("sti");
         asm volatile("hlt");
     }

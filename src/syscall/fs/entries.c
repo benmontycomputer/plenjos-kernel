@@ -1,9 +1,6 @@
 #include "syscall/fs/syscall_fs.h"
 
 ssize_t syscall_routine_getdents(int fd, void *buf, size_t count, proc_t *proc, pml4_t *current_pml4) {
-    printf("Getdents syscall called on fd %p for process %s (pid %p) for %p bytes.\n", fd, proc->name, proc->pid,
-           count);
-
     vfs_handle_t *handle = NULL;
     ssize_t res          = syscall_fs_helper_get_dir_handle(fd, proc, &handle);
     if (res < 0) {

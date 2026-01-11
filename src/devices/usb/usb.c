@@ -72,13 +72,13 @@ int usb_control_transfer(usb_device_t *dev,
                          uint8_t *setup_packet /* 8 bytes; physaddr must be sub-4G for some controllers */,
                          uint8_t *data_buffer, size_t data_length, bool data_in, uint32_t timeout_ms) {
     if (!dev) {
-        printf("ERROR: usb_control_transfer: dev is NULL!\n");
+        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_control_transfer: dev is NULL!\n");
         return -EINVAL;
     } else if (!dev->host_driver) {
-        printf("ERROR: KERNEL FAULT: usb_control_transfer: dev->host_driver is NULL!\n");
+        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_control_transfer: dev->host_driver is NULL!\n");
         return -EIO;
     } else if (!dev->host_driver->control_transfer_func) {
-        printf("ERROR: usb_control_transfer called but the host driver doesn't support it!\n");
+        kout(KERNEL_WARN, "WARN: usb_control_transfer called but the host driver doesn't support it!\n");
         return -EIO;
     } else {
         return dev->host_driver->control_transfer_func(dev, setup_packet, data_buffer, data_length, data_in,
@@ -94,13 +94,13 @@ int usb_bulk_transfer(usb_endpoint_t *ep, uint8_t *buffer, size_t length, uint32
         printf("ERROR: usb_bulk_transfer called on a non-bulk-transfer endpoint!\n");
         return -EINVAL;
     } else if (!ep->interface) {
-        printf("ERROR: KERNEL FAULT: usb_bulk_transfer: ep->interface is NULL!\n");
+        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_bulk_transfer: ep->interface is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device) {
-        printf("ERROR: KERNEL FAULT: usb_bulk_transfer: ep->interface->device is NULL!\n");
+        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_bulk_transfer: ep->interface->device is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device->host_driver) {
-        printf("ERROR: KERNEL FAULT: usb_bulk_transfer: ep->interface->device->host_driver is NULL!\n");
+        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_bulk_transfer: ep->interface->device->host_driver is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device->host_driver->bulk_transfer_func) {
         printf("ERROR: usb_bulk_transfer called but the host driver doesn't support it!\n");
@@ -118,13 +118,13 @@ int usb_interrupt_transfer(usb_endpoint_t *ep, uint8_t *buffer, size_t length, u
         printf("ERROR: usb_interrupt_transfer called on a non-interrupt-transfer endpoint!\n");
         return -EINVAL;
     } else if (!ep->interface) {
-        printf("ERROR: KERNEL FAULT: usb_interrupt_transfer: ep->interface is NULL!\n");
+        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_interrupt_transfer: ep->interface is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device) {
-        printf("ERROR: KERNEL FAULT: usb_interrupt_transfer: ep->interface->device is NULL!\n");
+        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_interrupt_transfer: ep->interface->device is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device->host_driver) {
-        printf("ERROR: KERNEL FAULT: usb_interrupt_transfer: ep->interface->device->host_driver is NULL!\n");
+        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_interrupt_transfer: ep->interface->device->host_driver is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device->host_driver->interrupt_transfer_func) {
         printf("ERROR: usb_interrupt_transfer called but the host driver doesn't support it!\n");
@@ -142,13 +142,13 @@ int usb_iso_transfer(usb_endpoint_t *ep, uint8_t *buffer, size_t length, uint32_
         printf("ERROR: usb_iso_transfer called on a non-iso-transfer endpoint!\n");
         return -EINVAL;
     } else if (!ep->interface) {
-        printf("ERROR: KERNEL FAULT: usb_iso_transfer: ep->interface is NULL!\n");
+        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_iso_transfer: ep->interface is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device) {
-        printf("ERROR: KERNEL FAULT: usb_iso_transfer: ep->interface->device is NULL!\n");
+        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_iso_transfer: ep->interface->device is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device->host_driver) {
-        printf("ERROR: KERNEL FAULT: usb_iso_transfer: ep->interface->device->host_driver is NULL!\n");
+        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_iso_transfer: ep->interface->device->host_driver is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device->host_driver->iso_transfer_func) {
         printf("ERROR: usb_iso_transfer called but the host driver doesn't support it!\n");

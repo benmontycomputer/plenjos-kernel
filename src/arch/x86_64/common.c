@@ -43,10 +43,10 @@ void init_x86_64() {
 
     idt_init();
 
-    are_interrupts_enabled() ? printf("Interrupts confirmed enabled.\n")
-                             : printf("Couldn't confirm interrupts enabled.\n");
+    are_interrupts_enabled() ? kout(KERNEL_INFO, "Interrupts confirmed enabled.\n")
+                             : kout(KERNEL_WARN, "Couldn't confirm interrupts enabled.\n");
 
-    is_apic_enabled() ? printf("APIC confirmed enabled.\n") : printf("Couldn't confirm APIC enabled.\n");
+    is_apic_enabled() ? kout(KERNEL_INFO, "APIC confirmed enabled.\n") : kout(KERNEL_WARN, "Couldn't confirm APIC enabled.\n");
 
     // hpet_init();
     pit_init();

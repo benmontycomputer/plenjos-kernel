@@ -204,16 +204,11 @@ void pci_print_device_info(pci_device_t *dev) {
     const char *class_pretty    = get_class_pretty(dev->class_code);
     const char *subclass_pretty = get_subclass_pretty(dev);
 
-    printf("PCI Device Info:\n");
-    printf("  Header Type: %x\n", dev->header_type);
-    printf("  Bus: %x\n", dev->bus);
-    printf("  Device: %x\n", dev->device);
-    printf("  Function: %x\n", dev->function);
-    printf("  Vendor ID: %x (%s)\n", dev->vendor_id, vendor_pretty);
-    printf("  Device ID: %x\n", dev->device_id);
-    printf("  Class Code: %x (%s)\n", dev->class_code, class_pretty);
-    printf("  Subclass Code: %x (%s)\n", dev->subclass_code, subclass_pretty);
-    printf("  Programming Interface: %x\n", dev->prog_if);
+    kout(KERNEL_INFO, "PCI Device Info:\n");
+    kout(KERNEL_INFO, " - Header Type: %.2x\n", dev->header_type);
+    kout(KERNEL_INFO, " - Bus %.2x, device %.2x, function %.2x\n", dev->bus, dev->device, dev->function);
+    kout(KERNEL_INFO, " - Vendor ID: %.4x (%s), Device ID: %.4x\n", dev->vendor_id, vendor_pretty, dev->device_id);
+    kout(KERNEL_INFO, " - Class %.2x (%s), Subclass %.2x (%s), ProgIF %.2x\n", dev->class_code, class_pretty, dev->subclass_code, subclass_pretty, dev->prog_if);
 }
 
 pci_device_t pci_check_device(uint8_t bus, uint8_t device, uint8_t function) {
@@ -256,51 +251,51 @@ pci_device_t pci_check_device(uint8_t bus, uint8_t device, uint8_t function) {
 
     switch (dev.class_code) {
     case PCI_CLASS_UNCLASSIFIED: {
-        printf("PCI: Unclassified PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: Unclassified PCI device detected.\n");
         break;
     }
     case PCI_CLASS_MASS_STORAGE: {
-        printf("PCI: NO DRIVER: Mass storage PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Mass storage PCI device detected.\n");
         break;
     }
     case PCI_CLASS_NETWORK: {
-        printf("PCI: NO DRIVER: Network PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Network PCI device detected.\n");
         break;
     }
     case PCI_CLASS_DISPLAY: {
-        printf("PCI: NO DRIVER: Display PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Display PCI device detected.\n");
         break;
     }
     case PCI_CLASS_MULTIMEDIA: {
-        printf("PCI: NO DRIVER: Multimedia PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Multimedia PCI device detected.\n");
         break;
     }
     case PCI_CLASS_MEMORY: {
-        printf("PCI: NO DRIVER: Memory controller PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Memory controller PCI device detected.\n");
         break;
     }
     case PCI_CLASS_BRIDGE: {
-        printf("PCI: NO DRIVER: Bridge PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Bridge PCI device detected.\n");
         break;
     }
     case PCI_CLASS_SIMPLE_COMM: {
-        printf("PCI: NO DRIVER: Simple communication PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Simple communication PCI device detected.\n");
         break;
     }
     case PCI_CLASS_BASE_SYSTEM_PERIPH: {
-        printf("PCI: NO DRIVER: Base system peripheral PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Base system peripheral PCI device detected.\n");
         break;
     }
     case PCI_CLASS_INPUT_DEVICE: {
-        printf("PCI: NO DRIVER: Input device PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Input device PCI device detected.\n");
         break;
     }
     case PCI_CLASS_DOCKING_STATION: {
-        printf("PCI: NO DRIVER: Docking station PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Docking station PCI device detected.\n");
         break;
     }
     case PCI_CLASS_PROCESSOR: {
-        printf("PCI: NO DRIVER: Processor PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Processor PCI device detected.\n");
         break;
     }
     case PCI_CLASS_SERIAL_BUS: {
@@ -308,43 +303,43 @@ pci_device_t pci_check_device(uint8_t bus, uint8_t device, uint8_t function) {
         break;
     }
     case PCI_CLASS_WIRELESS: {
-        printf("PCI: NO DRIVER: Wireless PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Wireless PCI device detected.\n");
         break;
     }
     case PCI_CLASS_INTELLIGENT_IO: {
-        printf("PCI: NO DRIVER: Intelligent I/O PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Intelligent I/O PCI device detected.\n");
         break;
     }
     case PCI_CLASS_SATELLITE: {
-        printf("PCI: NO DRIVER: Satellite communication PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Satellite communication PCI device detected.\n");
         break;
     }
     case PCI_CLASS_ENCRYPTION: {
-        printf("PCI: NO DRIVER: Encryption/decryption PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Encryption/decryption PCI device detected.\n");
         break;
     }
     case PCI_CLASS_SIGNAL_PROCESSING: {
-        printf("PCI: NO DRIVER: Signal processing PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Signal processing PCI device detected.\n");
         break;
     }
     case PCI_CLASS_PROCESSING_ACCEL: {
-        printf("PCI: NO DRIVER: Processing accelerator PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Processing accelerator PCI device detected.\n");
         break;
     }
     case PCI_CLASS_NON_ESSENTIAL_INSTR: {
-        printf("PCI: NO DRIVER: Non-essential instrumentation PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Non-essential instrumentation PCI device detected.\n");
         break;
     }
     case PCI_CLASS_CO_PROCESSOR: {
-        printf("PCI: NO DRIVER: Co-processor PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Co-processor PCI device detected.\n");
         break;
     }
     case PCI_CLASS_VENDOR_SPECIFIC: {
-        printf("PCI: NO DRIVER: Vendor-specific PCI device detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Vendor-specific PCI device detected.\n");
         break;
     }
     default: {
-        printf("PCI: NO DRIVER: Unknown PCI device class detected.\n");
+        kout(KERNEL_WARN, "PCI: NO DRIVER: Unknown PCI device class detected.\n");
         break;
     }
     }
@@ -421,23 +416,19 @@ void pci_scan() {
     uint16_t bus;
     uint8_t device;
 
-    // TODO: transition these to go through fscache?
-    /* kernelfs_helper_mkdir("/dev", 0, 0, 0755);
-    kernelfs_helper_mkdir("/dev/pci", 0, 0, 0755);
-    kernelfs_helper_mkdir("/dev/pci/subftest", 0, 0, 0755); */
     ssize_t res = vfs_mkdir("/dev", 0, 0, 0755);
     if (res < 0) {
-        printf("pci_scan: failed to create /dev directory, errno %d\n", res);
+        kout(KERNEL_SEVERE_FAULT, "pci_scan: failed to create /dev directory, errno %d\n", res);
         return;
     }
     res = vfs_mkdir("/dev/pci", 0, 0, 0755);
     if (res < 0) {
-        printf("pci_scan: failed to create /dev/pci directory, errno %d\n", res);
+        kout(KERNEL_SEVERE_FAULT, "pci_scan: failed to create /dev/pci directory, errno %d\n", res);
         return;
     }
     res = vfs_mkdir("/dev/pci/subftest", 0, 0, 0755);
     if (res < 0) {
-        printf("pci_scan: failed to create /dev/pci/subftest directory, errno %d\n", res);
+        kout(KERNEL_SEVERE_FAULT, "pci_scan: failed to create /dev/pci/subftest directory, errno %d\n", res);
         return;
     }
 
@@ -454,7 +445,7 @@ void pci_scan() {
             if (pci_device_count < PCI_MAX_DEVICES) {
                 pci_add_device_to_array(bus, device, function);
             } else {
-                printf("PCI device array full, cannot record more devices.\n");
+                kout(KERNEL_SEVERE_FAULT, "PCI device array full, cannot record more devices.\n");
                 return;
             }
 
@@ -466,7 +457,7 @@ void pci_scan() {
                         if (pci_device_count < PCI_MAX_DEVICES) {
                             pci_add_device_to_array(bus, device, function);
                         } else {
-                            printf("PCI device array full, cannot record more devices.\n");
+                            kout(KERNEL_SEVERE_FAULT, "PCI device array full, cannot record more devices.\n");
                             return;
                         }
                     }

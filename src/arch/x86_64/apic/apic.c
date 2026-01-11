@@ -119,7 +119,7 @@ void send_ipi(uint8_t apic_id, uint8_t vector) {
     lapic_wait_for_idle();
 
     // release_console();
-    // printf("Sending IPI to apic id %d with vector %d\n", apic_id, vector);
+    // kout(KERNEL_INFO, "Sending IPI to apic id %d with vector %d\n", apic_id, vector);
     
     // set destination
     write_reg(LAPIC_ICR_HIGH, ((uint32_t)apic_id) << 24);

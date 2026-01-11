@@ -26,7 +26,7 @@ void *memmove(void *dest, const void *src, size_t n);
 int memcmp(const void *s1, const void *s2, size_t n);
 
 void hcf();
-_Noreturn void panic(const char *message);
+_Noreturn void panic_nomsg();
 
 static inline size_t min(size_t a, size_t b) {
     return (a > b) ? b : a;

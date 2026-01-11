@@ -88,5 +88,5 @@ void gdt_tss_init() {
 
     tss_reload(TSS_SELECTOR);
 
-    printf("Loaded GDT tables.\n");
+    kout(KERNEL_INFO, "Loaded GDT tables.\n");
 }

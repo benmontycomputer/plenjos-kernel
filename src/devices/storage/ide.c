@@ -57,7 +57,7 @@ static void ide_unlock_channel(struct ide_channel *channel) {
 
 int ide_lock_bus(struct ide_device *dev) {
     if (!dev || !dev->channel) {
-        printf("Kernel Programming Error: ide_lock_bus called with NULL device or channel\n");
+        kout(KERNEL_SEVERE_FAULT, "Kernel Programming Error: ide_lock_bus called with NULL device or channel\n");
         return -1; // Invalid device
     }
 
@@ -68,7 +68,7 @@ int ide_lock_bus(struct ide_device *dev) {
 
 int ide_unlock_bus(struct ide_device *dev) {
     if (!dev || !dev->channel) {
-        printf("Kernel Programming Error: ide_unlock_bus called with NULL device or channel\n");
+        kout(KERNEL_SEVERE_FAULT, "Kernel Programming Error: ide_unlock_bus called with NULL device or channel\n");
         return -1; // Invalid device
     }
 
@@ -86,8 +86,9 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive_no,
                                                    // writes can cause a floating bus to be at an arbitrary value
 
     if (status == 0xFF) {
-        printf("WARN: Floating bus detected on IDE channel (io=%x, ctrl=%x, drive=%d)\n", channel->cmd_base,
-               channel->ctrl_base, drive_no);
+        kout(KERNEL_SEVERE_EXTERNAL_FAULT,
+             "ERROR: Floating bus detected on IDE channel (io=%x, ctrl=%x, drive=%d). Abort!\n", channel->cmd_base,
+             channel->ctrl_base, drive_no);
         return ATADEV_NONE; // No device present (floating bus)
     }
 
@@ -153,8 +154,9 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive_no,
     }
 
     if (ata_wait_drq(channel->cmd_base) != 0) {
-        printf("Error: PATAPI device on IDE channel (io=%x, ctrl=%x, drive=%d) did not set DRQ after IDENTIFY\n",
-               channel->cmd_base, channel->ctrl_base, drive_no);
+        kout(KERNEL_SEVERE_EXTERNAL_FAULT,
+             "Error: PATAPI device on IDE channel (io=%x, ctrl=%x, drive=%d) did not set DRQ after IDENTIFY\n",
+             channel->cmd_base, channel->ctrl_base, drive_no);
         return ATADEV_NONE;
     } else {
         dev->channel  = channel;
@@ -171,7 +173,8 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive_no,
             int res = atapi_parse_identify(dev);
 
             if (res != 0) {
-                printf(
+                kout(
+                    KERNEL_SEVERE_EXTERNAL_FAULT,
                     "Error: could not parse IDENTIFY data for ATAPI device on IDE channel (io=%x, ctrl=%x, drive=%d)\n",
                     channel->cmd_base, channel->ctrl_base, drive_no);
                 return ATADEV_NONE;
@@ -180,9 +183,9 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive_no,
             // ATA device
             int res = ata_parse_identify(dev);
             if (res != 0) {
-                printf(
-                    "Error: could not parse IDENTIFY data for ATA device on IDE channel (io=%x, ctrl=%x, drive=%d)\n",
-                    channel->cmd_base, channel->ctrl_base, drive_no);
+                kout(KERNEL_SEVERE_EXTERNAL_FAULT,
+                     "Error: could not parse IDENTIFY data for ATA device on IDE channel (io=%x, ctrl=%x, drive=%d)\n",
+                     channel->cmd_base, channel->ctrl_base, drive_no);
                 return ATADEV_NONE;
             }
         }
@@ -209,11 +212,11 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive_no,
                            : type == ATADEV_SATAPI ? "SATAPI"
                                                    : "Unknown";
 
-    printf(
-        "Found %s IDE device, size %lu%s on IDE channel (io=%x, ctrl=%x, drive=%d). Sector size: %u bytes; %u logical "
-        "sectors per physical sector; %p sectors.\n",
-        type_str, size_out, size_label, (uint32_t)channel->cmd_base, (uint32_t)channel->ctrl_base, drive_no,
-        dev->logical_sector_size, dev->physical_sector_size / dev->logical_sector_size, dev->numsectors);
+    kout(KERNEL_INFO,
+         "Found %s IDE device, size %lu%s on IDE channel (io=%x, ctrl=%x, drive=%d). Sector size: %u bytes; %u logical "
+         "sectors per physical sector; %p sectors.\n",
+         type_str, size_out, size_label, (uint32_t)channel->cmd_base, (uint32_t)channel->ctrl_base, drive_no,
+         dev->logical_sector_size, dev->physical_sector_size / dev->logical_sector_size, dev->numsectors);
 
     dev->flags |= IDE_DEVICE_FLAG_PRESENT;
 
@@ -234,8 +237,8 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive_no,
         break;
     }
     default: {
-        printf("Found unsupported ATA device type %d on IDE channel (io=%x, ctrl=%x, drive=%d)\n", type,
-               channel->cmd_base, channel->ctrl_base, drive_no);
+        kout(KERNEL_WARN, "WARN: Found unsupported ATA device type %d on IDE channel (io=%x, ctrl=%x, drive=%d)\n",
+             type, channel->cmd_base, channel->ctrl_base, drive_no);
         break;
     }
     }
@@ -252,7 +255,8 @@ void ide_irq_routine(registers_t *regs, void *data) {
 
     if (!mutex_is_locked(&channel->lock)) {
         // Spurious IRQ?
-        printf_nolock(
+        kout_nolock(
+            KERNEL_WARN,
             "KERNEL ERROR/WARN: IDE bus w/ IRQ %d isn't locked, but an IRQ was fired. Spurious IRQ or programming "
             "error?\n",
             (int)channel->irq_no);
@@ -264,14 +268,11 @@ void ide_irq_routine(registers_t *regs, void *data) {
 
     // Increment IRQ processing count
     if (atomic_fetch_add_explicit(&channel->irq_cnt, 1, memory_order_acquire) > 0) {
-        printf_nolock(
+        kout_nolock(
+            KERNEL_WARN,
             "KERNEL ERROR/WARN: IDE bus w/ IRQ %d has multiple (%d) IRQs being processed simultaneously. IRQs may be "
             "lost. Are we moving too slowly?\n",
             (int)channel->irq_no, (int)atomic_load_explicit(&channel->irq_cnt, memory_order_acquire));
-    } else {
-        // Successfully acknowledged IRQ
-        /* printf_nolock("IDE IRQ %d acknowledged, IRQs being processed: %d\n", (int)channel->irq_no,
-                      (int)atomic_load_explicit(&channel->irq_cnt, memory_order_acquire)); */
     }
 }
 
@@ -283,13 +284,13 @@ void ide_init() {
     if (!(ide_probe_device(&legacy_ide_channels[0], 0, &legacy_ide_devices[0])
           || ide_probe_device(&legacy_ide_channels[0], 1, &legacy_ide_devices[1]))) {
         // Device(s) found on primary channel
-        printf("Unregistering primary IDE IRQ handler\n");
+        kout(KERNEL_INFO, "Unregistering primary IDE IRQ handler\n");
         irq_unregister_routine(IDE_PRIMARY_IRQ);
     }
     if (ide_probe_device(&legacy_ide_channels[1], 0, &legacy_ide_devices[2])
         || ide_probe_device(&legacy_ide_channels[1], 1, &legacy_ide_devices[3])) {
         // Device(s) found on secondary channel
-        printf("Unregistering secondary IDE IRQ handler\n");
+        kout(KERNEL_INFO, "Unregistering secondary IDE IRQ handler\n");
         irq_unregister_routine(IDE_SECONDARY_IRQ);
     }
 }
@@ -297,7 +298,7 @@ void ide_init() {
 // This also serves to lock the bus (as long as 0 is returned)
 int ide_select_bus(struct ide_device *dev) {
     if (!dev || !dev->channel) {
-        printf("Kernel Programming Error: ide_select_bus called with NULL device or channel\n");
+        kout(KERNEL_SEVERE_FAULT, "Kernel Programming Error: ide_select_bus called with NULL device or channel\n");
         return -1; // Invalid device
     }
 

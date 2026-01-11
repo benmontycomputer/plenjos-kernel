@@ -27,7 +27,6 @@ void pit_irq(registers_t *regs, void *data) {
     if (pit_count >= UINT64_MAX) pit_count = 0;
 
     pit_count++;
-    // printf("pit timer %x\n", pit_count);
 
     // TODO: separate timers into PIT and HPET ones (or HPET only?)
     struct timer_timeout *timer;

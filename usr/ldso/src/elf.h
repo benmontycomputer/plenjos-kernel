@@ -135,7 +135,7 @@ struct ELF_program_header {
 typedef struct ELF_header ELF_header_t;
 typedef struct ELF_program_header ELF_program_header_t;
 
-typedef struct elf_object {
+struct elf_object {
     ELF_header_t *ehdr;          // Usable only during loading
     ELF_program_header_t *phdrs; // Usable only during loading
 

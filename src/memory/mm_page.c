@@ -273,21 +273,6 @@ void init_paging() {
     }
 
     printf("Page table vaddr: %p, phys addr: %p\n", kernel_pml4, kernel_pml4_phys);
-
-    // init_pmm();
-
-    /* uint64_t addr;
-
-    for (addr = KERNEL_START_ADDR; addr < (0x100000 + KERNEL_START_ADDR); addr += PAGE_LEN) {
-        page_t *page = find_page(addr, true, kernel_pml4);
-
-        if (!page) {
-            // currently no way to count # of failed pages
-            printf("Warning: failed to get an entry for page at virt addr %p.\n", addr);
-
-            continue;
-        }
-    } */
 }
 
 #define PTE_ADDR(x) ((x) & 0x000FFFFFFFFFF000ULL)

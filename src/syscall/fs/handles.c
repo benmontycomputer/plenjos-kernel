@@ -5,8 +5,6 @@
 #include "vfs/vfs.h"
 
 int syscall_routine_open(const char *restrict path, syscall_open_flags_t flags, mode_t mode, proc_t *proc) {
-    printf("Open syscall called with path %s and flags %o.\n", path, flags);
-
     int res = 0;
 
     char *path_abs = kmalloc_heap(PATH_MAX);

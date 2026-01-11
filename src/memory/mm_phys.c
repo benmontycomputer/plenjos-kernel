@@ -1,24 +1,23 @@
-#include <stdint.h>
-#include <stdatomic.h>
-
 #include "kernel.h"
+#include "lib/lock.h"
 #include "lib/stdio.h"
-
 #include "memory/detect.h"
 #include "memory/kmalloc.h"
 #include "memory/mm.h"
 
-// bool phys_mem_lock;
+#include <stdatomic.h>
+#include <stdint.h>
+
 // TODO: can we make parts of these frames atomic instead, allowing us to avoid locking the entire PMM?
-static atomic_flag phys_mem_lock_atomic = ATOMIC_FLAG_INIT;
+static mutex phys_mem_lock = MUTEX_INIT;
 
 // PMM doesn't need to be locked
 uint32_t phys_mem_ref_frame(phys_mem_free_frame_t *frame) {
     uint32_t refcnt = (frame->flags & ~FRAME_FLAG_USABLE);
 
     if (++refcnt >> 23) {
-        printf("Somehow the refcnt on frame %p will be too big. Halt!\n", frame);
-        hcf();
+        printf("Somehow the refcnt on frame %p will be too big. Panic!\n", frame);
+        panic("phys_mem_ref_frame: refcnt out of range!\n");
     }
 
     frame->flags &= FRAME_FLAG_USABLE;
@@ -31,48 +30,12 @@ uint32_t phys_mem_ref_frame(phys_mem_free_frame_t *frame) {
 uint32_t phys_mem_unref_frame(phys_mem_free_frame_t *frame) {
     uint32_t refcnt = (frame->flags & ~FRAME_FLAG_USABLE);
 
-    if (refcnt == 0) { return 0; }
+    if (refcnt == 0) {
+        return 0;
+    }
 
     return --(frame->flags);
 }
-
-void lock_pmm() {
-    /* for (;;) {
-        if (!phys_mem_lock) {
-            phys_mem_lock = true;
-            return;
-        }
-    } */
-    while (atomic_flag_test_and_set_explicit(&phys_mem_lock_atomic, __ATOMIC_ACQUIRE)) {
-        // Wait
-        __builtin_ia32_pause();
-    }
-}
-
-void unlock_pmm() {
-    // phys_mem_lock = false;
-    atomic_flag_clear_explicit(&phys_mem_lock_atomic, __ATOMIC_RELEASE);
-}
-
-/* void alloc_page_frame(page_t *page, int user, int writeable) {
-    // idx is now the index of the first free frame.
-    uint64_t bit = next_free_frame_bit();
-
-    if (bit == (uint64_t) -1) {
-        printf("No free frames for paging. Halt!\n");
-        hcf();
-    }
-
-    set_frame(bit); // Mark the frame as used by passing the frame index
-
-    page->present = 1;                      // Mark it as present.
-    page->rw = writeable;                // Should the page be writeable?
-    page->user = user;                      // Should the page be user-mode?
-    PHYS_MEM_HEAD &= 0xFFFFFFFFFFFFF000;    // Align the physical memory head to 4KB boundary
-    page->frame = (uint64_t) (PHYS_MEM_HEAD + (bit * FRAME_LEN)) >> 12;     // Store physical base address
-
-    PHYS_MEM_HEAD += FRAME_LEN;            // Move the physical memory head to the next frame
-} */
 
 phys_mem_free_frame_t *fm2 = NULL;
 
@@ -83,7 +46,7 @@ uint64_t *alloc() {
 }
 
 uint64_t find_next_free_frame() {
-    lock_pmm();
+    mutex_lock(&phys_mem_lock);
 
     phys_mem_free_frame_t *frame = phys_mem_frame_map_next_free;
 
@@ -108,19 +71,22 @@ uint64_t find_next_free_frame() {
     phys_mem_ref_frame(frame);
 
     phys_mem_frame_map_next_free = (phys_mem_free_frame_t *)decode_struct_frame_ptr(frame->next_free);
-    if (!frame->next_free) { phys_mem_frame_map_next_free = NULL; }
+    if (!frame->next_free) {
+        phys_mem_frame_map_next_free = NULL;
+    }
 
     // printf("%p -> %p -> %p\n", 0xFFFF800000000000, encode_struct_frame_ptr(0xFFFF800000000000),
     // decode_struct_frame_ptr(encode_struct_frame_ptr(0xFFFF800000000000)));
-    // printf("frame %p, frame encoded %p, frame next %p, frame next decoded %p\n", frame, encode_struct_frame_ptr((uint64_t)frame), frame->next_free, decode_struct_frame_ptr((uint64_t)frame->next_free));
+    // printf("frame %p, frame encoded %p, frame next %p, frame next decoded %p\n", frame,
+    // encode_struct_frame_ptr((uint64_t)frame), frame->next_free, decode_struct_frame_ptr((uint64_t)frame->next_free));
     if (phys_mem_frame_map_next_free) phys_mem_frame_map_next_free->prev_free = 0;
 
     if (frame->prev_free) {
-        printf("The first free frame has prev_free set. This shouldn't happen, but we'll continue anyways. Frame: %p, "
+        printf("The first free frame has prev_free set. This shouldn't happen! Frame: %p, "
                "prev: %p, undecoded prev %p, next %p, undecoded next %p\n",
                frame, decode_struct_frame_ptr(frame->prev_free), frame->prev_free,
                decode_struct_frame_ptr(frame->next_free), frame->next_free);
-        hcf();
+        panic("The first free frame has prev_free set!");
         ((phys_mem_free_frame_t *)decode_struct_frame_ptr(frame->prev_free))->next_free
             = encode_struct_frame_ptr((uint64_t)phys_mem_frame_map_next_free);
         if (phys_mem_frame_map_next_free)
@@ -131,14 +97,14 @@ uint64_t find_next_free_frame() {
     frame->next_free = 0;
     frame->prev_free = 0;
 
-    unlock_pmm();
+    mutex_unlock(&phys_mem_lock);
 
     return frame_addr_to_phys_addr((uint64_t)frame);
 }
 
 void alloc_page_frame(page_t *page, int user, int writeable) {
     page->present = 1;
-    page->rw = writeable;
-    page->user = user;
-    page->frame = find_next_free_frame() >> 12;
+    page->rw      = writeable;
+    page->user    = user;
+    page->frame   = find_next_free_frame() >> 12;
 }

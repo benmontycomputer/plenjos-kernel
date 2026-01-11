@@ -52,5 +52,5 @@ void init_keyboard() {
 
     kbd_buffer_state.full = false;
 
-    printf("kbd: %p\n", &kbd_buffer_state);
+    kout(KERNEL_INFO, "kbd: %p\n", &kbd_buffer_state);
 }

@@ -49,7 +49,7 @@ int load_library_from_disk(const char *path, uint64_t *out_index) {
     if (stat.size <= 0) {
         // Handle error: file size is invalid
         // For simplicity, we return an empty elf_object here.
-        syscall_print("loadelf: invalid file size\n");
+        syscall_print("load_library_from_disk: invalid file size\n");
         return -EIO;
     }
 
@@ -58,7 +58,7 @@ int load_library_from_disk(const char *path, uint64_t *out_index) {
     // TODO: use ulimit to determine this
     // TODO: use mmap or something when this is to large for the stack
     if (file_size >= 0x80000 /* 512 KiB */) {
-        syscall_print("loadelf: ELF file too large\n");
+        syscall_print("load_library_from_disk: ELF file too large\n");
         return -EIO;
     }
 
@@ -66,12 +66,8 @@ int load_library_from_disk(const char *path, uint64_t *out_index) {
 
     ssize_t read = syscall_read(fd, file_buf, file_size);
     if (read < 0 || (size_t)read != file_size) {
-        syscall_print("loadelf: failed to read entire ELF file\n");
+        syscall_print("load_library_from_disk: failed to read entire ELF file\n");
         return -EIO;
-    } else {
-        syscall_print("loadelf: read ");
-        syscall_print_ptr((uint64_t)file_size);
-        syscall_print(" bytes from ELF file\n");
     }
 
     ELF_header_t *ehdr         = (ELF_header_t *)file_buf;
@@ -134,9 +130,6 @@ int load_library_from_disk(const char *path, uint64_t *out_index) {
     }
 
     obj->base = base;
-    syscall_print("load_library_from_disk: mapped library at base ");
-    syscall_print_ptr((uint64_t)obj->base);
-    syscall_print("\n");
 
     // Locate dynamic section
     int res = parse_dynamic_section(obj);
@@ -150,9 +143,6 @@ int load_library_from_disk(const char *path, uint64_t *out_index) {
 
     // Handle relocations
     if (obj->rela_sz > 0) {
-        syscall_print("\nload_library_from_disk: applying ");
-        syscall_print_ptr((uint64_t)(obj->rela_sz / sizeof(ELF_rela_t)));
-        syscall_print(" rela relocations\n");
         res = apply_relocations(obj, obj->rela, obj->rela_sz, 0);
         if (res < 0) {
             syscall_print("load_library_from_disk: failed to apply relocations\n");
@@ -161,9 +151,6 @@ int load_library_from_disk(const char *path, uint64_t *out_index) {
         }
     }
     if (obj->rela_plt_sz > 0) {
-        syscall_print("\nload_library_from_disk: applying ");
-        syscall_print_ptr((uint64_t)(obj->rela_plt_sz / sizeof(ELF_rela_t)));
-        syscall_print(" rela_plt relocations\n");
         res = apply_relocations(obj, obj->rela_plt, obj->rela_plt_sz, 1);
         if (res < 0) {
             syscall_print("load_library_from_disk: failed to apply PLT relocations\n");
@@ -237,12 +224,6 @@ int parse_dynamic_section(struct elf_object *obj) {
         ELF_program_header_t *phdr = &phdrs[i];
 
         if (phdr->type == PT_DYNAMIC) {
-            /* syscall_print("parse_dynamic_section: found PT_DYNAMIC segment at vaddr ");
-            syscall_print_ptr((uint64_t)(obj->base + phdr->vaddr));
-            syscall_print(" w/ obj base ");
-            syscall_print_ptr((uint64_t)obj->base);
-            syscall_print("\n"); */
-
             obj->dynamic       = (ELF_dyn_t *)(obj->base + phdr->vaddr);
             obj->dynamic_count = phdr->memsz / sizeof(ELF_dyn_t);
             break;
@@ -258,20 +239,8 @@ int parse_dynamic_section(struct elf_object *obj) {
     for (size_t i = 0; i < obj->dynamic_count; i++) {
         ELF_dyn_t *d = &dynamic[i];
 
-        // For simplicity, we just print out the dynamic entries here.
-        /* syscall_print("parse_dynamic_section: Dynamic Entry ");
-        syscall_print_ptr((uint64_t)i);
-        syscall_print(": d_tag=");
-        syscall_print_ptr((uint64_t)d->d_tag);
-        syscall_print(", d_un.d_val=");
-        syscall_print_ptr((uint64_t)d->d_un.d_val);
-        syscall_print(", d_un.d_ptr=");
-        syscall_print_ptr((uint64_t)d->d_un.d_ptr);
-        syscall_print("\n"); */
-
         switch (d->d_tag) {
         case DT_NULL: {
-            syscall_print("parse_dynamic_section: reached DT_NULL, ending dynamic section parsing\n");
             goto done_parsing;
         }
         case DT_REL: {
@@ -338,10 +307,6 @@ done_parsing:
 
         if (d->d_tag == DT_NEEDED) {
             // Handle needed library
-            syscall_print("parse_dynamic_section: DT_NEEDED entry found for ");
-            syscall_print((const char *)(obj->strtab + d->d_un.d_val));
-            syscall_print("\n");
-
             // TODO: should this be larger?
             char lib_path[512];
             int res = resolve_library_path((const char *)(obj->strtab + d->d_un.d_val), lib_path, sizeof(lib_path));
@@ -349,10 +314,6 @@ done_parsing:
                 syscall_print("parse_dynamic_section: failed to resolve library path\n");
                 return -1;
             }
-
-            syscall_print("parse_dynamic_section: resolved library path: ");
-            syscall_print(lib_path);
-            syscall_print("\n");
 
             // TODO: check if already loaded
 
@@ -368,10 +329,6 @@ done_parsing:
     if (obj->relaent == 0) {
         syscall_print("WARN: parse_dynamic_section: DT_RELAENT not found, defaulting to sizeof(ELF_rela_t)\n");
         obj->relaent = sizeof(ELF_rela_t);
-    } else {
-        syscall_print("parse_dynamic_section: DT_RELAENT = ");
-        syscall_print_ptr((uint64_t)obj->relaent);
-        syscall_print("\n");
     }
 
     return 0;
@@ -390,18 +347,9 @@ int strcmp(const char *s1, const char *s2) {
 
 ELF_addr_t resolve_symbol(const char *name) {
     // Placeholder
-    /* syscall_print("resolve_symbol: resolving symbol: ");
-    syscall_print(name);
-    syscall_print("\n"); */
 
     for (uint64_t i = 0; i < dso_count; i++) {
         struct elf_object *obj = &loaded_dsos[i];
-
-        /* syscall_print("resolve_symbol: searching in DSO ");
-        syscall_print_ptr(i);
-        syscall_print(" at base ");
-        syscall_print_ptr((uint64_t)obj->base);
-        syscall_print("\n"); */
 
         ELF_sym_t *symtab  = obj->symtab;
         const char *strtab = obj->strtab;
@@ -424,11 +372,6 @@ ELF_addr_t resolve_symbol(const char *name) {
             if (strcmp(sym_name, name) == 0) {
                 // Found the symbol
                 ELF_addr_t addr = obj->base + sym->st_value;
-                /* syscall_print("resolve_symbol: found symbol ");
-                syscall_print(sym_name);
-                syscall_print(" at address ");
-                syscall_print_ptr((uint64_t)addr);
-                syscall_print("\n"); */
                 return addr;
             }
         }

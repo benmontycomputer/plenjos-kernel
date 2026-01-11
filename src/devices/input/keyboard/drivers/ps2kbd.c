@@ -71,12 +71,11 @@ static uint8_t get_mods() {
 
 void keyboard_irq_routine(registers_t *regs, void *data) {
     uint8_t in = inb(PS2_DATA);
-    // printf("kbd: scancode %x\n", in);
 
     if (ps2_kbd_state.e1) {
         if (in != PS2_PAUSE_SEQ[ps2_kbd_state.e1_count++]) {
             // Invalid pause sequence; reset state
-            printf("I/O ERROR: invalid pause sequence byte: expected %x, got %x\n",
+            kout(KERNEL_EXTERNAL_FAULT, "I/O ERROR: invalid pause sequence byte: expected %x, got %x\n",
                    PS2_PAUSE_SEQ[ps2_kbd_state.e1_count - 1], in);
             ps2_kbd_state.e1       = false;
             ps2_kbd_state.e1_count = 0;
@@ -122,7 +121,8 @@ void keyboard_irq_routine(registers_t *regs, void *data) {
     bool keystate    = ps2_kbd_state.f0 ? false : true;
     if (in & 0x80) {
         // Should not happen; ignore
-        printf("WARNING: received high bit set scancode %x\n", in);
+        /* TODO: should this be EXTERNAL_FAULT instead? */
+        kout(KERNEL_WARN, "WARNING: received high bit set scancode %x\n", in);
         keystate = false;
     }
 
@@ -143,7 +143,7 @@ void keyboard_irq_routine(registers_t *regs, void *data) {
             is_key_pressed[keycode / 8] &= ~(1 << (keycode % 8));
         }
     } else {
-        printf("WARNING: not ready for keycode %x >= 0xFF\n", keycode);
+        kout(KERNEL_WARN, "WARNING: not ready for keycode %x >= 0xFF\n", keycode);
         event.state = keystate ? KEY_PRESSED : KEY_RELEASED;
     }
 
@@ -153,18 +153,11 @@ void keyboard_irq_routine(registers_t *regs, void *data) {
 
     event.mods = get_mods();
 
-    /* printf("kbd: scancode %x keystate %s -> keycode %x (%s), mods %b\n", in, keystate ? "PRESSED" : "RELEASED", keycode,
-           (event.state == KEY_PRESSED)    ? "PRESSED"
-           : (event.state == KEY_RELEASED) ? "RELEASED"
-                                           : "REPEAT",
-           event.mods); */
-
     if (in_console_mode) {
         kbd_buffer_push(event);
     }
 
 end:
-    // printf("kbd: sending EOI\n");
     apic_send_eoi();
 }
 
@@ -211,14 +204,14 @@ static int ps2_reset_device(int port) {
     uint8_t resp = ps2_read_data();
 
     if (resp != PS2_ACK) {
-        printf("PS/2 device on port %d did not ACK reset command! got %x\n", port, resp);
+        kout(KERNEL_EXTERNAL_FAULT, "PS/2 device on port %d did not ACK reset command! got %x\n", port, resp);
         return -1;
     }
 
     resp = ps2_read_data();
 
     if (resp != PS2_SELFTEST_OK) {
-        printf("PS/2 device on port %d failed self-test! got %x\n", port, resp);
+        kout(KERNEL_EXTERNAL_FAULT, "PS/2 device on port %d failed self-test! got %x\n", port, resp);
         return -1;
     }
 
@@ -257,7 +250,7 @@ int init_ps2_keyboard() {
     ps2_write_cmd(PS2_READ_CONFIG);
     config = ps2_read_data();
 
-    printf("PS/2 controller config initial status: %b\n", config);
+    kout(KERNEL_INFO, "PS/2 controller config initial status: %b\n", config);
 
     /* 4. Clear IRQs and translation */
     config &= ~(PS2_CFG_IRQ1_ENABLE | PS2_CFG_IRQ12_ENABLE); // Disable IRQs
@@ -270,14 +263,14 @@ int init_ps2_keyboard() {
     ps2_write_cmd(PS2_READ_CONFIG);
     uint8_t cfg_act = ps2_read_data();
 
-    printf("PS/2 controller config new status: %b; should be %b\n", cfg_act, config);
+    kout(KERNEL_INFO, "PS/2 controller config new status: %b; should be %b\n", cfg_act, config);
 
     ps2_wait_before_writing();
 
     /* 5. Controller self-test */
     ps2_write_cmd(PS2_SELF_TEST);
     if (ps2_read_data() != PS2_SELF_TEST_OK) {
-        printf("PS/2 controller self-test failed!\n");
+        kout(KERNEL_SEVERE_EXTERNAL_FAULT, "PS/2 controller self-test failed!\n");
         res = -1;
         goto finally;
     }
@@ -290,9 +283,9 @@ int init_ps2_keyboard() {
     bool has_port2 = (config & PS2_CFG_DISABLE_PORT2_CLK) == 0;
 
     if (!has_port2) {
-        printf("PS/2 controller has only one port.\n");
+        kout(KERNEL_INFO, "PS/2 controller has only one port.\n");
     } else {
-        printf("PS/2 controller has two ports.\n");
+        kout(KERNEL_INFO, "PS/2 controller has two ports.\n");
     }
 
     ps2_write_cmd(PS2_DISABLE_PORT2);
@@ -300,7 +293,7 @@ int init_ps2_keyboard() {
     /* 7. Test ports */
     ps2_write_cmd(PS2_TEST_PORT1);
     if (ps2_read_data() != 0x00) {
-        printf("PS/2 port 1 test failed!\n");
+        kout(KERNEL_EXTERNAL_FAULT, "PS/2 port 1 test failed!\n");
         res = -1;
         goto finally;
     }
@@ -308,26 +301,26 @@ int init_ps2_keyboard() {
     if (has_port2) {
         ps2_write_cmd(PS2_TEST_PORT2);
         if (ps2_read_data() != 0x00) {
-            printf("PS/2 port 2 test failed!\n");
+            kout(KERNEL_EXTERNAL_FAULT, "PS/2 port 2 test failed!\n");
             has_port2 = false;
         }
     }
 
     /* 8. Reset devices */
     if (ps2_reset_device(1) != 0) {
-        printf("PS/2 port 1 device reset failed!\n");
+        kout(KERNEL_SEVERE_EXTERNAL_FAULT, "PS/2 port 1 device reset failed!\n");
         res = -1;
         goto finally;
     } else {
-        printf("PS/2 port 1 device reset succeeded.\n");
+        kout(KERNEL_INFO, "PS/2 port 1 device reset succeeded.\n");
     }
 
     if (has_port2) {
         if (ps2_reset_device(2) != 0) {
-            printf("PS/2 port 2 device reset failed!\n");
+            kout(KERNEL_SEVERE_EXTERNAL_FAULT, "PS/2 port 2 device reset failed!\n");
             has_port2 = false;
         } else {
-            printf("PS/2 port 2 device reset succeeded.\n");
+            kout(KERNEL_INFO, "PS/2 port 2 device reset succeeded.\n");
         }
     }
 
@@ -365,7 +358,7 @@ int init_ps2_keyboard() {
     ps2_write_cmd(PS2_READ_CONFIG);
     cfg_act = ps2_read_data();
 
-    printf("PS/2 controller config new status: %b; should be %b\n", cfg_act, config);
+    kout(KERNEL_INFO, "PS/2 controller config new status: %b; should be %b\n", cfg_act, config);
 
     /* 11. Enable ports */
     ps2_write_cmd(PS2_ENABLE_PORT1);

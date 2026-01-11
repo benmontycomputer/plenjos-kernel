@@ -122,7 +122,7 @@ ssize_t kernelfs_default_read_dir(vfs_handle_t *f, void *buf, size_t len) {
 
         strncpy(dirent_entry.d_name, current_child->name, NAME_MAX + 1);
         dirent_entry.d_name[NAME_MAX] = '\0';
-        dirent_entry.type = current_child->type;
+        dirent_entry.type             = current_child->type;
 
         if (total_bytes_copied + sizeof(struct plenjos_dirent) > len) {
             // No more space
@@ -182,13 +182,12 @@ node_found:
         fsops->close  = NULL; // Use default vfs close
         fsops->create_child
             = (current_node->type == DT_DIR) ? kernelfs_create_child : NULL; // TODO: implement create_child
-        fsops->load_node = kernelfs_load;
+        fsops->load_node   = kernelfs_load;
         fsops->unload_node = NULL; // No internal data to clean up
 
         // TODO: implement size
         fscache_node_populate(out, current_node->type, 0, current_node->name, current_node->uid, current_node->gid,
-                              current_node->mode, 0 /* current_node->size */,
-                              fsops);
+                              current_node->mode, 0 /* current_node->size */, fsops);
 
         ((kernelfs_cache_data_t *)out->internal_data)->node = current_node;
     }
@@ -197,7 +196,7 @@ node_found:
 }
 
 int kernelfs_create_child(fscache_node_t *parent, const char *name, dirent_type_t type, uid_t uid, gid_t gid,
-                              mode_t mode, fscache_node_t *node) {
+                          mode_t mode, fscache_node_t *node) {
     if (!parent || !name || !node) {
         return -EINVAL;
     }
@@ -341,8 +340,6 @@ int kernelfs_helper_create_file(const char *parent, const char *name, uint8_t ty
 int kernelfs_create_node(kernelfs_node_t *parent_node, const char *name, uint8_t type, uid_t uid, gid_t gid,
                          mode_t mode, kernelfs_open_func_t open, vfs_read_func_t read, vfs_write_func_t write,
                          vfs_seek_func_t seek, void *func_args, kernelfs_node_t **out) {
-    printf("Creating kernelfs node %s\n", name);
-
     if (!name || !parent_node || strlen(name) == 0) {
         printf("kernelfs_create_node: name or parent_node is NULL or empty!\n");
         return -EINVAL;

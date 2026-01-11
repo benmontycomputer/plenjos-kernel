@@ -51,8 +51,7 @@ void tss_init() {
     for (uint64_t i = 0; i < KERNEL_STACK_SIZE; i += PAGE_LEN) {
         uint64_t frame = find_next_free_frame();
         if (!frame) {
-            printf("Stack memory creation failed!\n");
-            hcf();
+            panic("Stack memory creation failed!\n");
         }
         map_virtual_memory_using_alloc(frame, stack + i, true, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, kernel_pml4);
     }
@@ -60,7 +59,7 @@ void tss_init() {
     stack += KERNEL_STACK_SIZE;
     TSS_STACK_ADDR += KERNEL_STACK_SIZE;
 
-    printf("TSS stack addr: %p\n", stack);
+    kout(KERNEL_INFO, "TSS stack addr: %p\n", stack);
 
     memset(&tss_obj[get_curr_core()], 0, sizeof(struct tss));
 
@@ -83,5 +82,5 @@ void tss_init() {
     tss_seg->addr_3 = tss_base >> 32;
     tss_seg->reserved = 0;
 
-    printf("TSS initialized.\n");
+    kout(KERNEL_INFO, "TSS initialized.\n");
 }

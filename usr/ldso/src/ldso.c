@@ -265,25 +265,6 @@ void _start(uint64_t stack, uint64_t linker_ehdr, uint64_t target_ehdr) {
         relaent = sizeof(ELF_rela_t);
     }
 
-    /* _prereloc_syscall_print("\nldso: Starting self-relocations...\n");
-    _prereloc_syscall_print("rela = ");
-    _prereloc_syscall_print_ptr((uint64_t)rela);
-    _prereloc_syscall_print(", rela_sz = ");
-    _prereloc_syscall_print_ptr((uint64_t)rela_sz);
-    _prereloc_syscall_print(", relaent = ");
-    _prereloc_syscall_print_ptr((uint64_t)relaent);
-    _prereloc_syscall_print("\nrela_plt = ");
-    _prereloc_syscall_print_ptr((uint64_t)rela_plt);
-    _prereloc_syscall_print(", rela_plt_sz = ");
-    _prereloc_syscall_print_ptr((uint64_t)rela_plt_sz);
-    _prereloc_syscall_print("\npltgot = ");
-    _prereloc_syscall_print_ptr((uint64_t)pltgot);
-    _prereloc_syscall_print("\nsymtab = ");
-    _prereloc_syscall_print_ptr((uint64_t)symtab);
-    _prereloc_syscall_print(", strtab = ");
-    _prereloc_syscall_print_ptr((uint64_t)strtab);
-    _prereloc_syscall_print("\n"); */
-
     // Apply relocations
     if (rela_sz > 0) {
         _apply_relocations(linker_ehdr, symtab, strtab, relaent, pltgot, rela, rela_sz, 1, 1);
@@ -293,17 +274,8 @@ void _start(uint64_t stack, uint64_t linker_ehdr, uint64_t target_ehdr) {
         _apply_relocations(linker_ehdr, symtab, strtab, relaent, pltgot, rela_plt, rela_plt_sz, 1, 1);
     }
 
-    /* _prereloc_syscall_print("ldso: Self-relocations complete.\ninit_dso_base resolves to ");
-    _prereloc_syscall_print_ptr((uint64_t)init_dso_base);
-    _prereloc_syscall_print("\n"); */
-
 finish_relocations:
     init_dso_base();
-    syscall_print("ldso: Finished relocations, jumping to main executable... (ehdr ");
-    syscall_print_ptr(target_ehdr);
-    syscall_print(" stack ");
-    syscall_print_ptr(stack);
-    syscall_print(")\n");
     ld_main(stack, target_ehdr);
 }
 
@@ -352,16 +324,6 @@ static int ld_main(uint64_t stack, uint64_t target_ehdr) {
         // No executable specified
         syscall_print("ldso: No executable specified in argv[0]\n");
         return -1;
-    } else {
-        syscall_print("ldso: Loading executable:\n(Stack: ");
-        syscall_print_ptr(stack);
-        syscall_print("): \n");
-        syscall_print(argv[-1] ? argv[-1] : "(null)");
-        syscall_print(" ");
-        syscall_print(argv[0] ? argv[0] : "(null)");
-        syscall_print(" ");
-        syscall_print(argv[1] ? argv[1] : "(null)");
-        syscall_print("\n");
     }
 
     struct elf_object main_obj = { 0 };
@@ -377,9 +339,6 @@ static int ld_main(uint64_t stack, uint64_t target_ehdr) {
 
     // Handle relocations
     if (main_obj.rela_sz > 0) {
-        syscall_print("\nldso: applying ");
-        syscall_print_ptr((uint64_t)(main_obj.rela_sz / sizeof(ELF_rela_t)));
-        syscall_print(" rela relocations\n");
         res = apply_relocations(&main_obj, main_obj.rela, main_obj.rela_sz, 0);
         if (res < 0) {
             syscall_print("load_library_from_disk: failed to apply relocations\n");
@@ -387,9 +346,6 @@ static int ld_main(uint64_t stack, uint64_t target_ehdr) {
         }
     }
     if (main_obj.rela_plt_sz > 0) {
-        syscall_print("\nldso: applying ");
-        syscall_print_ptr((uint64_t)(main_obj.rela_plt_sz / sizeof(ELF_rela_t)));
-        syscall_print(" rela_plt relocations\n");
         res = apply_relocations(&main_obj, main_obj.rela_plt, main_obj.rela_plt_sz, 1);
         if (res < 0) {
             syscall_print("load_library_from_disk: failed to apply PLT relocations\n");

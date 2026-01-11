@@ -51,7 +51,7 @@ void setup_bs_gs_base() {
     cpu_cores[0].kernel_gs_base = new_kernel_gs_base(0);
     gs_bases[0]                 = (uint64_t)cpu_cores[0].kernel_gs_base;
 
-    printf("base: %p %p\n", gs_bases[0], cpu_cores[0].kernel_gs_base);
+    kout(KERNEL_INFO, "base: %p %p\n", gs_bases[0], cpu_cores[0].kernel_gs_base);
 
     write_msr(IA32_GS_BASE, (uint64_t)cpu_cores[0].kernel_gs_base);
     write_msr(IA32_KERNEL_GS_BASE, (uint64_t)cpu_cores[0].kernel_gs_base);
@@ -61,7 +61,7 @@ void setup_bs_gs_base() {
 // shootdown.
 
 void ipi_tlb_shootdown_routine(registers_t *regs, void *data) {
-    // printf("IPI on core %d\n", get_curr_core());
+    // kout(KERNEL_INFO, "IPI on core %d\n", get_curr_core());
     uint64_t cr3;
     // Get the current value of CR3 (the base of the PML4 table)
     asm volatile("mov %%cr3, %0" : "=r"(cr3));
@@ -72,7 +72,7 @@ void ipi_tlb_shootdown_routine(registers_t *regs, void *data) {
 }
 
 void ipi_tlb_flush_routine(registers_t *regs, void *data) {
-    // printf("IPI on core %d\n", get_curr_core());
+    // kout(KERNEL_INFO, "IPI on core %d\n", get_curr_core());
     uint64_t cr3;
     // Get the current value of CR3 (the base of the PML4 table)
     asm volatile("mov %%cr3, %0" : "=r"(cr3));
@@ -83,7 +83,7 @@ void ipi_tlb_flush_routine(registers_t *regs, void *data) {
 }
 
 void ipi_kill_routine(registers_t *regs, void *data) {
-    printf("Received kill IPI on core %d, halting...\n", get_curr_core());
+    kout(KERNEL_INFO, "Received kill IPI on core %d, halting...\n", get_curr_core());
 
     // TODO: actually kill the thread and go to the right address
     /* regs->iret_rip = (uint64_t)cpu_scheduler_task;
@@ -99,7 +99,7 @@ void ipi_kill_routine(registers_t *regs, void *data) {
 }
 
 void ipi_wakeup_routine(registers_t *regs, void *data) {
-    // printf("Received IPI wakeup on core %d\n", get_curr_core());
+    // kout(KERNEL_INFO, "Received IPI wakeup on core %d\n", get_curr_core());
     apic_send_eoi();
 }
 
@@ -123,7 +123,7 @@ void setup_other_core(struct limine_mp_info *mp_info) {
     // irq_register_routine(IPI_TLB_SHOOTDOWN_IRQ, &ipi_tlb_shootdown_routine);
     // irq_register_routine(IPI_TLB_FLUSH_IRQ, &ipi_tlb_flush_routine);
 
-    printf("Setting up core id %d lapic id %d\n", mp_info->processor_id, mp_info->lapic_id);
+    kout(KERNEL_INFO, "Setting up core id %d lapic id %d\n", mp_info->processor_id, mp_info->lapic_id);
 
     cpu_cores[mp_info->processor_id].kernel_gs_base = new_kernel_gs_base(mp_info->processor_id);
     gs_bases[mp_info->processor_id]                 = (uint64_t)cpu_cores[mp_info->processor_id].kernel_gs_base;
@@ -133,7 +133,7 @@ void setup_other_core(struct limine_mp_info *mp_info) {
 
     write_msr(IA32_GS_BASE, (uint64_t)cpu_cores[mp_info->processor_id].kernel_gs_base);
 
-    printf("Useable memory on detected core %d: %p\n\n", (int)get_curr_core(), PHYS_MEM_USEABLE_LENGTH);
+    kout(KERNEL_INFO, "Useable memory on detected core %d: %p\n\n", (int)get_curr_core(), PHYS_MEM_USEABLE_LENGTH);
 
     cpu_cores[mp_info->processor_id].online = true;
 
@@ -144,8 +144,7 @@ void setup_other_core(struct limine_mp_info *mp_info) {
 
 void setup_other_cores() {
     if (!mp_response) {
-        printf("No mp info. Can't setup other cores. Halt!\n");
-        hcf();
+        panic("No mp info. Can't setup other cores. Halt!\n");
     }
 
     for (uint32_t i = 1; i < MAX_CORES; i++) {
@@ -173,8 +172,7 @@ void setup_other_cores() {
 
 int get_n_cores() {
     if (!mp_response) {
-        printf("No mp info. Can't get CPU count. Halt!\n");
-        hcf();
+        panic("No mp info. Can't get CPU count. Halt!\n");
     }
 
     return (int)mp_response->cpu_count;
@@ -204,13 +202,12 @@ void load_smp() {
     asm volatile("cli");
 
     if (!mp_request.response) {
-        printf("No mp info. Halt!\n");
-        hcf();
+        panic("No mp info. Halt!\n");
     }
 
     mp_response = mp_request.response;
 
-    printf("SMP Info:\n    Core count: %p\n", mp_response->cpu_count);
+    kout(KERNEL_INFO, "SMP Info:\n    Core count: %p\n", mp_response->cpu_count);
 
     asm volatile("sti");
 

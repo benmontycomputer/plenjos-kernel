@@ -379,6 +379,112 @@ int printf(const char *format, ...) {
     return res;
 }
 
+static inline void set_level(kernel_msg_level_t level) {
+    switch (level) {
+    case KERNEL_PANIC:
+    case KERNEL_SEVERE_FAULT:
+    case KERNEL_SEVERE_EXTERNAL_FAULT: {
+        printf_str(TEXT_RED, -1);
+        break;
+    }
+    case KERNEL_EXTERNAL_FAULT: {
+        printf_str(TEXT_MAGENTA, -1);
+    }
+    case KERNEL_WARN: {
+        printf_str(TEXT_YELLOW, -1);
+        break;
+    }
+    case USER_FAULT: {
+        printf_str(TEXT_CYAN, -1);
+        printf_str("(userspace fault) ", -1);
+        break;
+    }
+    case USER_WARN: {
+        printf_str(TEXT_CYAN, -1);
+        printf_str("(userspace warn) ", -1);
+        break;
+    }
+    default: {
+        printf_str(TEXT_BLUE, -1);
+        break;
+    }
+    }
+}
+
+// %d or %i for integers, %f for floating-point, %s for string, %c for char, %x for hex, %p for pointer, %ld for signed
+// long, %lu for unsigned long
+int kout(kernel_msg_level_t level, const char *format, ...) {
+    if (level == KERNEL_PANIC) {
+        /* Bypass the lock */
+    } else {
+        request_console();
+    }
+
+    set_level(level);
+
+    va_list list;
+    va_start(list, format);
+
+    int res = _printf_internal(format, list);
+
+    va_end(list);
+
+    if (level == KERNEL_PANIC) {
+        /* Make sure the message reaches BOTH serial and screen */
+        debug_serial = !debug_serial;
+        _printf_internal(format, list);
+
+        panic_nomsg();
+    } else {
+        printf_str(TEXT_RESET, -1);
+        release_console();
+    }
+
+    return res;
+}
+
+// %d or %i for integers, %f for floating-point, %s for string, %c for char, %x for hex, %p for pointer, %ld for signed
+// long, %lu for unsigned long
+int kout_nolock(kernel_msg_level_t level, const char *format, ...) {
+    set_level(level);
+
+    va_list list;
+    va_start(list, format);
+
+    int res = _printf_internal(format, list);
+
+    va_end(list);
+
+    if (level == KERNEL_PANIC) {
+        /* Make sure the message reaches BOTH serial and screen */
+        debug_serial = !debug_serial;
+        _printf_internal(format, list);
+
+        panic_nomsg();
+    } else {
+        printf_str(TEXT_RESET, -1);
+    }
+
+    return res;
+}
+
+_Noreturn void panic(const char *format, ...) {
+    set_level(KERNEL_PANIC);
+
+    va_list list;
+    va_start(list, format);
+
+    _printf_internal(format, list);
+
+    va_end(list);
+
+    /* Make sure the message reaches BOTH serial and screen */
+    debug_serial = !debug_serial;
+    _printf_internal(format, list);
+
+    panic_nomsg();
+}
+
 int backs() {
     request_console();
 

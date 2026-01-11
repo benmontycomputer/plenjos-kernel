@@ -36,7 +36,6 @@ void syscall_handle_fs_call(registers_t *regs, proc_t *proc, pml4_t *current_pml
     }
     case SYSCALL_OPEN: {
         const char *path = NULL;
-        printf("trying...\n\n");
         regs->rax = handle_string_arg(current_pml4, regs->rbx, &path);
         if (path) {
             regs->rax = (uint64_t)syscall_routine_open(path, (syscall_open_flags_t)regs->rcx, (mode_t)regs->rdx, proc);

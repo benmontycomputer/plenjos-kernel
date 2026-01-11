@@ -97,9 +97,7 @@ void syscall_routine(registers_t *regs, void *data) {
     case SYSCALL_GET_FB: {
         // rbx: pointer to struct for framebuffer data
         // Map the framebuffer into the currently loaded page table
-        // current_pml4 = (pml4_t *)get_cr3_addr();
         // TODO: check if framebuffer is in use
-        // printf("phys %p %p\n", kernel_pml4, get_physaddr((uint64_t)fb, kernel_pml4));
         map_virtual_memory_using_alloc(
             virt_to_phys((uint64_t)fb), (uint64_t)fb, (uint64_t)fb_scanline * (uint64_t)fb_height,
             PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node, current_pml4);
@@ -152,7 +150,7 @@ void syscall_routine(registers_t *regs, void *data) {
         // access control is needed)
         page_t *page = find_page((uint64_t)&kbd_buffer_state, false, current_pml4);
         if (page && page->present) {
-            printf("WARN: Something is already mapped at keyboard buffer's address in this process!\n");
+            kout(KERNEL_WARN, "WARN: Something is already mapped at keyboard buffer's address in this process!\n");
             if (get_physaddr((uint64_t)&kbd_buffer_state, current_pml4)
                 != get_physaddr((uint64_t)&kbd_buffer_state, kernel_pml4)) {
                 printf("And it's not the keyboard buffer! %p %p\n",

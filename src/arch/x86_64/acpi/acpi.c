@@ -74,8 +74,7 @@ uint64_t acpi_map_table_mem(uint64_t phys, size_t size) {
 
 void acpi_init() {
     if (!rsdp_request.response) {
-        printf("Couldn't detect acpi tables. Halt!\n");
-        hcf();
+        panic("Couldn't detect acpi tables. Halt!\n");
     }
 
     struct limine_rsdp_response *rsdp_resp = rsdp_request.response;
@@ -90,19 +89,17 @@ void acpi_init() {
         xsdt_global = (XSDT_t *)acpi_map_table_mem(rsdp_extended->xsdt_addr, sizeof(XSDT_t));
 
         if (!checksum_sdt(&(xsdt_global->h))) {
-            printf("\nCorrupted xsdt table. Halt!\n");
-            hcf();
+            panic("\nCorrupted xsdt table. Halt!\n");
         }
     } else {
         rsdt_global = (RSDT_t *)acpi_map_table_mem((uint64_t)rsdp->rsdt_addr, sizeof(RSDT_t));
 
         if (!checksum_sdt(&(rsdt_global->h))) {
-            printf("\nCorrupted rsdt table. Halt!\n");
-            hcf();
+            panic("\nCorrupted rsdt table. Halt!\n");
         }
     }
 
-    printf("RSDP revision number: %d\n", rsdp->revision);
+    kout(KERNEL_INFO, "RSDP revision number: %d\n", rsdp->revision);
 
     int entries = get_entry_count();
 
@@ -117,30 +114,27 @@ void acpi_init() {
         }
 
         if (!checksum_sdt(h)) {
-            printf("Corrupted acpi table. Halt!\n");
-            hcf();
+            panic("Corrupted acpi table. Halt!\n");
         }
     }
 
     void *apic = find_acpi_table("APIC");
 
     if (!apic) {
-        printf("Couldn't detect MADT table. Halt!\n");
-        hcf();
+        panic("Couldn't detect MADT table. Halt!\n");
     }
 
     madt_header_global = (acpi_madt_header_t *)apic;
 
     // Map the memory for the local apic (each cpu has one, but the address is the same)
-    printf("lapic addr: %p\n\n", madt_header_global->lapic_address);
+    kout(KERNEL_INFO, "lapic addr: %p\n\n", madt_header_global->lapic_address);
     map_virtual_memory(madt_header_global->lapic_address, 4096, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, kernel_pml4);
     LAPIC_BASE = phys_to_virt(madt_header_global->lapic_address);
 
     void *fapc = find_acpi_table("FACP");
 
     if (!fapc) {
-        printf("Couldn't detect FADT table. Halt!\n");
-        hcf();
+        panic("Couldn't detect FADT table. Halt!\n");
     }
 
     fadt_header_global = (acpi_fadt_header_t *)fapc;
@@ -148,19 +142,20 @@ void acpi_init() {
     void *hpet = find_acpi_table("HPET");
 
     if (!hpet) {
-        // Non-fatal error
-        printf("No HPET table.\n");
+        /* WARN, not INFO, because this table should be present on all modern systems and could indicate underlying
+         * problems */
+        kout(KERNEL_WARN, "No HPET table.\n");
     } else {
         hpet_header_global = (acpi_hpet_header_t *)hpet;
     }
 
-    printf("Boot architecture flags: %b\n", fadt_header_global->BootArchitectureFlags);
+    kout(KERNEL_INFO, "Boot architecture flags: %b\n", fadt_header_global->BootArchitectureFlags);
 
     if (fadt_header_global->BootArchitectureFlags & 0b10) {
-        printf("PS/2 Controller detected!\n");
+        kout(KERNEL_INFO, "PS/2 Controller detected!\n");
 
         ps2_detected = true;
     } else {
-        printf("No PS/2 Controller detected.\n");
+        kout(KERNEL_INFO, "No PS/2 Controller detected.\n");
     }
 }

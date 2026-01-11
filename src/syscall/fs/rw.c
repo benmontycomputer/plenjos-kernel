@@ -12,8 +12,6 @@
 #include "plenjos/errno.h"
 
 ssize_t syscall_routine_read(int fd, void *buf, size_t count, proc_t *proc, pml4_t *current_pml4) {
-    printf("syscall_routine_read called with fd %p, buf %p, count %p\n", fd, buf, count);
-
     vfs_handle_t *handle = NULL;
 
     ssize_t res = (ssize_t)syscall_fs_helper_get_not_dir_handle(fd, proc, &handle);

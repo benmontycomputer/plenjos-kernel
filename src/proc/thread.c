@@ -21,7 +21,6 @@ thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), vo
     if (!proc) return NULL;
 
     thread_t *thread = (thread_t *)phys_to_virt(find_next_free_frame());
-    // map_virtual_memory(virt_to_phys((uint64_t)thread), PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, kernel_pml4);
     memset(thread, 0, PAGE_LEN);
 
     if (name) {
@@ -72,9 +71,6 @@ thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), vo
     thread->regs.iret_rflags = DEFAULT_FLAGS;
 
     // Set the instruction pointer and the function argument
-    // map_virtual_memory_using_alloc(get_physaddr((uint64_t)func), (uint64_t)func, 80000, PAGE_FLAG_PRESENT |
-    // PAGE_FLAG_USER, alloc_paging_node, proc->pml4); map_virtual_memory_using_alloc(get_physaddr((uint64_t)arg),
-    // (uint64_t)arg, 80000, PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
     thread->regs.iret_rip = (uint64_t)func;
     printf("Thread info: func addr %p, func phys addr %p\n", func, get_physaddr((uint64_t)func, proc->pml4));
     thread->regs.rdi = (uint64_t)arg;

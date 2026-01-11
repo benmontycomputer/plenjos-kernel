@@ -246,9 +246,6 @@ ssize_t iso9660_directory_read_func(vfs_handle_t *handle, void *buf, size_t len)
         block_offset = instance_data->extent_pos = 0;
     }
 
-    printf("Final: seek_pos=%lu, extent_pos=%lu, current_extent_location=%lu, dir_size=%lu\n", instance_data->seek_pos,
-           instance_data->extent_pos, instance_data->current_extent_location, dir_size);
-
     kfree_heap(buffer);
     return (ssize_t)total_bytes_read;
 }

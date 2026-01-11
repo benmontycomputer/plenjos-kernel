@@ -14,12 +14,12 @@ static const uint8_t usbhid_set_protocol_report[8] = { 0x21, 0x0B, 0x01, 0x00, 0
 
 int usbhid_set_protocol(usb_interface_t *iface, bool use_report) {
     if (!iface) {
-        printf("ERROR: ushbid_set_protocol: iface is NULL!\n");
+        kout(KERNEL_SEVERE_FAULT, "ERROR: ushbid_set_protocol: iface is NULL!\n");
         return -EINVAL;
     }
 
     if (iface->iface_driver != &usbhid_iface_driver) {
-        printf("ERROR: calling usbhid_set_protocol on a non-HID device!\n");
+        kout(KERNEL_SEVERE_FAULT, "ERROR: calling usbhid_set_protocol on a non-HID device!\n");
         return -EINVAL;
     }
 
@@ -27,11 +27,11 @@ int usbhid_set_protocol(usb_interface_t *iface, bool use_report) {
 
     if (!driver_data->supports_boot) {
         if (use_report) {
-            printf("WARN: calling usbhid_set_protocol to set the device to use the report protocol, but the device "
+            kout(KERNEL_WARN, "WARN: calling usbhid_set_protocol to set the device to use the report protocol, but the device "
                    "only supports the report protocol, so we can't set protocol! Not sending anything.\n");
             return 0;
         } else {
-            printf("ERROR: usbhid_set_protocol: the boot protocol is not supported by this device!\n");
+            kout(KERNEL_SEVERE_FAULT, "ERROR: usbhid_set_protocol: the boot protocol is not supported by this device!\n");
             return -EINVAL;
         }
     }
@@ -42,11 +42,11 @@ int usbhid_set_protocol(usb_interface_t *iface, bool use_report) {
 
 int usbhid_bind_driver(usb_interface_t *iface) {
     if (iface->i_class != USB_IFACE_CLASS_HID) {
-        printf("ERROR: calling usbhid_bind_driver() on a non-HID interface.\n");
+        kout(KERNEL_SEVERE_FAULT, "ERROR: calling usbhid_bind_driver() on a non-HID interface.\n");
         return -EINVAL;
     }
 
-    printf("usbhid_bind_driver: binding driver...\n");
+    kout(KERNEL_INFO, "usbhid_bind_driver: binding driver...\n");
 
     if (!usbhid_iface_driver_initialized) {
         /* TODO: populate driver */
@@ -54,7 +54,7 @@ int usbhid_bind_driver(usb_interface_t *iface) {
 
     iface->iface_driver_data = kmalloc_heap(sizeof(struct usbhid_interface_driver_data));
     if (!iface->iface_driver_data) {
-        printf("OOM ERROR: usbhid_bind_driver: failed to allocate iface->iface_driver_data.\n");
+        kout(KERNEL_SEVERE_FAULT, "OOM ERROR: usbhid_bind_driver: failed to allocate iface->iface_driver_data.\n");
         return -ENOMEM;
     }
     iface->iface_driver = &usbhid_iface_driver;
@@ -64,35 +64,35 @@ int usbhid_bind_driver(usb_interface_t *iface) {
     switch (iface->i_protocol) {
     case 0x01: {
         driver_data->type = USBKBD;
-        printf(" - device type: keyboard\n");
+        kout(KERNEL_INFO, " - device type: keyboard\n");
         break;
     }
     case 0x02: {
         driver_data->type = USBMOUSE;
-        printf(" - device type: mouse\n");
+        kout(KERNEL_INFO, " - device type: mouse\n");
         break;
     }
     default: {
-        printf(" - device type unknown");
+        kout(KERNEL_INFO, " - device type unknown");
         break;
     }
     }
 
     driver_data->supports_boot = (iface->i_subclass == 1) ? true : false;
     if (driver_data->supports_boot) {
-        printf(" - supports boot protocol\n");
+        kout(KERNEL_INFO, " - supports boot protocol\n");
     } else {
-        printf(" - does not support boot protocol\n");
+        kout(KERNEL_INFO, " - does not support boot protocol\n");
     }
 
     switch (driver_data->type) {
     case USBKBD: {
-        printf(" - loading usbkbd driver...\n");
+        kout(KERNEL_INFO, " - loading usbkbd driver...\n");
         usbkbd_driver_init(iface);
         break;
     }
     default: {
-        printf(" - NO DRIVER!\n");
+        kout(KERNEL_INFO, " - NO DRIVER!\n");
     }
     }
 

@@ -16,7 +16,7 @@ int syscall_routine_memmap(void *addr, size_t length, syscall_memmap_flags_t fla
         length += PAGE_LEN - (length % PAGE_LEN);
     }
 
-    for (voffs; voffs < (uint64_t)addr + length; voffs += PAGE_LEN) {
+    for (; voffs < (uint64_t)addr + length; voffs += PAGE_LEN) {
         if (get_physaddr(voffs, current_pml4)) {
             printf("WARNING: the pml4 table at vaddr %p already has %p mapped.\n", current_pml4, voffs);
             return -EEXIST;
@@ -47,10 +47,7 @@ int syscall_routine_memmap_from_buffer(void *addr, size_t length, syscall_memmap
         return res;
     }
 
-    printf("Mapping from buffer to addr %p length %p\n", addr, length);
-
-    uint64_t start = (uint64_t)addr - ((uint64_t)addr % PAGE_LEN);
-    uint64_t end   = (uint64_t)addr + length;
+    uint64_t end = (uint64_t)addr + length;
     if (end % PAGE_LEN != 0) {
         end += PAGE_LEN - (end % PAGE_LEN);
     }
@@ -73,16 +70,16 @@ int syscall_routine_memprotect(void *addr, size_t length, syscall_memmap_flags_t
         length += PAGE_LEN - (length % PAGE_LEN);
     }
 
-    for (voffs; voffs < (uint64_t)addr + length; voffs += PAGE_LEN) {
+    for (; voffs < (uint64_t)addr + length; voffs += PAGE_LEN) {
         page_t *page = find_page(voffs, false, current_pml4);
         if (!page || !(page->present)) {
-            printf("Vaddr %p not mapped\n", voffs);
+            printf("syscall_routine_memprotect: bad address: vaddr %p not mapped\n", voffs);
             return -EFAULT;
         }
 
         uint64_t frame = page->frame << 12;
         if (!frame) {
-            printf("Vaddr %p is mapped to frame 0x0\n", voffs);
+            printf("syscall_routine_memprotect: bad address: vaddr %p is mapped to frame 0x0\n", voffs);
             return -EFAULT;
         }
 
@@ -127,4 +124,6 @@ int syscall_routine_memprotect(void *addr, size_t length, syscall_memmap_flags_t
 
         map_virtual_memory_using_alloc(frame, voffs, PAGE_LEN, curr_flags, alloc_paging_node, current_pml4);
     }
+
+    return 0;
 }

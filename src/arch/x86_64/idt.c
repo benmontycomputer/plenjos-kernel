@@ -1,20 +1,16 @@
-#include <stdbool.h>
-#include <stdint.h>
-
-#include "arch/x86_64/gdt/gdt.h"
 #include "arch/x86_64/idt.h"
-#include "arch/x86_64/irq.h"
-
-#include "lib/stdio.h"
-
-#include "kernel.h"
-
-#include "memory/kmalloc.h"
-#include "memory/mm.h"
-
-#include "proc/scheduler.h"
 
 #include "arch/x86_64/cpuid/cpuid.h"
+#include "arch/x86_64/gdt/gdt.h"
+#include "arch/x86_64/irq.h"
+#include "kernel.h"
+#include "lib/stdio.h"
+#include "memory/kmalloc.h"
+#include "memory/mm.h"
+#include "proc/scheduler.h"
+
+#include <stdbool.h>
+#include <stdint.h>
 
 // https://wiki.osdev.org/Interrupts_Tutorial
 
@@ -42,85 +38,72 @@ void page_fault_handler(registers_t *regs) {
     asm volatile("mov %%cr2, %0" : "=r"(faulting_address));
 
     // Decode the error code to determine the cause of the page fault.
-    int present = !(regs->err_code & 0x1); // Page not present
-    int rw = regs->err_code & 0x2;         // Write operation?
-    int us = regs->err_code & 0x4;         // Processor was in user mode?
-    int reserved = regs->err_code & 0x8;   // Overwritten CPU-reserved bits of page entry?
-    int id = regs->err_code & 0x10;        // Caused by an instruction fetch?
+    int present  = !(regs->err_code & 0x1); // Page not present
+    int rw       = regs->err_code & 0x2;    // Write operation?
+    int us       = regs->err_code & 0x4;    // Processor was in user mode?
+    int reserved = regs->err_code & 0x8;    // Overwritten CPU-reserved bits of page entry?
+    int id       = regs->err_code & 0x10;   // Caused by an instruction fetch?
 
     // Output an error message with details about the page fault.
-    printf("\nPage fault! ( ");
-    if (present) printf("Page not present, ");
-    if (rw) printf("Not writable, ");
-    if (us) printf("User-mode, ");
-    if (reserved) printf("Reserved, ");
-    if (id) printf("Instruction fetch, ");
-    if (present || reserved) printf(") at address %p\n", faulting_address);
+    kout(KERNEL_SEVERE_FAULT, "\nPage fault! ( ");
+    if (present) kout(KERNEL_SEVERE_FAULT, "Page not present, ");
+    if (rw) kout(KERNEL_SEVERE_FAULT, "Not writable, ");
+    if (us) kout(KERNEL_SEVERE_FAULT, "User-mode, ");
+    if (reserved) kout(KERNEL_SEVERE_FAULT, "Reserved, ");
+    if (id) kout(KERNEL_SEVERE_FAULT, "Instruction fetch, ");
+    if (present || reserved) kout(KERNEL_SEVERE_FAULT, ") at address %p\n", faulting_address);
     else
-        printf(") at address %p, paddr %p\n", faulting_address,
-               get_physaddr(faulting_address, (pml4_t *)phys_to_virt(get_cr3_addr())));
+        kout(KERNEL_SEVERE_FAULT, ") at address %p, paddr %p\n", faulting_address,
+             get_physaddr(faulting_address, (pml4_t *)phys_to_virt(get_cr3_addr())));
 
-    printf("RIP: %p, RSP: %p, RFLAGS: %p, CR3: %p\n", regs->iret_rip, regs->iret_rsp, regs->iret_rflags, regs->cr3);
-    /* uint64_t *rsp = (uint64_t *)regs->iret_rsp;
-    printf("Stack (rsp = %p) Contents(First 26) :\n", (uint64_t)rsp);
-
-    for (int i = 0; i < 26; i++) {
-        printf("  [%p] = %p\n", (uint64_t)(rsp + i), rsp[i]);
-    } */
-
-    // printf("%p\n", get_physaddr(faulting_address), 0, 47);
-
-    // Additional action to handle the page fault could be added here,
-    // such as invoking a page allocator or terminating a faulty process.
-
-    // Halt the system to prevent further errors (for now).
-    // printf("Halting the system due to page fault.\n");
-    // hcf();
+    kout(KERNEL_SEVERE_FAULT, "RIP: %p, RSP: %p, RFLAGS: %p, CR3: %p\n", regs->iret_rip, regs->iret_rsp,
+         regs->iret_rflags, regs->cr3);
 }
 
 void gpf_handler(registers_t *regs) {
-    printf("%s\n", "gpf error");
-    printf("received interrupt: %d\n", regs->int_no);
-    printf("Error Code: %p\n", regs->err_code);
-    printf("CS: %p, RIP : %p\n", regs->iret_cs, regs->iret_rip);
+    kout(KERNEL_SEVERE_FAULT, "%s\n", "gpf error");
+    kout(KERNEL_SEVERE_FAULT, "received interrupt: %d\n", regs->int_no);
+    kout(KERNEL_SEVERE_FAULT, "Error Code: %p\n", regs->err_code);
+    kout(KERNEL_SEVERE_FAULT, "CS: %p, RIP : %p\n", regs->iret_cs, regs->iret_rip);
 
     if ((regs->iret_cs & CS_MASK) == KERNEL_CS) {
-        printf("Kernel mode GPF occurred at RIP: %p\n", regs->iret_rip);
+        kout(KERNEL_SEVERE_FAULT, "Kernel mode GPF occurred at RIP: %p\n", regs->iret_rip);
 
         uint64_t *rsp = (uint64_t *)regs->iret_rsp;
-        printf("Stack (rsp = %p) Contents(First 26) :\n", (uint64_t)rsp);
+        kout(KERNEL_SEVERE_FAULT, "Stack (rsp = %p) Contents(First 26) :\n", (uint64_t)rsp);
 
         for (int i = 0; i < 26; i++) {
-            printf("  [%p] = %p\n", (uint64_t)(rsp + i), rsp[i]);
+            kout(KERNEL_SEVERE_FAULT, "  [%p] = %p\n", (uint64_t)(rsp + i), rsp[i]);
         }
     } else if ((regs->iret_cs & CS_MASK) == USER_CS) {
         pml4_t *pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
 
-        printf("User mode GPF occurred at RIP: %p\n", regs->iret_rip);
+        kout(KERNEL_SEVERE_FAULT, "User mode GPF occurred at RIP: %p\n", regs->iret_rip);
 
         uint64_t *rsp = (uint64_t *)regs->iret_rsp;
-        printf("Stack (rsp = %p) Contents(First 26) :\n", (uint64_t)rsp);
+        kout(KERNEL_SEVERE_FAULT, "Stack (rsp = %p) Contents(First 26) :\n", (uint64_t)rsp);
 
         for (int i = 0; i < 26; i++) {
             uint64_t stack_phys_addr = get_physaddr((uint64_t)(rsp + i), pml4);
             if (stack_phys_addr == 0) {
-                printf("  [%p] = Invalid Address\n", (uint64_t)(rsp + i));
+                kout(KERNEL_SEVERE_FAULT, "  [%p] = Invalid Address\n", (uint64_t)(rsp + i));
             } else {
-                printf("  [%p] = %p\n", (uint64_t)(rsp + i), *(uint64_t *)phys_to_virt(stack_phys_addr));
+                kout(KERNEL_SEVERE_FAULT, "  [%p] = %p\n", (uint64_t)(rsp + i),
+                     *(uint64_t *)phys_to_virt(stack_phys_addr));
             }
         }
     } else {
-        printf("GPF occurred in unknown segment: CS: %p\n", regs->iret_cs);
+        kout(KERNEL_SEVERE_FAULT, "GPF occurred in unknown segment: CS: %p\n", regs->iret_cs);
     }
 
     // debug_error_code(regs->err_code);
-    // printf("System Halted!\n");
+    // kout(KERNEL_SEVERE_FAULT, "System Halted!\n");
     // hcf();
 }
 
-#define IA32_MCG_CTL     0x0177
-#define IA32_MCG_CAP     0x0179
-#define IA32_MCG_STATUS  0x017A
+#define IA32_MCG_CTL    0x0177
+#define IA32_MCG_CAP    0x0179
+#define IA32_MCG_STATUS 0x017A
 
 // base addresses for per-bank registers
 #define IA32_MC_CTL(i)    (0x0400 + ((i) * 4))
@@ -128,17 +111,16 @@ void gpf_handler(registers_t *regs) {
 #define IA32_MC_ADDR(i)   (0x0402 + ((i) * 4))
 #define IA32_MC_MISC(i)   (0x0403 + ((i) * 4))
 
-void dump_machine_check_msrs()
-{
+void dump_machine_check_msrs() {
     uint64_t val;
 
-    val = read_msr(IA32_MCG_CAP);
+    val            = read_msr(IA32_MCG_CAP);
     unsigned banks = (unsigned)(val & 0xff);
 
-    printf("=== Machine Check Global ===\n");
-    printf("IA32_MCG_CTL    (0x177): %p\n", read_msr(IA32_MCG_CTL));
-    printf("IA32_MCG_CAP    (0x179): %p  (banks=%d)\n", val, banks);
-    printf("IA32_MCG_STATUS (0x17A): %p\n", read_msr(IA32_MCG_STATUS));
+    kout(KERNEL_SEVERE_FAULT, "=== Machine Check Global ===\n");
+    kout(KERNEL_SEVERE_FAULT, "IA32_MCG_CTL    (0x177): %p\n", read_msr(IA32_MCG_CTL));
+    kout(KERNEL_SEVERE_FAULT, "IA32_MCG_CAP    (0x179): %p  (banks=%d)\n", val, banks);
+    kout(KERNEL_SEVERE_FAULT, "IA32_MCG_STATUS (0x17A): %p\n", read_msr(IA32_MCG_STATUS));
 
     for (unsigned i = 0; i < banks; i++) {
         uint64_t status = read_msr(IA32_MC_STATUS(i));
@@ -146,15 +128,15 @@ void dump_machine_check_msrs()
             // VAL bit clear: no valid error logged
             continue;
         }
-        printf("--- Bank %u ---\n", i);
-        printf("  CTL   (0x%03x): %p\n", IA32_MC_CTL(i), read_msr(IA32_MC_CTL(i)));
-        printf("  STATUS(0x%03x): %p\n", IA32_MC_STATUS(i), status);
+        kout(KERNEL_SEVERE_FAULT, "--- Bank %u ---\n", i);
+        kout(KERNEL_SEVERE_FAULT, "  CTL   (0x%03x): %p\n", IA32_MC_CTL(i), read_msr(IA32_MC_CTL(i)));
+        kout(KERNEL_SEVERE_FAULT, "  STATUS(0x%03x): %p\n", IA32_MC_STATUS(i), status);
 
         if (status & (1ULL << 58)) { // ADDRV bit
-            printf("  ADDR (0x%03x): %p\n", IA32_MC_ADDR(i), read_msr(IA32_MC_ADDR(i)));
+            kout(KERNEL_SEVERE_FAULT, "  ADDR (0x%03x): %p\n", IA32_MC_ADDR(i), read_msr(IA32_MC_ADDR(i)));
         }
         if (status & (1ULL << 59)) { // MISCV bit
-            printf("  MISC (0x%03x): %p\n", IA32_MC_MISC(i), read_msr(IA32_MC_MISC(i)));
+            kout(KERNEL_SEVERE_FAULT, "  MISC (0x%03x): %p\n", IA32_MC_MISC(i), read_msr(IA32_MC_MISC(i)));
         }
     }
 }
@@ -164,47 +146,45 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
 
     uint64_t cr3 = get_cr3_addr();
 
+    /* Using KERNEL_SEVERE_FAULT instead of PANIC because we need to use kout multiple times before the panic */
+    kernel_msg_level_t msg_level = (regs->iret_cs == KERNEL_CS) ? KERNEL_SEVERE_FAULT : USER_FAULT;
+
     if (cr3 != kernel_pml4_phys) {
         set_cr3_addr(kernel_pml4_phys);
 
         uint64_t regs_phys = get_physaddr((uint64_t)regs, (pml4_t *)phys_to_virt(cr3));
-        regs = (registers_t *)phys_to_virt(regs_phys);
+        regs               = (registers_t *)phys_to_virt(regs_phys);
     }
 
     release_console();
 
     if (regs->int_no == 14) {
-        printf("\nPAGE FAULT\n");
+        kout(msg_level, "\nPAGE FAULT\n");
         page_fault_handler(regs);
     } else if (regs->int_no == 13) {
-        printf("\nGPF ERROR\n");
+        kout(msg_level, "\nGPF ERROR\n");
         gpf_handler(regs);
     } else if (regs->int_no < 32) {
-        printf("\nCPU EXCEPTION\n");
-        printf("RSP: %p\n", regs->iret_rsp);
-        printf("RIP: %p\n", regs->iret_rip);
-        printf("Error Code: %p\n", regs->err_code);
+        kout(msg_level, "\nCPU EXCEPTION\n");
+        kout(msg_level, "RSP: %p\n", regs->iret_rsp);
+        kout(msg_level, "RIP: %p\n", regs->iret_rip);
+        kout(msg_level, "Error Code: %p\n", regs->err_code);
 
         dump_machine_check_msrs();
     } else {
-        printf("\nEXCEPTION %p\n", regs->int_no);
+        kout(msg_level, "\nEXCEPTION %p\n", regs->int_no);
     }
 
     if (regs->iret_cs == KERNEL_CS) {
-        printf("Kernel panic! System Halted!\n");
-        debug_serial = false;
-        printf("Kernel panic! System Halted!\n");
-        debug_serial = true;
-        // TODO: halt all threads
-        hcf();
+        panic("Unrecoverable kernel exception! System halted!\n");
     } else {
         thread_t *thread = cores_threads[get_curr_core()];
         if (thread) {
             pid_t pid = thread->parent->pid;
             pid_t tid = thread->tid;
 
-            printf("Faulting process: PID %p, TID %p\n", pid, tid);
-            printf("Killing offending process...\n");
+            kout(msg_level, "Faulting process: PID %p, TID %p\n", pid, tid);
+            kout(msg_level, "Killing offending process...\n");
 
             process_exit(thread->parent);
 
@@ -216,13 +196,13 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
 void idt_set_descriptor(uint8_t vector, void *isr, uint8_t flags) {
     idt_entry_t *descriptor = &idt[vector];
 
-    descriptor->isr_low = (uint64_t)isr & 0xFFFF;
-    descriptor->kernel_cs = KERNEL_CS;
-    descriptor->ist = 0;
+    descriptor->isr_low    = (uint64_t)isr & 0xFFFF;
+    descriptor->kernel_cs  = KERNEL_CS;
+    descriptor->ist        = 0;
     descriptor->attributes = flags;
-    descriptor->isr_mid = ((uint64_t)isr >> 16) & 0xFFFF;
-    descriptor->isr_high = ((uint64_t)isr >> 32) & 0xFFFFFFFF;
-    descriptor->reserved = 0;
+    descriptor->isr_mid    = ((uint64_t)isr >> 16) & 0xFFFF;
+    descriptor->isr_high   = ((uint64_t)isr >> 32) & 0xFFFFFFFF;
+    descriptor->reserved   = 0;
 }
 
 static bool vectors[IDT_MAX_DESCRIPTORS];
@@ -233,13 +213,13 @@ void idt_load() {
 }
 
 void idt_init() {
-    idtr.base = (uintptr_t)&idt[0];
+    idtr.base  = (uintptr_t)&idt[0];
     idtr.limit = (uint16_t)sizeof(idt_entry_t) * IDT_MAX_DESCRIPTORS - 1;
 
     for (uint8_t vector = 0; vector < IDT_MAX_DESCRIPTORS; vector++) {
         idt_set_descriptor(vector, isr_stub_table[vector], 0x8E);
         vectors[vector] = true;
-        // printf("Registering interrupt %d.\n", vector);
+        // kout(KERNEL_INFO, "Registering interrupt %d.\n", vector);
     }
 
     // syscall should be callable from all rings, unlike other interrupts
@@ -247,5 +227,5 @@ void idt_init() {
 
     idt_load();
 
-    printf("Loaded IDT tables.\n");
+    kout(KERNEL_INFO, "Loaded IDT tables.\n");
 }
