@@ -1,8 +1,8 @@
-#include <stdint.h>
-
 #include "lib/string.h"
 
 #include "kernel.h"
+
+#include <stdint.h>
 
 // Placeholder until I make the real thing; https://stackoverflow.com/questions/32560167/strncmp-implementation
 int strncmp(const char *s1, const char *s2, size_t n) {
@@ -32,11 +32,16 @@ size_t strlen(const char *s) {
 char *strncpy(char *dest, const char *src, size_t n) {
     if (n == 0) return dest;
 
-    if (strlen(src) >= n) {
-        memcpy(dest, src, n - 1);
-        dest[n - 1] = 0;
-    } else {
+    size_t len = strlen(src);
+
+    if (len >= n) {
         memcpy(dest, src, n);
+    } else {
+        memcpy(dest, src, len);
+        while (len < n) {
+            dest[len] = 0;
+            len++;
+        }
     }
 
     return dest;

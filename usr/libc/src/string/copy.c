@@ -41,11 +41,16 @@ char *strcpy(char *dest, const char *src) {
 char *strncpy(char *dest, const char *src, size_t n) {
     if (n == 0) return dest;
 
-    if (strlen(src) >= n) {
-        memcpy(dest, src, n - 1);
-        dest[n - 1] = 0;
-    } else {
+    size_t len = strlen(src);
+
+    if (len >= n) {
         memcpy(dest, src, n);
+    } else {
+        memcpy(dest, src, len);
+        while (len < n) {
+            dest[len] = 0;
+            len++;
+        }
     }
 
     return dest;
