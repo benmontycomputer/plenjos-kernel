@@ -243,6 +243,10 @@ int parse_dynamic_section(struct elf_object *obj) {
         case DT_NULL: {
             goto done_parsing;
         }
+        case DT_NEEDED: {
+            // Handled later
+            break;
+        }
         case DT_REL: {
             syscall_print("parse_dynamic_section: DT_REL not supported, only DT_RELA\n");
             return -1;

@@ -66,6 +66,8 @@ void apic_calibrate_timer() {
 
     pit_sleep(1000);
 
+    write_reg(APIC_LVT_TIMER, 0x10000);
+
     // Figure out how many APIC timer ticks have passed
     uint32_t apic_ticks = ReadRegister(APIC_TIMER_CURRCNT);
     uint64_t apic_tmr_freq = (uint64_t)(0xFFFFFFFF - apic_ticks);

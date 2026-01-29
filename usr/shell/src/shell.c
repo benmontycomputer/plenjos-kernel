@@ -157,6 +157,8 @@ static bool process_cmd(const char *cmd) {
         cd_cmd(toks_count, toks);
     } else if (!strcmp(toks[0], "pwd")) {
         pwd_cmd(toks_count, toks);
+    } else if (!strcmp(toks[0], "lspci")) {
+        lspci_cmd(toks_count, toks);
     } else if (toks[0][0] != 0) {
         printf("Unknown command: %s\n", toks[0]);
     }
