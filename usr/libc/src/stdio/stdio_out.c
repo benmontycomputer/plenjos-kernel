@@ -1,9 +1,9 @@
+#include "stdio.h"
+#include "uconsole.h"
+
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
-
-#include "uconsole.h"
-#include "stdio.h"
 
 // #include "memory/mm.h"
 
@@ -72,8 +72,8 @@ void printf_ch(char ch) {
     if (cursor) kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0x000000, 0xFFFFFF);
 }
 
-void printf_str(const char *str) {
-    while (*str) {
+void printf_str(const char *str, uint16_t max_chars) {
+    while (*str && max_chars--) {
         printf_ch(*str);
 
         str++;
@@ -89,7 +89,7 @@ void printf_binary(uint64_t binary) {
 
     while (binary || !i) {
         vals[i++] = hex_indices[binary & 0b1];
-        binary = binary >> 1;
+        binary    = binary >> 1;
     }
 
     while (i) {
@@ -97,7 +97,8 @@ void printf_binary(uint64_t binary) {
     }
 }
 
-void printf_int(int num) {
+// precision is minimum number of digits to print (pads with leading zeros)
+void printf_int(int num, uint16_t min_digits) {
     uint32_t adj = 0;
 
     char vals[((8 * sizeof(int)) + 9) / 10] = { 0 };
@@ -112,8 +113,14 @@ void printf_int(int num) {
     int i = 0;
 
     while (adj || !i) {
-        vals[i++] = hex_indices[adj % 10];
-        adj /= 10;
+        vals[i++]  = hex_indices[adj % 10];
+        adj       /= 10;
+    }
+
+    if (min_digits > i) {
+        while (min_digits > i) {
+            vals[i++] = '0';
+        }
     }
 
     while (i) {
@@ -121,24 +128,104 @@ void printf_int(int num) {
     }
 }
 
-void printf_hex(uint32_t hex) {
+void printf_uint(uint32_t num) {
+    uint32_t adj = num;
+
+    char vals[((8 * sizeof(uint32_t)) + 9) / 10] = { 0 };
+
+    int i = 0;
+
+    while (adj || !i) {
+        vals[i++]  = hex_indices[adj % 10];
+        adj       /= 10;
+    }
+
+    while (i) {
+        printf_ch(vals[--i]);
+    }
+}
+
+void printf_long(int64_t num, uint16_t min_digits) {
+    uint64_t adj = 0;
+
+    char vals[((8 * sizeof(int64_t)) + 9) / 10] = { 0 };
+
+    if (num < 0) {
+        adj = -num;
+        printf_ch('-');
+    } else {
+        adj = num;
+    }
+
+    int i = 0;
+
+    while (adj || !i) {
+        vals[i++]  = hex_indices[adj % 10];
+        adj       /= 10;
+    }
+
+    if (min_digits > i) {
+        while (min_digits > i) {
+            vals[i++] = '0';
+        }
+    }
+
+    while (i) {
+        printf_ch(vals[--i]);
+    }
+}
+
+void printf_ulong(uint64_t num) {
+    uint64_t adj = num;
+
+    char vals[((8 * sizeof(uint64_t)) + 9) / 10] = { 0 };
+
+    int i = 0;
+
+    while (adj || !i) {
+        vals[i++]  = hex_indices[adj % 10];
+        adj       /= 10;
+    }
+
+    while (i) {
+        printf_ch(vals[--i]);
+    }
+}
+
+void printf_hex(uint32_t hex, uint16_t pad_to) {
     uint64_t adj = (uint64_t)hex;
 
-    printf_str("0x");
+    printf_str("0x", 2);
 
+    bool started_printing = false;
     for (int i = 0; i < 8; i++) {
+        if (pad_to && (8 - i) > pad_to && ((adj & 0xf0000000) == 0) && !started_printing) {
+            adj = (adj << 4);
+            continue;
+        }
+
+        started_printing = true;
+
         printf_ch(hex_indices[(adj & 0xf0000000) >> 28]);
 
         adj = ((adj & 0x0fffffff) << 4);
     }
 }
 
-void printf_hex_long(uint64_t hex) {
+void printf_hex_long(uint64_t hex, uint16_t pad_to) {
     uint64_t adj = hex;
 
-    printf_str("0x");
+    printf_str("0x", 2);
 
+    bool started_printing = false;
     for (int i = 0; i < 16; i++) {
+        if (pad_to && (16 - i) > pad_to && ((adj & 0xf000000000000000) == 0) && !started_printing) {
+            adj = (adj << 4);
+            continue;
+        }
+
+        started_printing = true;
+
         printf_ch(hex_indices[(adj & 0xf000000000000000) >> 60]);
 
         adj = ((adj & 0x0fffffffffffffff) << 4);
@@ -159,11 +246,15 @@ int printf(const char *format, ...) {
 
             switch (format[i]) {
             case 'd': {
-                printf_int(va_arg(list, int));
+                printf_int(va_arg(list, int), 0);
                 break;
             }
             case 'i': {
-                printf_int(va_arg(list, int));
+                printf_int(va_arg(list, int), 0);
+                break;
+            }
+            case 'u': {
+                printf_uint((uint32_t)va_arg(list, uint32_t));
                 break;
             }
             case 'b': {
@@ -171,11 +262,12 @@ int printf(const char *format, ...) {
                 break;
             }
             case 'B': {
-                printf_str("0b");
+                printf_str("0b", 2);
                 printf_binary(va_arg(list, uint64_t));
                 break;
             }
             case 'f': {
+                // printf_float(va_arg(list, double), 6);
                 break;
             }
             case 'c': {
@@ -183,26 +275,64 @@ int printf(const char *format, ...) {
                 break;
             }
             case 's': {
-                printf_str(va_arg(list, const char *));
+                printf_str(va_arg(list, const char *), -1);
                 break;
             }
             case 'x': {
-                printf_hex((uint32_t)va_arg(list, uint32_t));
+                printf_hex((uint32_t)va_arg(list, uint32_t), 0);
                 break;
             }
             case 'p': {
-                printf_hex_long((uint64_t)va_arg(list, void *));
+                printf_hex_long((uint64_t)va_arg(list, void *), 0);
                 break;
             }
             case 'l': {
                 i++;
                 switch (format[i]) {
                 case 'd':
+                    printf_long(va_arg(list, int64_t), 0);
                     break;
                 case 'u':
+                    printf_ulong(va_arg(list, uint64_t));
+                    break;
+                default:
+                    va_arg(list, void *); // consume arg
                     break;
                 }
+                break;
             }
+            case '.':
+            case '0': {
+                uint16_t precision = 0;
+                // Precision specifier
+                i++;
+                while (format[i] >= '0' && format[i] <= '9') {
+                    precision = (precision * 10) + (format[i] - '0');
+                    i++;
+                }
+
+                switch (format[i]) {
+                case 's':
+                    printf_str(va_arg(list, const char *), precision);
+                    break;
+                case 'd':
+                    printf_int(va_arg(list, int), precision);
+                    break;
+                case 'f':
+                    // printf_float(va_arg(list, double), (uint8_t)precision);
+                    break;
+                case 'x':
+                    printf_hex((uint32_t)va_arg(list, uint32_t), precision);
+                    break;
+                default:
+                    va_arg(list, void *); // consume arg
+                    break;
+                }
+                break;
+            }
+            default:
+                printf_ch(format[i]);
+                break;
             }
         } else {
             printf_ch(format[i]);
@@ -245,7 +375,7 @@ int setcursor(bool curs) {
 int clear() {
     request_console();
 
-    uint8_t *p = (uint8_t *)fb_info.fb_ptr;
+    uint8_t *p     = (uint8_t *)fb_info.fb_ptr;
     const size_t n = fb_height * fb_scanline;
 
     for (size_t i = 0; i < n; i++) {
@@ -272,7 +402,7 @@ int putchar(int charc) {
 int puts(const char *str) {
     request_console();
 
-    printf_str(str);
+    printf_str(str, -1);
     printf_ch('\n');
 
     release_console();
