@@ -1,33 +1,22 @@
-#include <stdbool.h>
-#include <stdint.h>
-
-#include <cpuid.h>
-
-#include "lib/stdio.h"
-
 #include "arch/x86_64/common.h"
 
+#include "arch/x86_64/acpi/acpi.h"
+#include "arch/x86_64/apic/apic.h"
+#include "arch/x86_64/apic/ioapic.h"
+#include "arch/x86_64/cpuid/cpuid.h"
 #include "arch/x86_64/gdt/gdt.h"
 #include "arch/x86_64/idt.h"
-
-#include "arch/x86_64/acpi/acpi.h"
-
-#include "arch/x86_64/apic/apic.h"
-#include "arch/x86_64/pic/pic.h"
-
 #include "arch/x86_64/irq.h"
-
-#include "arch/x86_64/cpuid/cpuid.h"
-
+#include "arch/x86_64/pic/pic.h"
+#include "cpu/cpu.h"
+#include "lib/stdio.h"
 #include "memory/detect.h"
-
 #include "timer/hpet.h"
 #include "timer/pit.h"
 
-#include "cpu/cpu.h"
-
-#include "arch/x86_64/apic/apic.h"
-#include "arch/x86_64/apic/ioapic.h"
+#include <cpuid.h>
+#include <stdbool.h>
+#include <stdint.h>
 
 void init_x86_64() {
     asm volatile("cli");
@@ -46,7 +35,8 @@ void init_x86_64() {
     are_interrupts_enabled() ? kout(KERNEL_INFO, "Interrupts confirmed enabled.\n")
                              : kout(KERNEL_WARN, "Couldn't confirm interrupts enabled.\n");
 
-    is_apic_enabled() ? kout(KERNEL_INFO, "APIC confirmed enabled.\n") : kout(KERNEL_WARN, "Couldn't confirm APIC enabled.\n");
+    is_apic_enabled() ? kout(KERNEL_INFO, "APIC confirmed enabled.\n")
+                      : kout(KERNEL_WARN, "Couldn't confirm APIC enabled.\n");
 
     // hpet_init();
     pit_init();

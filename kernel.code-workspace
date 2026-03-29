@@ -91,6 +91,7 @@
 			"fb.h": "c",
 			"dirent.h": "c",
 			"stat.h": "c"
-		}
+		},
+		"C_Cpp.default.compilerPath": "x86_64-elf-gcc"
 	}
 }

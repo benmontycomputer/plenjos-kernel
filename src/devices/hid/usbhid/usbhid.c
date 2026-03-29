@@ -62,7 +62,7 @@ int usbhid_bind_driver(usb_interface_t *iface) {
     struct usbhid_interface_driver_data *driver_data = (struct usbhid_interface_driver_data *)iface->iface_driver_data;
 
     switch (iface->i_protocol) {
-    case 0x01: {
+    case 0x01: { 
         driver_data->type = USBKBD;
         kout(KERNEL_INFO, " - device type: keyboard\n");
         break;

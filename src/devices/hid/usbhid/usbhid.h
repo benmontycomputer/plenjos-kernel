@@ -19,6 +19,9 @@ struct usbhid_interface_driver_data {
     usbhid_device_type_t type;
     bool supports_boot;
 
+    uint16_t int_endpoint_no;
+    uint16_t int_endpoint_interval;
+
     uint8_t last_boot_status[8];
 };
 
