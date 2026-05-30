@@ -217,12 +217,13 @@ void clear_lines() {
     }
 }
 
-// Dummy input function (replace with actual input handling)
+// Dummy input function (TODO: replace with actual input handling)
 int get_input() {
     // Return 0: none, 1: left, 2: right, 3: rotate, 4: down
     if (kbd_buffer_empty()) return 0;
     kbd_event_t event;
     kbd_buffer_pop(&event);
+    if (event.state != KEY_PRESSED) return 0;
     if (event.code == KEY_A) return 1;
     if (event.code == KEY_D) return 2;
     if (event.code == KEY_W) return 3;

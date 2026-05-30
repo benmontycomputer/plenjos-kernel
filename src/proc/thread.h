@@ -29,6 +29,9 @@ struct thread {
     // registers for that). This is not a valid memory address; this is directly on top of the stack, not inside its
     // allocation.
     void *stack_top;
+    
+    rbnode_t scheduler_node;
+    uint64_t scheduler_prio;
 } __attribute__((packed));
 
 thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), void *arg);

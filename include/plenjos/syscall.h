@@ -47,6 +47,8 @@ typedef enum {
     SYSCALL_PRINT_PTR,
     SYSCALL_KB_READ,
     SYSCALL_SLEEP,
+
+    SYSCALL_SPAWN,
 } syscalls_call;
 
 typedef uint8_t syscall_open_flags_t;

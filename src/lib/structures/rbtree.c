@@ -5,14 +5,14 @@ void rbtree_init(rbtree_t *tree, rbnode_t *NIL, int (*cmp)(const void *a, const 
     memset(NIL, 0, sizeof(rbnode_t));
 
     NIL->color      = BLACK;
-    NIL->data  = NULL;
-    NIL->left  = NIL;
-    NIL->right = NIL;
+    NIL->bstn.data  = NULL;
+    NIL->bstn.left  = (bstnode_t *)NIL;
+    NIL->bstn.right = (bstnode_t *)NIL;
     tree->NIL       = NIL;
 
-    tree->cmp  = cmp;
-    tree->root = NIL;
-    tree->size = 0;
+    tree->bst.cmp  = cmp;
+    tree->bst.root = (bstnode_t *)NIL;
+    tree->bst.size = 0;
 }
 
 void rbtree_destroy(rbtree_t *tree, void (*free_data)(void *data), void (*free_node)(rbnode_t *node)) {
@@ -20,5 +20,5 @@ void rbtree_destroy(rbtree_t *tree, void (*free_data)(void *data), void (*free_n
 }
 
 int rbtree_insert(rbtree_t *tree, rbnode_t *data) {
-    bstree_insert_node
+    
 }

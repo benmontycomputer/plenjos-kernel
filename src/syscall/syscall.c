@@ -256,6 +256,10 @@ void syscall_routine(registers_t *regs, void *data) {
         asm volatile("cli");
         break;
     }
+    case SYSCALL_SPAWN: {
+        
+        break;
+    }
     default:
         break;
     }

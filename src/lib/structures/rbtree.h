@@ -9,12 +9,12 @@ typedef enum rbcolor {
 } rbcolor_t;
 
 typedef struct rbnode {
-    struct bstnode;
+    bstnode_t bstn;
     rbcolor_t color;
 } rbnode_t;
 
 typedef struct rbtree {
-    struct bstree;
+    bstree_t bst;
     rbnode_t *NIL;
 } rbtree_t;
 

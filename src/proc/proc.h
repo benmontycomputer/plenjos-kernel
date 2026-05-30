@@ -1,6 +1,7 @@
 #pragma once
 
 #include "kernel.h"
+#include "lib/structures/rbtree.h"
 #include "memory/mm_common.h"
 #include "vfs/vfs.h"
 

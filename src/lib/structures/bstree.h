@@ -11,12 +11,14 @@
  * This tree replaces with the in-order successor by default when removing a node.
  */
 
-typedef struct bstnode {
-    struct bstnode *left;
-    struct bstnode *right;
+typedef struct bstnode bstnode_t;
+
+struct bstnode {
+    bstnode_t *left;
+    bstnode_t *right;
 
     void *data;
-} bstnode_t;
+};
 
 typedef struct bstree {
     bstnode_t *root;
