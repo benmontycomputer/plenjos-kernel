@@ -141,6 +141,8 @@ void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
             if (fat32_setup(fs, drive, lba_act) == 0) {
                 kout(KERNEL_INFO, "    FAT32 filesystem detected on partition %d: Total clusters: %u\n", i + 1,
                      fs->total_clusters);
+                // Parse and list root directory for basic validation
+                fat32_parse_root(fs);
             } else {
                 kout(KERNEL_SEVERE_EXTERNAL_FAULT, "    Failed to setup FAT32 filesystem on partition %d\n", i + 1);
             }
@@ -180,7 +182,9 @@ void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
                 struct filesystem_fat32 *fs = kmalloc_heap(sizeof(struct filesystem_fat32));
                 memcpy(&fs->boot_sector_raw, (struct fat_boot_sector *)buf, sizeof(struct fat_boot_sector));
                 fs->read_status |= 0x01; // Mark boot sector as read
-                fat32_setup(fs, drive, lba_act);
+                if (fat32_setup(fs, drive, lba_act) == 0) {
+                    fat32_parse_root(fs);
+                }
                 break;
             }
             default: {

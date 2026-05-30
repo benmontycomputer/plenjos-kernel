@@ -6,6 +6,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define FAT_ATTR_LONG_NAME 0x0F
+#define FAT_ATTR_DIRECTORY 0x10
+
 struct fat32_boot_sector {
     struct fat_boot_sector_generic generic;
 
@@ -76,6 +79,7 @@ struct filesystem_fat32 {
         struct fat32_boot_sector boot_sector;
         struct fat_boot_sector boot_sector_raw;
     };
+    uint32_t factor; // (size of drive sector) / (size of FAT sector)
     struct fat32_fsinfo fsinfo;
     uint32_t fat_start_lba;
     uint32_t cluster_heap_start_lba;
@@ -85,3 +89,8 @@ struct filesystem_fat32 {
 };
 
 int fat32_setup(struct filesystem_fat32 *fs, DRIVE_t *drive, uint32_t partition_start_lba);
+
+int fat32_drive_read(struct filesystem_fat32 *fs, uint32_t fat_lba, uint32_t fat_sectors, void *buffer);
+int fat32_read_entry(struct filesystem_fat32 *fs, uint32_t cluster, void *buffer);
+int fat32_next_cluster(struct filesystem_fat32 *fs, uint32_t cluster, uint32_t *next);
+int fat32_parse_root(struct filesystem_fat32 *fs);
