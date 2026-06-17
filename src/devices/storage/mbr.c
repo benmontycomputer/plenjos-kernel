@@ -138,6 +138,8 @@ void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
         case MBR_PARTITION_TYPE_FAT32:
         case MBR_PARTITION_TYPE_FAT32_LBA: {
             struct filesystem_fat32 *fs = kmalloc_heap(sizeof(struct filesystem_fat32));
+            memcpy(&fs->boot_sector_raw, (struct fat_boot_sector *)buf, sizeof(struct fat_boot_sector));
+            kout(KERNEL_INFO, "    FAT32 boot sector read successfully on partition %d\n", i + 1);
             if (fat32_setup(fs, drive, lba_act) == 0) {
                 kout(KERNEL_INFO, "    FAT32 filesystem detected on partition %d: Total clusters: %u\n", i + 1,
                      fs->total_clusters);

@@ -3,6 +3,9 @@
 #include "devices/io/ports.h"
 #include "devices/storage/ide.h"
 
+#include "lib/stdio.h"
+#include "timer/pit.h"
+
 int ata_wait_bsy_read_status(uint16_t io) {
     for (int i = 0; i < 100000; i++) {
         uint8_t st = inb(io + ATA_REG_STATUS);

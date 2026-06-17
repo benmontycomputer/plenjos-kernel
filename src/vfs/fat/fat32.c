@@ -113,8 +113,8 @@ int fat32_setup(struct filesystem_fat32 *fs, DRIVE_t *drive, uint32_t partition_
 }
 
 // Read FAT or cluster data, translating from FAT sector size to drive sector size
-int fat32_drive_read(struct filesystem_fat32 *fs, uint32_t fat_lba, uint32_t fat_sectors, void *buffer) {
-    if (!fs || !buffer || fat_sectors == 0) {
+int fat32_drive_read(struct filesystem_fat32 *fs, uint32_t fat_lba, uint32_t fat_sectors, void *buffer, uint32_t bytes_to_read) {
+    if (!fs || !buffer || fat_sectors == 0 || bytes_to_read == 0) {
         return -1;
     }
 
@@ -123,7 +123,7 @@ int fat32_drive_read(struct filesystem_fat32 *fs, uint32_t fat_lba, uint32_t fat
 
     if (fs->factor == 1) {
         // 1:1 mapping; direct read
-        return fs->drive->read_sectors(fs->drive, fs->partition_start_lba + fat_lba, fat_sectors, buffer);
+        return fs->drive->read_sectors(fs->drive, fat_lba, fat_sectors, buffer);
     }
 
     uint8_t *tmp_buffer = kmalloc_heap(fs->drive->logical_sector_size);
@@ -135,8 +135,9 @@ int fat32_drive_read(struct filesystem_fat32 *fs, uint32_t fat_lba, uint32_t fat
     uint32_t remaining_fat_sectors = fat_sectors;
     uint32_t current_fat_lba       = fat_lba;
     uint8_t *out_ptr               = (uint8_t *)buffer;
+    uint32_t bytes_read            = 0;
 
-    while (remaining_fat_sectors > 0) {
+    while (bytes_read < bytes_to_read && remaining_fat_sectors > 0) {
         uint32_t drive_lba = fs->partition_start_lba + current_fat_lba / fs->factor;
         uint32_t offset    = current_fat_lba % fs->factor;
 
@@ -145,6 +146,12 @@ int fat32_drive_read(struct filesystem_fat32 *fs, uint32_t fat_lba, uint32_t fat
         if (sectors_this_iter > remaining_fat_sectors) {
             sectors_this_iter = remaining_fat_sectors;
         }
+
+        // Calculate bytes to read in this iteration
+        uint32_t bytes_this_iter = sectors_this_iter * fat_bytes_per_sector;
+        uint32_t bytes_to_read_this_iter = bytes_this_iter < (bytes_to_read - bytes_read)
+                                          ? bytes_this_iter
+                                          : (bytes_to_read - bytes_read);
 
         // Read one drive sector
         int ret = fs->drive->read_sectors(fs->drive, drive_lba, 1, tmp_buffer);
@@ -155,25 +162,26 @@ int fat32_drive_read(struct filesystem_fat32 *fs, uint32_t fat_lba, uint32_t fat
 
         // Copy relevant FAT sectors to output buffer
         memcpy(out_ptr, (uint8_t *)tmp_buffer + (offset * fat_bytes_per_sector),
-               sectors_this_iter * fat_bytes_per_sector);
+               bytes_to_read_this_iter);
 
-        out_ptr               += sectors_this_iter * fat_bytes_per_sector;
+        out_ptr               += bytes_to_read_this_iter;
+        bytes_read            += bytes_to_read_this_iter;
         remaining_fat_sectors -= sectors_this_iter;
         current_fat_lba       += sectors_this_iter;
     }
 
     kfree_heap(tmp_buffer);
-    return 0;
+    return (bytes_read == bytes_to_read) ? 0 : -1;
 }
 
 // Reads a cluster's worth of data into buffer
-int fat32_read_entry(struct filesystem_fat32 *fs, uint32_t cluster, void *buffer) {
-    if (!fs || cluster < 2) {
+int fat32_read_entry(struct filesystem_fat32 *fs, uint32_t cluster, void *buffer, uint32_t bytes_to_read) {
+    if (!fs || cluster < 2 || !buffer) {
         return -1; // EOC or invalid
     }
 
     uint32_t sector = fs->cluster_heap_start_lba + (cluster - 2) * fs->boot_sector.generic.sectors_per_cluster;
-    return fat32_drive_read(fs, sector, fs->boot_sector.generic.sectors_per_cluster, buffer);
+    return fat32_drive_read(fs, sector, fs->boot_sector.generic.sectors_per_cluster, buffer, bytes_to_read);
 }
 
 int fat32_next_cluster(struct filesystem_fat32 *fs, uint32_t cluster, uint32_t *next) {
@@ -191,7 +199,7 @@ int fat32_next_cluster(struct filesystem_fat32 *fs, uint32_t cluster, uint32_t *
     uint32_t fat_sector       = fs->fat_start_lba + (fat_offset / fs->boot_sector.generic.bytes_per_sector);
     uint32_t offset_in_sector = fat_offset % fs->boot_sector.generic.bytes_per_sector;
 
-    if (fat32_drive_read(fs, fat_sector, 1, sector_buf) < 0) {
+    if (fat32_drive_read(fs, fat_sector, 1, sector_buf, fs->boot_sector.generic.bytes_per_sector) < 0) {
         kfree_heap(sector_buf);
         return -1;
     }
@@ -225,7 +233,7 @@ int fat32_parse_root(struct filesystem_fat32 *fs) {
     printf("FAT32 Root Directory (start cluster %u):\n", cluster);
 
     while (cluster < 0x0FFFFFF8) {
-        if (fat32_read_entry(fs, cluster, cluster_buf) < 0) {
+        if (fat32_read_entry(fs, cluster, cluster_buf, bytes_per_cluster) < 0) {
             kfree_heap(cluster_buf);
             return -1;
         }

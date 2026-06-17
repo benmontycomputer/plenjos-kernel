@@ -190,7 +190,7 @@ uefi_run:
 		-m 4096 \
 		-smp cores=4,threads=1,sockets=1,maxcpus=4 \
 		-boot d \
-		-drive file=../image.iso,if=ide,media=cdrom \
+		-drive file=../limine_bootable.img,if=ide,format=raw \
 		-d guest_errors,cpu_reset,invalid_mem,unimp \
 		-vga std \
 		-serial stdio \

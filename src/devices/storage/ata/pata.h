@@ -1,7 +1,6 @@
 #pragma once
 
-#include "atapi.h"
-#include "pata.h"
+#include "ata.h"
 #include "devices/storage/drive.h"
 #include "kernel.h"
 
@@ -10,40 +9,7 @@
 
 extern struct ide_device;
 
-/**
- * ATA registers (offsets from command block base)
- */
-#define ATA_REG_DATA     0
-#define ATA_REG_ERROR    1
-#define ATA_REG_FEATURES 1
-#define ATA_REG_SECCOUNT 2
-#define ATA_REG_LBA0     3
-#define ATA_REG_LBA1     4
-#define ATA_REG_LBA2     5
-#define ATA_REG_HDDEVSEL 6
-#define ATA_REG_STATUS   7
-#define ATA_REG_COMMAND  7
-
-#define ATA_CMD_IDENTIFY        0xEC
-#define ATA_CMD_IDENTIFY_PACKET 0xA1
-#define ATA_CMD_READ_SECTORS    0x24
-
-#define ATA_CMD_PACKET 0xA0
-
-#define ATA_SR_BSY 0x80
-#define ATA_SR_DRQ 0x08
-#define ATA_SR_DF  0x20
-#define ATA_SR_ERR 0x01
-
-enum ata_device_type {
-    ATADEV_NONE   = 0,
-    ATADEV_PATA   = 1,
-    ATADEV_PATAPI = 2,
-    ATADEV_SATA   = 3,
-    ATADEV_SATAPI = 4,
-};
-
-struct ata_identify {
+struct pata_identify {
     // Word 0
     uint16_t general_config;
 
@@ -52,14 +18,29 @@ struct ata_identify {
     uint16_t heads;
     uint16_t sectors_per_track;
 
-    // Word 4–9: reserved
-    uint16_t reserved1[6];
+    // Word 4: number of heads
+    uint16_t num_heads;
+
+    // Word 5: number of sectors per track
+    uint16_t sectors_per_track2;
+
+    // Word 6: number of cylinders
+    uint16_t num_cylinders;
+
+    // Word 7: number of sectors per track
+    uint16_t sectors_per_track3;
+
+    // Word 8: number of heads
+    uint16_t num_heads2;
+
+    // Word 9: reserved
+    uint16_t reserved;
 
     // Words 10–19: serial number
     char serial[20]; // ASCII, right-padded with spaces
 
     // Words 20–22: reserved
-    uint16_t reserved2[3];
+    uint16_t reserved1[3];
 
     // Words 23–26: firmware revision
     char firmware[8]; // ASCII, right-padded
@@ -72,7 +53,7 @@ struct ata_identify {
     uint16_t capabilities;
 
     // Word 49: reserved or capabilities
-    uint16_t reserved3;
+    uint16_t reserved2;
 
     // Word 50–51: total user-addressable sectors (28-bit LBA)
     union {
@@ -84,7 +65,7 @@ struct ata_identify {
     };
 
     // Words 52–81: reserved
-    uint16_t reserved4[30];
+    uint16_t reserved3[30];
 
     // Words 82-83: major version, command set support
     uint16_t major_version;
@@ -111,13 +92,13 @@ struct ata_identify {
     };
 
     // Words 104-105: reserved
-    uint16_t reserved5[2];
+    uint16_t reserved4[2];
 
     // Word 106: physical/logical sector size info
     uint16_t sector_size_info;
 
     // Words 107–116: reserved
-    uint16_t reserved6[10];
+    uint16_t reserved5[10];
 
     // Words 117–118: words per logical sector
     union {
@@ -129,30 +110,9 @@ struct ata_identify {
     };
 
     // Remaining words are reserved
-    uint16_t reserved7[256 - 119];
+    uint16_t reserved6[256 - 119];
 } __attribute__((packed));
 
-struct ata_info {
-    // ATA specific info can go here
+struct pata_info {
+    // PATA specific info can go here
 };
-
-struct atapi_info {
-    // ATAPI specific info can go here
-};
-
-int ata_parse_identify(struct ide_device *dev);
-int atapi_parse_identify(struct ide_device *dev);
-
-void atapi_read_data(struct ide_device *dev, void *buffer, size_t bytes);
-void atapi_write_data(struct ide_device *dev, const void *buffer, size_t bytes);
-
-ssize_t atapi_read_sectors_func(DRIVE_t *drive, uint64_t lba, size_t sectors, void *buffer);
-ssize_t atapi_write_sectors_func(DRIVE_t *drive, uint64_t lba, size_t sectors, const void *buffer);
-
-ssize_t pata_read_sectors_func(DRIVE_t *drive, uint64_t lba, size_t sectors, void *buffer);
-ssize_t pata_write_sectors_func(DRIVE_t *drive, uint64_t lba, size_t sectors, const void *buffer);
-
-int atapi_ready_device(struct ide_device *dev);
-
-int ata_wait_bsy_read_status(uint16_t io);
-int ata_wait_drq(uint16_t io);

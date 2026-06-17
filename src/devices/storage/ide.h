@@ -83,6 +83,7 @@ struct ide_device {
         uint16_t identify_raw[256];
         struct ata_identify identify;
         struct atapi_identify atapi_identify;
+        struct pata_identify pata_identify;
     };
 
     struct DRIVE drive;

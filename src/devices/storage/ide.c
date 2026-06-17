@@ -236,6 +236,11 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive_no,
         dev->drive.write_sectors = NULL; // Not supported
         break;
     }
+    case ATADEV_PATA: {
+        dev->drive.read_sectors  = pata_read_sectors_func;
+        dev->drive.write_sectors = NULL; // TODO: implement
+        break;
+    }
     default: {
         kout(KERNEL_WARN, "WARN: Found unsupported ATA device type %d on IDE channel (io=%x, ctrl=%x, drive=%d)\n",
              type, channel->cmd_base, channel->ctrl_base, drive_no);
