@@ -285,7 +285,7 @@ int uhci_control_transfer(uhci_controller_t *controller, uint8_t device_address,
 
             td_next->buffer_pointer = get_physaddr32((uint64_t)data_buffer + off, kernel_pml4);
             if (td_next->buffer_pointer == 0) {
-                printf("ERROR: uhci_control_transfer: buffer pointer is NULL or above-4G.\n");
+                printf("ERROR: uhci_control_transfer: buffer pointer is NULL or above-4G (data_buffer=%p, off=%p).\n", (void *)data_buffer, (void *)off);
                 res = -EINVAL;
                 goto cleanup;
             }
