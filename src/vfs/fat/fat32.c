@@ -213,8 +213,6 @@ int fat32_next_cluster(struct filesystem_fat32 *fs, uint32_t cluster, uint32_t *
     *next = entry;
 
     return 0;
-
-    return 0;
 }
 
 int fat32_parse_root(struct filesystem_fat32 *fs) {

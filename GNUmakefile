@@ -185,12 +185,13 @@ clean:
 	$(MAKE) -C usr/libc clean
 	$(MAKE) -C usr/shell clean
 
+# 		-drive file=../limine_bootable.img,if=ide,format=raw
 uefi_run:
 	qemu-system-x86_64 \
 		-m 4096 \
 		-smp cores=4,threads=1,sockets=1,maxcpus=4 \
 		-boot d \
-		-drive file=../limine_bootable.img,if=ide,format=raw \
+		-drive file=../image.iso,if=ide,media=cdrom \
 		-d guest_errors,cpu_reset,invalid_mem,unimp \
 		-vga std \
 		-serial stdio \

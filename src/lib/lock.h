@@ -6,7 +6,7 @@
 
 typedef atomic_flag mutex;
 
-#define MUTEX_INIT ATOMIC_FLAG_INIT
+#define MUTEX_INIT (mutex)ATOMIC_FLAG_INIT
 
 void mutex_lock(mutex *m);
 void mutex_unlock(mutex *m);

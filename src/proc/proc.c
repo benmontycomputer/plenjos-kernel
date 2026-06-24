@@ -8,6 +8,7 @@
 #include "arch/x86_64/idt.h"
 #include "arch/x86_64/irq.h"
 #include "cpu/cpu.h"
+#include "lib/special_mem/fixed_size_allocator.h"
 #include "lib/stdio.h"
 #include "lib/string.h"
 #include "memory/kmalloc.h"
@@ -20,6 +21,8 @@
 volatile proc_t *pid_zero = NULL;
 
 volatile pid_t next_pid = 0;
+
+static fixed_size_allocator_t _proc_fsa = FSA_DEFAULT(sizeof(proc_t));
 
 proc_t *_get_proc_kernel() {
     gsbase_t *gsbase = (gsbase_t *)read_msr(IA32_GS_BASE);
@@ -41,7 +44,8 @@ proc_t *create_proc(const char *name, proc_t *parent) {
         }
     }
 
-    proc_t *proc = (proc_t *)phys_to_virt(find_next_free_frame());
+    // proc_t *proc = (proc_t *)phys_to_virt(find_next_free_frame());
+    proc_t *proc = (proc_t *)fsa_alloc(&_proc_fsa);
 
     if (!proc) {
         printf("Error allocating memory for proc_t.\n");

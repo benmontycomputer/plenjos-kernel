@@ -160,6 +160,14 @@ static heap_segment_info_t *kheap_segment_split(heap_segment_info_t *segment, si
     return new_segment;
 }
 
+static heap_segment_info_t *kheap_segment_merge(heap_segment_info_t *first, heap_segment_info_t *second) {
+    if (!first || !second || second <= first) {
+        kout(KERNEL_SEVERE_FAULT, "kheap_segment_merge(): invalid arguments (first = %p, second = %p)");
+    }
+
+    return NULL;
+}
+
 // TODO: is it safe to return this memory without clearing it?
 // TODO: use refing/unrefing frames for extremely large allocations?
 void *kmalloc_heap(uint64_t size) {
@@ -248,6 +256,7 @@ void kfree_heap(void *ptr) {
     }
 
     cur_seg->free = true;
+    // TODO: merge segments
 
     unlock_kheap();
 }

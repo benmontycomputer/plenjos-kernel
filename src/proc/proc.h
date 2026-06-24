@@ -49,6 +49,7 @@ struct proc {
 
     uid_t uid;
     char *cwd; // Page-aligned; 4096 bytes
+    // TODO: should cwd be a file descriptor instead?
     // TODO: implement groups
 };
 

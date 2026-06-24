@@ -50,12 +50,12 @@ static inline uint64_t decode_struct_frame_ptr(uint64_t ptr) {
     return (ptr * sizeof(phys_mem_free_frame_t)) + (uint64_t)phys_mem_frame_map;
 }
 
-// Converts the address of a phys_mem_free_frame_t to the physical address of its corresponding frame
+// Converts the virtual address of a phys_mem_free_frame_t to the physical address of its corresponding frame
 static inline uint64_t frame_addr_to_phys_addr(uint64_t frame_addr) {
     return encode_struct_frame_ptr(frame_addr) << 12;
 }
 
-// Converts the address of a phys_mem_free_frame_t to the physical address of its corresponding frame
+// Converts a physical address to the virtual address of its corresponding phys_mem_free_frame_t
 static inline uint64_t phys_addr_to_frame_addr(uint64_t phys) {
     return decode_struct_frame_ptr(phys >> 12);
 }

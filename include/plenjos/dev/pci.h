@@ -4,6 +4,7 @@
 
 typedef struct {
     uint8_t header_type;
+    uint16_t domain; // Placeholder; only supports x0000 for now
     uint8_t bus;
     uint8_t device;
     uint8_t function;

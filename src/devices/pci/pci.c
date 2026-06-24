@@ -214,6 +214,7 @@ void pci_print_device_info(pci_device_t *dev) {
 pci_device_t pci_check_device(uint8_t bus, uint8_t device, uint8_t function) {
     pci_device_t dev;
     dev.header_type   = 0;
+    dev.domain        = 0; // Placeholder
     dev.bus           = bus;
     dev.device        = device;
     dev.function      = function;
