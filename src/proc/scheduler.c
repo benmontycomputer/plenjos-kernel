@@ -178,7 +178,7 @@ extern void restore_cpu_state(registers_t *regs);
 
 extern void _finalize_task_switch(registers_t *regs);
 
-void cpu_scheduler_task() {
+__attribute__((noreturn)) void cpu_scheduler_task_c() {
     asm volatile("sti");
 
     uint32_t curr_core = get_curr_core();

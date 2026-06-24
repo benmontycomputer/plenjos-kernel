@@ -83,3 +83,22 @@ _finalize_task_switch:
     load_task_general_registers
     .end:
     iretq
+
+global cpu_scheduler_task
+extern cpu_scheduler_task_c
+extern tss_obj
+cpu_scheduler_task:
+    cli
+
+    ; Load the current core ID from the per-core GS base and switch to that core's TSS rsp0.
+    mov ecx, dword [gs:0x18] ; read processor id from gsbase (zero-extend clears upper bits as well)
+    lea rdx, [rel tss_obj] ; load address of tss_obj into rdx
+    imul rcx, rcx, 0x68 ; multiplies processor_id by size of tss_obj
+    mov rsp, [rdx + rcx + 0x4]
+
+    call cpu_scheduler_task_c
+
+.hang:
+    hlt
+    jmp .hang
+    

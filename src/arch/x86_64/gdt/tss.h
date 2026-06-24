@@ -6,6 +6,7 @@
 #define KERNEL_STACK_SIZE 0x10000
 
 // Add TSS entry structure
+// WARN: if the size of this ever changes, scheduler.asm must be updated as the size is hardcoded as 0x68
 struct tss { // 104 bytes is the minimum size of a TSS
     uint32_t reserved0;
     uint64_t rsp0;  // Ring 0 Stack Pointer

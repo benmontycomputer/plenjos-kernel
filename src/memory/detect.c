@@ -134,7 +134,6 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
 
         if (type == LIMINE_MEMMAP_FRAMEBUFFER) {
             map_virtual_memory_using_alloc(base, phys_to_virt(base), length, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, test_alloc, kernel_pml4);
-            printf("\n\n\n\n\n\n\n\n\n\n\n\n\nfb base: %p %p %p\n", base, get_physaddr(phys_to_virt(base), kernel_pml4), length);
         }
     }
 
