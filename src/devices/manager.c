@@ -1,5 +1,9 @@
 #include "manager.h"
 
+#include "lib/stdio.h"
+#include "lib/string.h"
+#include "lib/special_mem/fixed_size_allocator.h"
+
 // Keyboard support is built-in; I don't plan to make it a config option.
 #include "devices/input/keyboard/keyboard.h"
 
@@ -19,7 +23,25 @@
 # include "devices/usb/host/uhci.h"
 #endif
 
+static fixed_size_allocator_t _endpoint_fsa = FSA_DEFAULT(sizeof(endpoint_t));
+
+endpoint_t *register_device_endpoint(char *name) {
+    endpoint_t *endpoint = fsa_alloc(&_endpoint_fsa);
+
+    if (!endpoint) {
+        kout(KERNEL_WARN, "register_device_endpoint(): fsa_alloc() failed (OOM?)\n");
+        return NULL;
+    }
+
+    strncpy(endpoint->name, name, NAME_MAX);
+    endpoint->name[NAME_MAX] = 0;
+
+    
+}
+
 int device_manager_init() {
+    vfs_mkdir("/dev", 0, 0, 0755);
+
     // TODO: make this better, we shouldn't use one global buffer as our entire keyboard layer.
     init_keyboard();
 

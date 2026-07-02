@@ -59,5 +59,6 @@ void map_virtual_memory(uint64_t phys_addr, size_t size, uint64_t flags, pml4_t 
 
 // Returns the physical address of the allocated memory
 uint64_t alloc_virtual_memory(uint64_t virt, uint8_t flags, pml4_t *pml4);
+void free_virtual_memory(uint64_t virt, pml4_t *pml4);
 
 #endif

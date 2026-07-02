@@ -139,6 +139,7 @@ static inline void *_fsa_find_free_predecessor(fixed_size_allocator_t *fsa, void
 void *fsa_alloc(fixed_size_allocator_t *fsa) {
     if (fsa == NULL) {
         kout(KERNEL_SEVERE_FAULT, "fsa_alloc(): fsa is NULL!");
+        return NULL;
     }
 
     mutex_lock(&fsa->mutex);
@@ -158,6 +159,7 @@ void *fsa_alloc(fixed_size_allocator_t *fsa) {
 #ifdef _KERNEL_CORRUPTION_CHECK_FSA
         if (fsa->last_free != res) {
             kout(KERNEL_SEVERE_FAULT, "fsa_alloc(): first_free says next free is NULL, but last_free != first_free!");
+            return NULL;
         }
 #endif
     }
@@ -169,6 +171,7 @@ void *fsa_alloc(fixed_size_allocator_t *fsa) {
 #ifdef _KERNEL_CORRUPTION_CHECK_FSA
     if (_fsa_index_in_page(page, res, fsa) != free_ind) {
         kout(KERNEL_SEVERE_FAULT, "fsa_alloc(): free indices are inconsistent!");
+        return NULL;
     }
 #endif
 
@@ -182,10 +185,10 @@ void *fsa_alloc(fixed_size_allocator_t *fsa) {
     return res;
 }
 
-void *fsa_free(void *block, fixed_size_allocator_t *fsa) {
+void fsa_free(fixed_size_allocator_t *fsa, void *block) {
     if (!block || !fsa) {
         kout(KERNEL_SEVERE_FAULT, "fsa_free(): block or fsa is NULL!");
-        return NULL;
+        return;
     }
 
     mutex_lock(&fsa->mutex);
@@ -200,14 +203,14 @@ void *fsa_free(void *block, fixed_size_allocator_t *fsa) {
         // Block is not properly aligned in its page
         kout(KERNEL_SEVERE_FAULT, "fsa_free(): block is not properly located in its page!");
         mutex_unlock(&fsa->mutex);
-        return NULL;
+        return;
     }
 
 #ifdef _KERNEL_CORRUPTION_CHECK_FSA
     if (!page) {
         kout(KERNEL_SEVERE_FAULT, "fsa_free(): page is NULL!");
         mutex_unlock(&fsa->mutex);
-        return NULL;
+        return;
     }
 #endif
 
@@ -236,13 +239,13 @@ void *fsa_free(void *block, fixed_size_allocator_t *fsa) {
     }
 
     mutex_unlock(&fsa->mutex);
-    return NULL;
 }
 
 fixed_size_allocator_t *fixed_size_allocator_new(size_t item_size) {
     if (item_size > (PAGE_LEN - sizeof(void *))) {
         kout(KERNEL_SEVERE_FAULT, "fixed_size_allocator_new(): tried to allocate with item size %p (too big!)",
              item_size);
+        return NULL;
     }
 
     fixed_size_allocator_t *fsa = (fixed_size_allocator_t *)fsa_alloc(&_fsa_root);

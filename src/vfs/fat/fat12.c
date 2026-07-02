@@ -247,8 +247,8 @@ ssize_t fat12_file_read_func(vfs_handle_t *handle, void *buf, size_t len) {
             offset_in_cluster = 0;
         }
 
-        remaining              -= to_copy;
-        out_ptr                += to_copy;
+        remaining -= to_copy;
+        out_ptr   += to_copy;
 
         // Move to next cluster if needed
         if (remaining > 0) {
@@ -268,11 +268,11 @@ ssize_t fat12_file_read_func(vfs_handle_t *handle, void *buf, size_t len) {
 
     kfree_heap(cluster_buf);
 
-    size_t bytes_read = len - remaining;
-    instance_data->current_cluster = cluster;
-    instance_data->cluster_pos     = offset_in_cluster + bytes_read % bytes_per_cluster;
-    instance_data->cluster_index   = cluster_index;
-    instance_data->seek_pos       += bytes_read;
+    size_t bytes_read               = len - remaining;
+    instance_data->current_cluster  = cluster;
+    instance_data->cluster_pos      = offset_in_cluster + bytes_read % bytes_per_cluster;
+    instance_data->cluster_index    = cluster_index;
+    instance_data->seek_pos        += bytes_read;
 
     // To be implemented
     return -EIO;
@@ -298,8 +298,8 @@ off_t fat12_dir_seek_func(vfs_handle_t *handle, off_t offset, int whence) {
     return -EIO;
 }
 
-int fat12_create_child_func(fscache_node_t *parent, const char *name, dirent_type_t type, uid_t uid, gid_t gid,
-                            mode_t mode, fscache_node_t *node) {
+int fat12_create_child_func(fscache_node_t *parent, const char *name, uid_t uid, gid_t gid, mode_t mode,
+                            fscache_node_t *node) {
     // To be implemented
     return -EIO;
 }

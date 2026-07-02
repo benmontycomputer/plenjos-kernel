@@ -44,22 +44,20 @@ proc_t *create_proc(const char *name, proc_t *parent) {
         }
     }
 
-    // proc_t *proc = (proc_t *)phys_to_virt(find_next_free_frame());
     proc_t *proc = (proc_t *)fsa_alloc(&_proc_fsa);
-
     if (!proc) {
-        printf("Error allocating memory for proc_t.\n");
+        kout(KERNEL_WARN, "create_proc(): fsa_alloc() returned NULL (OOM?)\n");
         return NULL;
     }
+    memset(proc, 0, sizeof(proc_t));
 
-    char *cwd = (char *)phys_to_virt(find_next_free_frame());
-    if (!cwd) {
-        printf("Error allocating memory for proc cwd.\n");
-        phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(virt_to_phys((uint64_t)proc)));
+    uint64_t cwd_frame = find_next_free_frame();
+    if (!cwd_frame) {
+        kout(KERNEL_WARN, "Error allocating memory for proc cwd (OOM?).\n");
+        fsa_free(&_proc_fsa, proc);
         return NULL;
     }
-
-    memset(proc, 0, PAGE_LEN);
+    char *cwd = (char *)phys_to_virt(cwd_frame);
     memset(cwd, 0, PAGE_LEN);
     proc->cwd = cwd;
 
@@ -95,13 +93,16 @@ proc_t *create_proc(const char *name, proc_t *parent) {
     // TODO: page table
     proc->pml4 = (pml4_t *)phys_to_virt(find_next_free_frame());
     if (!proc->pml4) {
-        printf("Error allocating page table for proc %s (%lu)\n", proc->name, proc->pid);
+        kout(KERNEL_WARN, "Error allocating page table for proc %s (%lu) (OOM?)\n", proc->name, proc->pid);
+        phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(cwd_frame));
+        fsa_free(&_proc_fsa, proc);
         return NULL;
     }
     memset(proc->pml4, 0, PAGE_LEN);
 
     printf("proc pml4 virt: %p\n", proc->pml4);
 
+    // TODO: handle OOM from map_virtual_memory_using_alloc
     for (uint64_t i = TSS_STACK_ADDR - (KERNEL_STACK_SIZE * get_n_cores()); i < TSS_STACK_ADDR; i += PAGE_LEN) {
         // printf("mapping %p\n", gs_bases[i]);
         map_virtual_memory_using_alloc(get_physaddr(i, kernel_pml4), i, PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,

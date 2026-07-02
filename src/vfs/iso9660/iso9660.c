@@ -145,7 +145,7 @@ ssize_t iso9660_directory_read_func(vfs_handle_t *handle, void *buf, size_t len)
 
     uint64_t dir_extent_lba = parent_data->dir_record->extent_location_lba_le + instance_data->current_extent_location
                               + fs->partition_start_lba;
-    uint64_t dir_size           = parent_data->dir_record->data_length_le - instance_data->seek_pos;
+    uint64_t dir_size       = parent_data->dir_record->data_length_le - instance_data->seek_pos;
     uint64_t logical_block_size = fs->logical_block_size;
 
     uint64_t seek_offset_in_block = instance_data->seek_pos % logical_block_size;
@@ -352,8 +352,8 @@ int iso9660_load_func(fscache_node_t *node, const char *name, fscache_node_t *ou
     return -ENOENT;
 }
 
-int iso9660_create_child_func(fscache_node_t *parent, const char *name, dirent_type_t type, uid_t uid, gid_t gid,
-                              mode_t mode, fscache_node_t *node) {
+int iso9660_create_child_func(fscache_node_t *parent, const char *name, uid_t uid, gid_t gid, mode_t mode,
+                              fscache_node_t *node) {
     // To be implemented
     return -ENOSYS;
 }

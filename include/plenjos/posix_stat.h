@@ -32,4 +32,12 @@
 #define S_IRWXG (S_IRGRP | S_IWGRP | S_IXGRP) // Read, write, execute/search by group
 #define S_IRWXO (S_IROTH | S_IWOTH | S_IXOTH) // Read, write, execute/search by others
 
+#define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
+#define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
+#define S_ISCHR(m) (((m) & S_IFMT) == S_IFCHR)
+#define S_ISBLK(m) (((m) & S_IFMT) == S_IFBLK)
+#define S_ISFIFO(m) (((m) & S_IFMT) == S_IFIFO)
+#define S_ISLNK(m) (((m) & S_IFMT) == S_IFLNK)
+#define S_ISSOCK(m) (((m) & S_IFMT) == S_IFSOCK)
+
 #endif /* _PLENJOS_POSIX_STAT_H */

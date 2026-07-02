@@ -156,6 +156,7 @@ page_t *find_page(uint64_t virt, bool autocreate, pml4_t *pml4) {
     return find_page_using_alloc(virt, autocreate, alloc_paging_node, is_userspace(virt), pml4);
 }
 
+// TODO: VERY IMPORTANT: handle OOM errors on alloc_func()
 // The alloc func should return a kernel-mapped pointer
 void map_virtual_memory_using_alloc(uint64_t phys_start, uint64_t virt_start, size_t len, uint64_t flags,
                                     uint64_t *alloc_func(), pml4_t *pml4) {

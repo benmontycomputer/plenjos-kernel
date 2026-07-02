@@ -1,6 +1,7 @@
 #include "proc/thread.h"
 
 #include "arch/x86_64/gdt/gdt.h"
+#include "lib/special_mem/fixed_size_allocator.h"
 #include "lib/stdio.h"
 #include "lib/string.h"
 #include "memory/kmalloc.h"
@@ -12,6 +13,8 @@
 
 pid_t next_tid = 0;
 
+static fixed_size_allocator_t _thread_fsa = FSA_DEFAULT(sizeof(thread_t));
+
 #define DEFAULT_FLAGS 0x202 // Enable interrupts
 
 // Stacks start below this address and grow downwards
@@ -20,8 +23,12 @@ pid_t next_tid = 0;
 thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), void *arg) {
     if (!proc) return NULL;
 
-    thread_t *thread = (thread_t *)phys_to_virt(find_next_free_frame());
-    memset(thread, 0, PAGE_LEN);
+    thread_t *thread = (thread_t *)fsa_alloc(&_thread_fsa);
+    if (!thread) {
+        kout(KERNEL_WARN, "create_thread(): fsa_alloc() returned NULL (OOM?)\n");
+        return NULL;
+    }
+    memset(thread, 0, sizeof(thread_t));
 
     if (name) {
         strncpy(thread->name, name, PROCESS_THREAD_NAME_LEN);
@@ -44,15 +51,15 @@ thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), vo
     for (uint64_t i = 0; i < THREAD_STACK_SIZE; i += PAGE_LEN) {
         p = alloc_virtual_memory((uint64_t)thread->stack_top - i - PAGE_LEN, ALLOCATE_VM_USER, proc->pml4);
         if (!p) {
-            printf("Couldn't allocate stack for user process. Halt!\n");
-            hcf();
+            kout(KERNEL_WARN, "create_thread(): couldn't allocate stack for thread (OOM?)\n");
+            for (uint64_t j = 0; j < i; j += PAGE_LEN) {
+                free_virtual_memory((uint64_t)thread->stack_top - i - PAGE_LEN, proc->pml4);
+            }
+            fsa_free(&_thread_fsa, thread);
+            return NULL;
+
         }
         memset((void *)phys_to_virt(p), 0, PAGE_LEN);
-    }
-
-    if (!thread->stack_top) {
-        next_tid--;
-        return NULL;
     }
 
     // Set ss table descriptors
@@ -87,6 +94,7 @@ thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), vo
     thread->base->stack            = (uint64_t)thread->regs.iret_rsp;
     thread->base->kernel_pml4_phys = (uint64_t)kernel_pml4_phys; */
 
+    // TODO: handle OOM in these
     map_virtual_memory_using_alloc(virt_to_phys((uint64_t)thread), (uint64_t)thread, PAGE_LEN,
                                    PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
     map_virtual_memory_using_alloc(virt_to_phys((uint64_t)thread->base), (uint64_t)thread->base, PAGE_LEN,

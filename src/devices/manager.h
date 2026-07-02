@@ -1,10 +1,11 @@
 #pragma once
 
 #include "plenjos/errno.h"
+#include "vfs/fscache.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdbool.h>
 
 #define ERR_NO_DRIVER 1
 #define ERR_NO_MEM    -ENOMEM
@@ -53,33 +54,44 @@ section STORAGE_DEVICES:
 
 /**
  * Basic device structure:
- * 
+ *
  * Every device has exactly one physical path under /sys and as many virtual paths under /dev as it wants.
  * The physical path could be something like /sys/pci/0000:00
- * 
+ *
  * All base device types and flags are defined in headers, regardless of whether build support is enabled.
  */
 
-typedef uint64_t device_flags_t;
-
 typedef struct device_id {
-    
+
 } device_id_t;
 
 struct device {
     device_t *parent;
 
-    device_flags_t flags;
 };
 
-#define DEVICE_FLAG_BLOCK 0x01 // Bit 0: 0 = character device, 1 = block device
+#define ENDPOINT_DRIVER_FLAG_BLOCK 0x01 // Bit 0: 0 = character device, 1 = block device
 
-inline bool is_block_device(device_t *dev) {
-    return (dev->flags & DEVICE_FLAG_BLOCK) != 0;
+typedef struct endpoint_driver {
+    vfs_read_func_t read;
+    vfs_write_func_t write;
+    vfs_seek_func_t seek;
+
+
+} endpoint_driver_t;
+
+typedef struct endpoint {
+    char name[NAME_MAX + 1];
+
+    endpoint_driver_t *driver;
+} endpoint_t;
+
+inline bool is_block_endpoint(endpoint_t *endpoint) {
+    return (endpoint->driver->flags & DEVICE_FLAG_BLOCK) != 0;
 }
 
-inline bool is_character_device(device_t *dev) {
-    return (dev->flags & DEVICE_FLAG_BLOCK) == 0;
+inline bool is_char_endpoint(endpoint_t *dev) {
+    return (endpoint->driver->flags & DEVICE_FLAG_BLOCK) != 0;
 }
 
 typedef enum {
@@ -92,9 +104,6 @@ typedef enum {
     BUS_CLASS_OTHER
 } bus_base_class_t;
 
-typedef enum {
-    DEVICE_CLASS_CONTROLLER,
-    DEVICE_CLASS_
-} device_class_t;
+typedef enum { DEVICE_CLASS_CONTROLLER, DEVICE_CLASS_ } device_class_t;
 
 int device_manager_init();

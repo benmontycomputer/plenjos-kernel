@@ -2,12 +2,14 @@
 
 #include "plenjos/limits.h"
 #include "plenjos/syscall.h"
-
 #include "proc/proc.h"
 #include "vfs/fscache.h"
 #include "vfs/vfs.h"
 
 #include <stdint.h>
+
+#define KERNELFS_STAT_DIR_DEFAULT                                                                     \
+    ((struct kstat) { .dev = 0, .gid = 0, .uid = 0, .rdev = 0, .size = 0, .mode = S_DFLT | S_IFDIR })
 
 typedef struct kernelfs_node kernelfs_node_t;
 
@@ -28,11 +30,7 @@ typedef ssize_t (*kernelfs_open_func_t)(const char *, syscall_open_flags_t, fsca
 struct kernelfs_node {
     char name[NAME_MAX + 1];
 
-    dirent_type_t type;
-
-    uid_t uid;
-    gid_t gid;
-    mode_t mode; // rwxrwxrwx
+    struct kstat stat;
 
     // This is only for block devices; it opens at the given path under the block device filesystem
     kernelfs_open_func_t open;
@@ -54,13 +52,12 @@ kernelfs_node_t *kernelfs_get_node_from_handle(vfs_handle_t *handle);
 void kernelfs_init();
 // ssize_t kernelfs_open(const char *path, uint64_t flags, uint64_t mode, proc_t *proc, kernelfs_node_t **out);
 int kernelfs_close(vfs_handle_t *f);
-int kernelfs_create_child(fscache_node_t *parent, const char *name, dirent_type_t type, uid_t uid, gid_t gid,
-                              mode_t mode, fscache_node_t *node);
+int kernelfs_create_child(fscache_node_t *parent, const char *name, struct kstat stat, fscache_node_t *node);
 
 // WARN: only use absolute paths
-int kernelfs_helper_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode);
-int kernelfs_helper_create_file(const char *parent, const char *name, uint8_t type, uid_t uid, gid_t gid, mode_t mode,
-                                vfs_read_func_t read, vfs_write_func_t write, vfs_seek_func_t seek, void *func_args);
+int kernelfs_helper_mkdir(const char *path, struct kstat stat);
+int kernelfs_helper_create_file(const char *parent, const char *name, struct kstat stat, vfs_read_func_t read,
+                                vfs_write_func_t write, vfs_seek_func_t seek, void *func_args);
 
 // Internal use only
 /* int kernelfs_create_node(kernelfs_node_t *parent_node, const char *name, uint8_t type, uid_t uid, gid_t gid,

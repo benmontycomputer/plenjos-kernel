@@ -4,6 +4,9 @@
 #include <stdint.h>
 
 #include "plenjos/dev/kbd.h"
+#include "vfs/vfs.h"
+
+extern vfs_ops_block_t endpoint_ops_keyboard;
 
 void init_keyboard();
 

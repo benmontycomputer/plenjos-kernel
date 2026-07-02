@@ -23,9 +23,9 @@ int kernelfs_load(fscache_node_t *node, const char *name, fscache_node_t *out);
 
 ssize_t kernelfs_default_read_dir(vfs_handle_t *f, void *buf, size_t len);
 
-int kernelfs_create_node(kernelfs_node_t *parent_node, const char *name, uint8_t type, uid_t uid, gid_t gid,
-                         mode_t mode, kernelfs_open_func_t open, vfs_read_func_t read, vfs_write_func_t write,
-                         vfs_seek_func_t seek, void *func_args, kernelfs_node_t **out);
+int kernelfs_create_node(kernelfs_node_t *parent_node, const char *name, struct kstat stat, kernelfs_open_func_t open,
+                         vfs_read_func_t read, vfs_write_func_t write, vfs_seek_func_t seek, void *func_args,
+                         kernelfs_node_t **out);
 
 typedef enum kernelfs_find_node_result {
     KERNELFS_FIND_NODE_HANDLE_ONLY     = 1,
@@ -88,7 +88,7 @@ ssize_t kernelfs_default_read_dir(vfs_handle_t *f, void *buf, size_t len) {
         return -EIO;
     }
 
-    if (node->type != DT_DIR) {
+    if (!S_ISDIR(node->stat.mode)) {
         printf("kernelfs_default_read_dir: kernelfs node %s is not a directory!\n", node->name);
         return -ENOTDIR;
     }
@@ -122,7 +122,7 @@ ssize_t kernelfs_default_read_dir(vfs_handle_t *f, void *buf, size_t len) {
 
         strncpy(dirent_entry.d_name, current_child->name, NAME_MAX + 1);
         dirent_entry.d_name[NAME_MAX] = '\0';
-        dirent_entry.type             = current_child->type;
+        dirent_entry.type             = mode_to_dt(current_child->stat.mode);
 
         if (total_bytes_copied + sizeof(struct plenjos_dirent) > len) {
             // No more space
@@ -181,13 +181,11 @@ node_found:
         fsops->seek   = current_node->seek;
         fsops->close  = NULL; // Use default vfs close
         fsops->create_child
-            = (current_node->type == DT_DIR) ? kernelfs_create_child : NULL; // TODO: implement create_child
+            = S_ISDIR(current_node->stat.mode) ? kernelfs_create_child : NULL; // TODO: implement create_child
         fsops->load_node   = kernelfs_load;
         fsops->unload_node = NULL; // No internal data to clean up
 
-        // TODO: implement size
-        fscache_node_populate(out, current_node->type, 0, current_node->name, current_node->uid, current_node->gid,
-                              current_node->mode, 0 /* current_node->size */, fsops);
+        fscache_node_populate(out, 0, current_node->name, current_node->stat, fsops);
 
         ((kernelfs_cache_data_t *)out->internal_data)->node = current_node;
     }
@@ -195,13 +193,12 @@ node_found:
     return 0;
 }
 
-int kernelfs_create_child(fscache_node_t *parent, const char *name, dirent_type_t type, uid_t uid, gid_t gid,
-                          mode_t mode, fscache_node_t *node) {
+int kernelfs_create_child(fscache_node_t *parent, const char *name, struct kstat stat, fscache_node_t *node) {
     if (!parent || !name || !node) {
         return -EINVAL;
     }
 
-    if (parent->type != DT_DIR) {
+    if (!S_ISDIR(parent->stat.mode)) {
         printf("kernelfs_create_child: parent node is not a directory!\n");
         return -ENOTDIR;
     }
@@ -215,7 +212,7 @@ int kernelfs_create_child(fscache_node_t *parent, const char *name, dirent_type_
     vfs_read_func_t read_func = NULL;
     // TODO: have a seek func as well
 
-    if (type != DT_DIR) {
+    if (!S_ISDIR(stat.mode)) {
         printf("kernelfs_create_child: only creation of directory children are supported currently!\n");
         // TODO: is this the correct error code?
         // Also, do we want to eventually support creating regular files this way?
@@ -225,8 +222,8 @@ int kernelfs_create_child(fscache_node_t *parent, const char *name, dirent_type_
     }
 
     kernelfs_node_t *new_node = NULL;
-    ssize_t res = kernelfs_create_node(parent_cache_data->node, name, type, uid, gid, mode, NULL, read_func, NULL, NULL,
-                                       NULL, &new_node);
+    ssize_t res
+        = kernelfs_create_node(parent_cache_data->node, name, stat, NULL, read_func, NULL, NULL, NULL, &new_node);
     if (res < 0) {
         printf("kernelfs_create_child: failed to create kernelfs node %s under parent %s, errno %d\n", name,
                parent_cache_data->node->name, res);
@@ -248,7 +245,7 @@ int kernelfs_create_child(fscache_node_t *parent, const char *name, dirent_type_
     return res;
 }
 
-int kernelfs_helper_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode) {
+int kernelfs_helper_mkdir(const char *path, struct kstat stat) {
     int res = 0;
 
     size_t path_copy_size = strlen(path) + 1;
@@ -293,8 +290,8 @@ int kernelfs_helper_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode) {
 
         kernelfs_node_t *new_node = NULL;
         // TODO: implement some of these functions?
-        res = kernelfs_create_node(parent_node, last_token, DT_DIR, uid, gid, mode, NULL, kernelfs_default_read_dir,
-                                   NULL, NULL, NULL, &new_node);
+        res = kernelfs_create_node(parent_node, last_token, stat, NULL, kernelfs_default_read_dir, NULL, NULL, NULL,
+                                   &new_node);
         if (res < 0) {
             printf("kernelfs_helper_mkdir: failed to create kernelfs node %s for directory %s, errno %d\n", last_token,
                    path, res);
@@ -308,8 +305,8 @@ cleanup:
     return res;
 }
 
-int kernelfs_helper_create_file(const char *parent, const char *name, uint8_t type, uid_t uid, gid_t gid, mode_t mode,
-                                vfs_read_func_t read, vfs_write_func_t write, vfs_seek_func_t seek, void *func_args) {
+int kernelfs_helper_create_file(const char *parent, const char *name, struct kstat stat, vfs_read_func_t read,
+                                vfs_write_func_t write, vfs_seek_func_t seek, void *func_args) {
     vfs_handle_t *parent_handle = NULL;
     ssize_t res = vfs_open(parent, SYSCALL_OPEN_FLAG_DIRECTORY | SYSCALL_OPEN_FLAG_WRITE, 0, 0, &parent_handle);
     if (res < 0) {
@@ -326,7 +323,7 @@ int kernelfs_helper_create_file(const char *parent, const char *name, uint8_t ty
     }
 
     kernelfs_node_t *new_node = NULL;
-    res = kernelfs_create_node(parent_node, name, type, uid, gid, mode, NULL, read, write, seek, func_args, &new_node);
+    res = kernelfs_create_node(parent_node, name, stat, NULL, read, write, seek, func_args, &new_node);
     if (res < 0) {
         printf("kernelfs_helper_create_file: failed to create kernelfs node %s under parent %s, errno %d\n", name,
                parent, res);
@@ -337,9 +334,9 @@ int kernelfs_helper_create_file(const char *parent, const char *name, uint8_t ty
     return 0;
 }
 
-int kernelfs_create_node(kernelfs_node_t *parent_node, const char *name, uint8_t type, uid_t uid, gid_t gid,
-                         mode_t mode, kernelfs_open_func_t open, vfs_read_func_t read, vfs_write_func_t write,
-                         vfs_seek_func_t seek, void *func_args, kernelfs_node_t **out) {
+int kernelfs_create_node(kernelfs_node_t *parent_node, const char *name, struct kstat stat, kernelfs_open_func_t open,
+                         vfs_read_func_t read, vfs_write_func_t write, vfs_seek_func_t seek, void *func_args,
+                         kernelfs_node_t **out) {
     if (!name || !parent_node || strlen(name) == 0) {
         printf("kernelfs_create_node: name or parent_node is NULL or empty!\n");
         return -EINVAL;
@@ -359,7 +356,7 @@ int kernelfs_create_node(kernelfs_node_t *parent_node, const char *name, uint8_t
         return -1;
     }
 
-    if (parent_node->type != DT_DIR) {
+    if (!S_ISDIR(parent_node->stat.mode)) {
         printf("Parent node is not a directory!\n");
         return -2;
     }
@@ -375,10 +372,7 @@ int kernelfs_create_node(kernelfs_node_t *parent_node, const char *name, uint8_t
 
     strncpy(new_node->name, name, NAME_MAX);
     new_node->name[NAME_MAX] = '\0';
-    new_node->type           = type;
-    new_node->uid            = uid;
-    new_node->gid            = gid;
-    new_node->mode           = mode;
+    new_node->stat           = stat;
     new_node->open           = open;
     new_node->read           = read;
     new_node->write          = write;
@@ -414,16 +408,15 @@ void kernelfs_init() {
 
     memset(root_kernelfs_node, 0, sizeof(kernelfs_node_t));
 
-    root_kernelfs_node->type    = DT_DIR;
     root_kernelfs_node->name[0] = 0;
 
-    root_kernelfs_node->uid  = 0;
-    root_kernelfs_node->gid  = 0;
-    root_kernelfs_node->mode = S_DFLT; // | S_IFDIR;
+    root_kernelfs_node->stat.uid  = 0;
+    root_kernelfs_node->stat.gid  = 0;
+    root_kernelfs_node->stat.mode = S_DFLT | S_IFDIR;
 
     root_kernelfs_node->read = kernelfs_default_read_dir;
 
-    kernelfs_create_node(root_kernelfs_node, "testfs", DT_DIR, 0, 0, S_DFLT, NULL, NULL, NULL, NULL, NULL, NULL);
+    kernelfs_create_node(root_kernelfs_node, "testfs", KERNELFS_STAT_DIR_DEFAULT, NULL, NULL, NULL, NULL, NULL, NULL);
 
     // kernelfs_open("/testfs", "r");
     // kernelfs_open("/testfs/tmp", "r");

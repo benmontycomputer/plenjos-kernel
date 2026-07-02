@@ -29,7 +29,7 @@ typedef struct fscache_node fscache_node_t;
 struct fscache_node {
     // This is at the beginning to make it easy to use memset to clear a node without unsetting type (allowing us to
     // keep it reserved)
-    dirent_type_t type;
+    struct kstat stat;
 
     char name[NAME_MAX + 1];
 
@@ -43,11 +43,6 @@ struct fscache_node {
     atomic_int tree_lock;
 
     fscache_flags_t flags;
-
-    uid_t uid;
-    gid_t gid;
-    mode_t mode;
-    off_t size;
 
     vfs_ops_block_t *fsops;
 
@@ -80,5 +75,5 @@ int fscache_init();
 
 fscache_node_t *fscache_allocate_node();
 
-void fscache_node_populate(fscache_node_t *node, dirent_type_t type, fscache_flags_t flags, const char *name, uid_t uid, gid_t gid,
-                           mode_t mode, off_t size, vfs_ops_block_t *fsops);
+void fscache_node_populate(fscache_node_t *node, fscache_flags_t flags, const char *name, struct kstat stat,
+                           vfs_ops_block_t *fsops);

@@ -13,16 +13,9 @@
 static int syscall_routine_stat_from_handle(vfs_handle_t *handle, uint64_t out_stat_ptr, pml4_t *current_pml4) {
     int res = 0;
 
-    struct kstat kstat = { 0 };
-
     fscache_node_t *node = handle->backing_node;
 
-    kstat.mode = node->mode;
-    kstat.uid  = node->uid;
-    kstat.gid  = node->gid;
-    kstat.size = node->size;
-
-    res = copy_to_user_buf((void *)out_stat_ptr, &kstat, sizeof(struct kstat), false, current_pml4);
+    res = copy_to_user_buf((void *)out_stat_ptr, &node->stat, sizeof(struct kstat), false, current_pml4);
     if (res < 0) {
         return res;
     }

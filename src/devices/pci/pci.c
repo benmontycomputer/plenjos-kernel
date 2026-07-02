@@ -417,7 +417,7 @@ void pci_scan() {
     uint16_t bus;
     uint8_t device;
 
-    ssize_t res = vfs_mkdir("/dev", 0, 0, 0755);
+    /* ssize_t res = vfs_mkdir("/dev", 0, 0, 0755);
     if (res < 0) {
         kout(KERNEL_SEVERE_FAULT, "pci_scan: failed to create /dev directory, errno %d\n", res);
         return;
@@ -431,7 +431,7 @@ void pci_scan() {
     if (res < 0) {
         kout(KERNEL_SEVERE_FAULT, "pci_scan: failed to create /dev/pci/subftest directory, errno %d\n", res);
         return;
-    }
+    } */
 
     for (bus = 0; bus < 256; bus++) {
         for (device = 0; device < 32; device++) {

@@ -288,13 +288,13 @@ void ide_init() {
 
     if (!(ide_probe_device(&legacy_ide_channels[0], 0, &legacy_ide_devices[0])
           || ide_probe_device(&legacy_ide_channels[0], 1, &legacy_ide_devices[1]))) {
-        // Device(s) found on primary channel
+        // No device(s) found on primary channel
         kout(KERNEL_INFO, "Unregistering primary IDE IRQ handler\n");
         irq_unregister_routine(IDE_PRIMARY_IRQ);
     }
-    if (ide_probe_device(&legacy_ide_channels[1], 0, &legacy_ide_devices[2])
-        || ide_probe_device(&legacy_ide_channels[1], 1, &legacy_ide_devices[3])) {
-        // Device(s) found on secondary channel
+    if (!(ide_probe_device(&legacy_ide_channels[1], 0, &legacy_ide_devices[2])
+        || ide_probe_device(&legacy_ide_channels[1], 1, &legacy_ide_devices[3]))) {
+        // No device(s) found on secondary channel
         kout(KERNEL_INFO, "Unregistering secondary IDE IRQ handler\n");
         irq_unregister_routine(IDE_SECONDARY_IRQ);
     }

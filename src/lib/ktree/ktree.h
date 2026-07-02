@@ -6,7 +6,7 @@
 
 struct ktree {
     
-}
+};
 
 struct knode {
     struct knode *parent;
@@ -15,4 +15,4 @@ struct knode {
     struct knode *first_child;
 
     char data[];
-}
+};

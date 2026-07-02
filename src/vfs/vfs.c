@@ -123,7 +123,9 @@ int vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_create
     if (path[0] != '/') {
         // Only absolute paths are supported; otherwise we'd need to pass another argument to this function which
         // doesn't make much sense.
-        printf("ERROR: vfs_open: only absolute paths are supported (got %s). This indicates a severe bug or error in the (kernel code) caller.\n", path);
+        printf("ERROR: vfs_open: only absolute paths are supported (got %s). This indicates a severe bug or error in "
+               "the (kernel code) caller.\n",
+               path);
         return -EINVAL;
     }
 
@@ -142,7 +144,7 @@ int vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_create
         // The node doesn't exist, but its parent does. If the CREATE flag is set, create it.
         if (flags & SYSCALL_OPEN_FLAG_CREATE) {
             // We've already checked that the DIRECTORY flag is not set alongside CREATE
-            access_t actual_access = access_check(node->mode, node->uid, node->gid, uid);
+            access_t actual_access = access_check(node->stat.mode, node->stat.uid, node->stat.gid, uid);
             if (!(actual_access & ACCESS_WRITE) || !(actual_access & ACCESS_EXECUTE)) {
                 res = -EACCES;
                 goto cleanup_and_return;
@@ -160,8 +162,10 @@ int vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_create
             last_slash = last_slash ? last_slash + 1 : path;
 
             fscache_node_t *new_node = NULL;
+            /* TODO: use egid instead */
+            struct kstat stat        = { .uid = uid, .gid = 0, .mode = mode_if_create };
             // This function properly masks the mode; we don't have to do that here.
-            res                      = vfs_creatat(node, last_slash, uid, 0 /* TODO: use egid here */, mode_if_create, &new_node);
+            res = vfs_creatat(node, last_slash, stat, &new_node);
 
             if (res < 0) {
                 goto cleanup_and_return;
@@ -195,12 +199,12 @@ int vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_create
             goto cleanup_and_return;
         }
 
-        if ((flags & SYSCALL_OPEN_FLAG_DIRECTORY) && node->type != DT_DIR) {
+        if ((flags & SYSCALL_OPEN_FLAG_DIRECTORY) && !S_ISDIR(node->stat.mode)) {
             res = -ENOTDIR;
             goto cleanup_and_return;
         }
 
-        access_t actual_access = access_check(node->mode, node->uid, node->gid, uid);
+        access_t actual_access = access_check(node->stat.mode, node->stat.uid, node->stat.gid, uid);
         access_t handle_access = 0;
 
         if (flags & SYSCALL_OPEN_FLAG_READ) {
@@ -248,7 +252,7 @@ cleanup_and_return:
 
 // Unlike other functions, this actually handles allocation of the fscache_node_t.
 // If out isn't passed as NULL and the function succeeds, the resulting node is read-locked.
-int vfs_creatat(fscache_node_t *parent, const char *name, uid_t uid, gid_t gid, mode_t mode, fscache_node_t **out) {
+int vfs_creatat(fscache_node_t *parent, const char *name, struct kstat stat, fscache_node_t **out) {
     if (!parent || !name) {
         return -EINVAL;
     }
@@ -264,10 +268,7 @@ int vfs_creatat(fscache_node_t *parent, const char *name, uid_t uid, gid_t gid, 
         return -ENOMEM;
     }
 
-    mode_t masked_mode  = mode & ~022; // TODO: apply actual umask from process
-    masked_mode        &= 0xFFF;       // Only lower 12 bits are honored
-
-    int res = parent->fsops->create_child(parent, name, DT_REG, uid, gid, mode, new_node);
+    int res = parent->fsops->create_child(parent, name, stat, new_node);
 
     if (res < 0) {
         _fscache_release_node_readable(new_node);
@@ -285,7 +286,7 @@ int vfs_creatat(fscache_node_t *parent, const char *name, uid_t uid, gid_t gid, 
 
 // This honors the lower 10 (not 12) bits of mode (the rwxrwxrwx bits and the sticky bit).
 // Unlike vfs_creatat, this function does NOT honor the setuid and setgid bits, as they have no meaning on directories.
-int vfs_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode) {
+int vfs_mkdir(const char *path, struct kstat stat) {
     if (!path) {
         return -EINVAL;
     }
@@ -293,15 +294,17 @@ int vfs_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode) {
     if (path[0] != '/') {
         // Only absolute paths are supported; otherwise we'd need to pass another argument to this function which
         // doesn't make much sense.
-        printf("ERROR: vfs_mkdir: only absolute paths are supported (got %s). This indicates a severe bug or error in the (kernel code) caller.\n", path);
+        printf("ERROR: vfs_mkdir: only absolute paths are supported (got %s). This indicates a severe bug or error in "
+               "the (kernel code) caller.\n",
+               path);
         return -EINVAL;
     }
 
     fscache_node_t *parent = NULL;
-    int res            = fscache_request_node(path, uid, &parent);
+    int res                = fscache_request_node(path, stat.uid, &parent);
     if (res == FSCACHE_REQUEST_NODE_ONE_LEVEL_AWAY) {
         // We need w and x permissions on the parent
-        access_t actual_access = access_check(parent->mode, parent->uid, parent->gid, uid);
+        access_t actual_access = access_check(parent->stat.mode, parent->stat.uid, parent->stat.gid, stat.uid);
         if (!(actual_access & ACCESS_WRITE) || !(actual_access & ACCESS_EXECUTE)) {
             res = -EACCES;
             goto cleanup;
@@ -332,10 +335,9 @@ int vfs_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode) {
             goto cleanup;
         }
 
-        mode_t masked_mode = mode & ~022 & (0777 | S_ISVTX); // TODO: apply actual umask from process
+        stat.mode = stat.mode & ~022 & (0777 | S_ISVTX); // TODO: apply actual umask from process
 
-        res = parent->fsops->create_child(parent, last_slash, DT_DIR, uid, gid, masked_mode,
-                                          new_dir_node);
+        res = parent->fsops->create_child(parent, last_slash, stat, new_dir_node);
         _fscache_release_node_readable(new_dir_node);
         goto cleanup;
     } else if (res == 0) {

@@ -306,8 +306,8 @@ fscache_node_t *find_next_available_node_in_block(fscache_block_header_t *block)
     fscache_node_t *nodes = (fscache_node_t *)(block + 1);
 
     for (size_t i = 0; i < block->node_count; i++) {
-        if (atomic_compare_exchange_strong(&nodes[i].type, &(uint8_t) { 0 }, DT_UNKNOWN)) {
-            memset((uint8_t *)&nodes[i] + sizeof(dirent_type_t), 0, sizeof(fscache_node_t) - sizeof(dirent_type_t));
+        if (atomic_compare_exchange_strong(&nodes[i].stat.mode, &(mode_t) { 0 }, (mode_t)-1)) {
+            memset((uint8_t *)&nodes[i] + sizeof(struct kstat), 0, sizeof(fscache_node_t) - sizeof(struct kstat));
             rw_lock_init(&nodes[i].rwlock);
             return &nodes[i];
         }
@@ -392,17 +392,13 @@ int fscache_init() {
     return 0;
 }
 
-void fscache_node_populate(fscache_node_t *node, dirent_type_t type, fscache_flags_t flags, const char *name, uid_t uid, gid_t gid,
-                           mode_t mode, off_t size, vfs_ops_block_t *fsops) {
+void fscache_node_populate(fscache_node_t *node, fscache_flags_t flags, const char *name, struct kstat stat,
+                           vfs_ops_block_t *fsops) {
     if (!node) return;
 
-    node->type  = type;
     node->flags = flags;
     strncpy(node->name, name, NAME_MAX);
     node->name[NAME_MAX] = '\0';
-    node->uid            = uid;
-    node->gid            = gid;
-    node->mode           = mode;
-    node->size           = size;
+    node->stat           = stat;
     node->fsops          = fsops;
 }

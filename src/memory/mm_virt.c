@@ -29,3 +29,13 @@ uint64_t alloc_virtual_memory(uint64_t virt, uint8_t flags, pml4_t *pml4) {
 
     return page->frame << 12;
 }
+
+void free_virtual_memory(uint64_t virt, pml4_t *pml4) {
+    uint64_t phys = get_physaddr(virt, pml4);
+
+    if (!phys) {
+        kout(KERNEL_SEVERE_FAULT, "free_virtual_memory(): couldn't get mapping for virt %p (pml4 %p)\n", virt, pml4);
+    }
+
+    phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(phys));
+}

@@ -2,6 +2,8 @@
 
 #include "kernel.h"
 
+#include "vfs/vfs.h"
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -26,4 +28,3 @@ struct DRIVE {
 
     void *internal_data;
 };
-

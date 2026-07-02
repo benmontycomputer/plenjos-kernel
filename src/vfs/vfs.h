@@ -42,11 +42,10 @@ typedef int (*vfs_close_func_t)(vfs_handle_t *handle);
 // fscache functions:
 
 // Create child; this can be used to create files or directories (but NOT links). The resulting node is read-locked
-// unless NULL is passed for out. Only the lower 12 bits of mode are honored (the rwxrwxrwx and special bits). If a node
-// is passed in, the newly created child is loaded into the fscache (the node MUST be allocated already). Otherwise, the
-// new child isn't loaded.
-typedef int (*vfs_create_child_func_t)(fscache_node_t *parent, const char *name, dirent_type_t type, uid_t uid,
-                                           gid_t gid, mode_t mode, fscache_node_t *node);
+// unless NULL is passed for out. If a node is passed in, the newly created child is loaded into the fscache (the node
+// MUST be allocated already). Otherwise, the new child isn't loaded.
+typedef int (*vfs_create_child_func_t)(fscache_node_t *parent, const char *name, struct kstat stat,
+                                       fscache_node_t *node);
 
 // The load function loads a child from a parent (directory)
 typedef int (*vfs_load_func_t)(fscache_node_t *node, const char *name, fscache_node_t *out);
@@ -70,6 +69,7 @@ struct vfs_handle {
     uint64_t instance_data[4];
 };
 
+// NOTE: filesystem drivers are responsible for updating the backing node's stat field if an operation would change it.
 struct vfs_ops_block {
     char *fsname;
 
