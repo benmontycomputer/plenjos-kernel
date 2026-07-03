@@ -225,7 +225,6 @@ void *kmalloc_heap(uint64_t size) {
     seg->free = false;
 
     unlock_kheap();
-
     if (ints) {
         asm volatile("sti");
     }
@@ -246,12 +245,19 @@ void kfree_heap(void *ptr) {
 
     heap_segment_info_t *cur_seg = (heap_segment_info_t *)((uint64_t)ptr - HEAP_HEADER_LEN);
 
+    bool ints = are_interrupts_enabled();
+    if (ints) {
+        asm volatile("cli");
+    }
     lock_kheap();
 
     if (cur_seg->free) {
         printf("ERROR: double free or corruption\n");
 
         unlock_kheap();
+        if (ints) {
+            asm volatile("sti");
+        }
         return;
     }
 
@@ -259,6 +265,9 @@ void kfree_heap(void *ptr) {
     // TODO: merge segments
 
     unlock_kheap();
+    if (ints) {
+        asm volatile("sti");
+    }
 }
 
 void *kmalloc(uint64_t size) {
