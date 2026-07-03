@@ -192,8 +192,8 @@ int load_library_from_disk(const char *path, uint64_t *out_index) {
 
 int resolve_library_path(const char *lib_name, char *out_path, size_t out_path_size) {
     // TODO: implement proper resolution (don't just search this fixed path)
-    const char *lib_prefix = "/iso9660/lib/";
-    size_t prefix_len      = 13; // strlen("/iso9660/lib/")
+    const char *lib_prefix = "/lib/";
+    size_t prefix_len      = 5; // strlen("/lib/")
 
     size_t lib_name_len = 0;
     while (lib_name[lib_name_len] != '\0') {

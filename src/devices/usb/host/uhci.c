@@ -320,8 +320,8 @@ int uhci_control_transfer(uhci_controller_t *controller, uint8_t device_address,
     if (res == -1) {
         /* Timeout */
         printf("ERROR: uhci_control_transfer: timeout reached\n");
-        printf("cmdreg: %.4x, stsreg: %.4x\n", uhci_read_register(controller, UHCI_IO_USBCMD),
-               uhci_read_register(controller, UHCI_IO_USBSTS));
+        printf("cmdreg: %.4x, stsreg: %.4x, td status: %x\n", uhci_read_register(controller, UHCI_IO_USBCMD),
+               uhci_read_register(controller, UHCI_IO_USBSTS), status_td->status);
     } else if (res == -2) {
         printf("ERROR: uhci_control_transfer: TD error mask set\n");
         res = -1;

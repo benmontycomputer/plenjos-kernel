@@ -9,9 +9,20 @@
 int iso9660_load_func(fscache_node_t *node, const char *name, fscache_node_t *out);
 int iso9660_unload_func(fscache_node_t *node);
 ssize_t iso9660_directory_read_func(vfs_handle_t *handle, void *buf, size_t len);
+int iso9660_create_child_func(fscache_node_t *parent, const char *name, struct kstat stat, fscache_node_t *node);
+ssize_t iso9660_file_read_func(vfs_handle_t *handle, void *buf, size_t len);
 
-const vfs_ops_block_t *iso9660_file_fsops      = NULL;
-const vfs_ops_block_t *iso9660_directory_fsops = NULL;
+const vfs_ops_block_t iso9660_file_fsops = {
+    .read        = iso9660_file_read_func,
+    .load_node   = iso9660_load_func,
+    .unload_node = iso9660_unload_func,
+};
+const vfs_ops_block_t iso9660_directory_fsops = {
+    .read         = iso9660_directory_read_func,
+    .load_node    = iso9660_load_func,
+    .create_child = iso9660_create_child_func,
+    .unload_node  = iso9660_unload_func,
+};
 
 /**
  * For caching purposes, we will ignore the path table, as it's easier to only cache directory records (all directories
@@ -336,11 +347,10 @@ int iso9660_load_func(fscache_node_t *node, const char *name, fscache_node_t *ou
 
                 struct kstat stat = { 0 };
                 stat.dev          = child_data->fs->drive->endpoint->dev;
-                stat.mode         = S_DFLT | (dir_record->file_flags & 0x02) ? S_IFDIR : S_IFREG;
+                stat.mode         = S_DFLT | ((dir_record->file_flags & 0x02) ? S_IFDIR : S_IFREG);
                 stat.size         = dir_record->data_length_le;
                 fscache_node_populate(out, 0, name, stat,
-                                      (dir_record->file_flags & 0x02) ? (vfs_ops_block_t *)iso9660_directory_fsops
-                                                                      : (vfs_ops_block_t *)iso9660_file_fsops);
+                                      (dir_record->file_flags & 0x02) ? &iso9660_directory_fsops : &iso9660_file_fsops);
 
                 kfree_heap(dir_buffer);
                 return 0;
@@ -348,7 +358,11 @@ int iso9660_load_func(fscache_node_t *node, const char *name, fscache_node_t *ou
             offs += dir_record->length;
         }
         dir_extent_lba++;
-        dir_size -= logical_block_size;
+        if (dir_size > logical_block_size) {
+            dir_size -= logical_block_size;
+        } else {
+            dir_size = 0;
+        }
     }
 
     kfree_heap(dir_buffer);
@@ -360,37 +374,8 @@ int iso9660_create_child_func(fscache_node_t *parent, const char *name, struct k
     return -ENOSYS;
 }
 
-// TODO: mount function
-extern fscache_node_t *fscache_root_node;
-int iso9660_setup(struct filesystem_iso9660 *fs, DRIVE_t *drive, uint32_t partition_start_lba) {
-    if (!iso9660_directory_fsops) {
-        // Initialize directory fsops
-        vfs_ops_block_t *dir_fsops = kmalloc_heap(sizeof(vfs_ops_block_t));
-        if (!dir_fsops) {
-            printf("OOM Error: iso9660_setup: could not allocate memory for directory fsops\n");
-            return -ENOMEM;
-        }
-        memset(dir_fsops, 0, sizeof(vfs_ops_block_t));
-        dir_fsops->read         = iso9660_directory_read_func;
-        dir_fsops->load_node    = iso9660_load_func;
-        dir_fsops->create_child = iso9660_create_child_func;
-        dir_fsops->unload_node  = iso9660_unload_func;
-        iso9660_directory_fsops = dir_fsops;
-    }
-    if (!iso9660_file_fsops) {
-        // Initialize file fsops
-        vfs_ops_block_t *file_fsops = kmalloc_heap(sizeof(vfs_ops_block_t));
-        if (!file_fsops) {
-            printf("OOM Error: iso9660_setup: could not allocate memory for file fsops\n");
-            return -ENOMEM;
-        }
-        memset(file_fsops, 0, sizeof(vfs_ops_block_t));
-        file_fsops->read        = iso9660_file_read_func;
-        file_fsops->load_node   = iso9660_load_func;
-        file_fsops->unload_node = iso9660_unload_func;
-        iso9660_file_fsops      = file_fsops;
-    }
-
+int iso9660_setup(struct filesystem_iso9660 *fs, DRIVE_t *drive, uint32_t partition_start_lba,
+                  fscache_node_t *mount_node) {
     if (!fs || !drive || !(fs->read_status & 0x01)) {
         return -EINVAL;
     }
@@ -408,51 +393,19 @@ int iso9660_setup(struct filesystem_iso9660 *fs, DRIVE_t *drive, uint32_t partit
         = ((struct iso9660_directory_record *)pvd->root_directory_record)->extent_location_lba_le;
     fs->root_directory_size = ((struct iso9660_directory_record *)pvd->root_directory_record)->data_length_le;
 
-    fscache_node_t *node = fscache_allocate_node();
-    if (!node) {
-        printf("OOM Error: iso9660_setup: could not allocate memory for root cache node\n");
-        return -ENOMEM;
-    }
-
-    node->stat.mode = S_DFLT | S_IFDIR;
-    node->fsops     = (vfs_ops_block_t *)iso9660_directory_fsops;
+    mount_node->fsops = &iso9660_directory_fsops;
     // TODO: decide if we want to support xattr for ownership
-    strncpy(node->name, "iso9660", NAME_MAX);
-    node->name[NAME_MAX]                     = '\0';
-    vfs_iso9660_cache_node_data_t *node_data = (vfs_iso9660_cache_node_data_t *)node->internal_data;
+    vfs_iso9660_cache_node_data_t *node_data = (vfs_iso9660_cache_node_data_t *)mount_node->internal_data;
     node_data->fs                            = fs;
     node_data->dir_record                    = kmalloc_heap(sizeof(struct iso9660_directory_record));
     if (!node_data->dir_record) {
         printf("OOM Error: iso9660_setup: could not allocate memory for root directory record\n");
-        kfree_heap(node);
         return -ENOMEM;
     }
     memcpy(node_data->dir_record, pvd->root_directory_record, sizeof(struct iso9660_directory_record));
 
-    printf("ISO9660 filesystem mounted: logical block size %d, root directory extent LBA %d, size %d bytes\n",
+    kout(KERNEL_INFO, "ISO9660 filesystem mounted: logical block size %d, root directory extent LBA %d, size %d bytes\n",
            fs->logical_block_size, fs->root_directory_extent_location, fs->root_directory_size);
-
-    node->parent_node     = NULL;
-    fscache_node_t *child = fscache_root_node->first_child;
-
-    if (child == NULL) {
-        fscache_root_node->first_child = node;
-        node->prev_sibling             = NULL;
-        node->next_sibling             = NULL;
-        node->parent_node              = fscache_root_node;
-        return 0;
-    }
-
-    while (child->next_sibling != NULL) {
-        child = child->next_sibling;
-    }
-
-    child->next_sibling = node;
-    node->prev_sibling  = child;
-    node->next_sibling  = NULL;
-    node->parent_node   = fscache_root_node;
-
-    _fscache_release_node_readable(node);
 
     return 0;
 }

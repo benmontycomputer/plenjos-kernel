@@ -28,7 +28,6 @@ thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), vo
         kout(KERNEL_WARN, "create_thread(): fsa_alloc() returned NULL (OOM?)\n");
         return NULL;
     }
-    memset(thread, 0, sizeof(thread_t));
 
     if (name) {
         strncpy(thread->name, name, PROCESS_THREAD_NAME_LEN);

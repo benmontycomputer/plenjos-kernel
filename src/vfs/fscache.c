@@ -1,12 +1,15 @@
 #include "vfs/fscache.h"
 
-#include "kernel.h"
+#include "kernel.h" // for _KERNEL_FSCACHE_CHECK_LOCKS
 #include "lib/mode.h"
+#include "lib/special_mem/fixed_size_allocator.h"
 #include "lib/stdio.h"
 #include "lib/string.h"
 #include "memory/kmalloc.h"
 #include "plenjos/errno.h"
 #include "vfs/vfs.h"
+
+static fixed_size_allocator_t _fscache_fsa = FSA_DEFAULT(sizeof(fscache_node_t));
 
 /**
  * Explanation of memory-locking model of the fscache:
@@ -21,12 +24,6 @@
  * while it is being modified. The parent's rwlock must be acquired to allow for traversal of the tree without having
  * to try to lock each child node individually.
  */
-
-// This does not include permanent nodes (e.g. kernelfs nodes)
-size_t fscache_cached_nodes_count = 0;
-
-fscache_block_header_t *fscache_head = NULL;
-fscache_block_header_t *fscache_tail = NULL;
 
 fscache_node_t *fscache_root_node = NULL;
 
@@ -46,9 +43,12 @@ void _fscache_release_node_modifiable(fscache_node_t *node) {
     rw_lock_write_unlock(&node->rwlock);
 }
 
-// This isn't a true upgrade; see rw_lock_upgrade_read_to_write for details
+// This isn't a true upgrade; see rw_lock_upgrade_read_to_write for details. However, it does use ref_count to prevent
+// deletion.
 void _fscache_upgrade_node_to_modifiable(fscache_node_t *node) {
+    fscache_node_ref(node);
     rw_lock_upgrade_read_to_write(&node->rwlock);
+    fscache_node_unref(node);
 }
 
 // This IS a true downgrade, unlike how the upgrade works; see rw_lock_downgrade_write_to_read for details
@@ -64,10 +64,28 @@ void _fscache_downgrade_node_to_readable(fscache_node_t *node) {
     }
 } */
 
+// TODO: deletion:
+// use rw_lock_try_write_lock(); if successful, then try to write lock the parent; if successful, check that ref_count
+// is 0, there are no children, and there IS a parent (specifically check for parent presence, not just whether this is
+// root); if those are satisfied, then we can delete safely.
+// Write locking the parent as well as the node is necessary
+// to prevent deletion of a node that has pending read/write locks from e.g. traversal (the parent node MUST be locked
+// before a node can be locked, except for root node). These locks must all be try's to prevent deadlock. Special case
+// in traversal: if you have a lock on a node, its parent node is guaranteed to have the node as a child, so the parent
+// is protected from deletion already, so you can lock a parent node of a locked node without locking the parent's
+// parent.
+
 // The parent node must be read-locked before calling this.
 // No locks are modified in this function.
 static fscache_node_t *_fscache_find_in_children(fscache_node_t *parent_node, char *token, size_t token_len) {
     if (!parent_node) return NULL;
+
+#ifdef _KERNEL_FSCACHE_CHECK_LOCKS
+    if (!rw_lock_is_some_locked(&parent_node->rwlock)) {
+        kout(KERNEL_SEVERE_FAULT, "_fscache_find_in_children(): parent_node must already be locked!\n");
+    }
+#endif
+
     if (!parent_node->first_child) return NULL;
 
     fscache_node_t *current_node = atomic_load_explicit(&parent_node->first_child, memory_order_acquire);
@@ -83,6 +101,12 @@ static fscache_node_t *_fscache_find_in_children(fscache_node_t *parent_node, ch
 
         current_node = atomic_load_explicit(&current_node->next_sibling, memory_order_acquire);
     }
+
+#ifdef _KERNEL_FSCACHE_CHECK_LOCKS
+    if (!rw_lock_is_some_locked(&parent_node->rwlock)) {
+        kout(KERNEL_SEVERE_FAULT, "_fscache_find_in_children(): parent_node became unlocked!\n");
+    }
+#endif
 
     return current_node;
 }
@@ -175,8 +199,8 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
                 // OK
             } else {
                 printf("fscache_request_node: execute access denied on directory %s for uid %u; directory mode %B, "
-                       "calculated effective mode %B\n",
-                       cur->name, uid, (uint64_t)cur->stat.mode, (uint64_t)mode);
+                       "calculated effective mode %o\n",
+                       cur->name, uid, (uint64_t)cur->stat.mode, (uint32_t)mode);
                 res = -EACCES;
                 goto res_set_and_return;
             }
@@ -223,6 +247,7 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
         if (!child) {
             // Node not found; attempt to load it.
             _fscache_upgrade_node_to_modifiable(cur);
+            kout(KERNEL_DEBUG_2, "fscache miss\n");
 
             // Because the upgrade isn't a true upgrade, we have to re-check for the child
             // After this operation, current_node is read-locked if not NULL
@@ -236,16 +261,17 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
                     goto res_downgrade_and_set_and_return;
                 }
 
-                ssize_t load_res = cur->fsops->load_node(cur, token, child);
+                ssize_t load_res = -EIO;
+                if (cur->fsops && cur->fsops->load_node) {
+                    load_res = cur->fsops->load_node(cur, token, child);
+                } else {
+                    kout(KERNEL_WARN, "fscache_request_node(): ran into node with no load_node func (name %s, path %s, mode %o)\n", cur->name, path, cur->stat.mode);
+                }
 
                 if (load_res != 0) {
                     atomic_store(&child->stat.mode, 0);
                     // load_node indicated node doesn't exist
                     if (next_slash_char == '\0' && load_res == -ENOENT) {
-                        // We are at the end; node not found — caller may want parent
-                        if (out) {
-                            *out = cur;
-                        }
                         // mark the allocated node as free again
                         res = FSCACHE_REQUEST_NODE_ONE_LEVEL_AWAY;
                         goto res_downgrade_and_set_and_return;
@@ -300,87 +326,95 @@ res_downgrade_and_set_and_return:
     goto res_set_and_return;
 }
 
-// This is guaranteed to return either NULL or a cleared node with type set to DT_UNKNOWN and with an initialized rwlock
-fscache_node_t *find_next_available_node_in_block(fscache_block_header_t *block) {
-    if (!block) {
-        return NULL;
-    }
-
-    fscache_node_t *nodes = (fscache_node_t *)(block + 1);
-
-    for (size_t i = 0; i < block->node_count; i++) {
-        if (atomic_compare_exchange_strong(&nodes[i].stat.mode, &(mode_t) { 0 }, (mode_t)-1)) {
-            memset((uint8_t *)&nodes[i] + sizeof(struct kstat), 0, sizeof(fscache_node_t) - sizeof(struct kstat));
-            rw_lock_init(&nodes[i].rwlock);
-            return &nodes[i];
+// Outputs a write-locked node; if out is NULL, no changes are made; just checks if the node would work for mounting and
+// unlocks the node after.
+int fscache_request_node_for_mounting(const char *path, uid_t uid, fscache_node_t **out) {
+    fscache_node_t *out_tmp = NULL;
+    int res                 = fscache_request_node(path, uid, &out_tmp);
+    if (res) {
+        if (res == FSCACHE_REQUEST_NODE_ONE_LEVEL_AWAY) {
+            res = -ENOENT;
         }
+        if (out_tmp) {
+            _fscache_release_node_readable(out_tmp);
+        }
+        return res;
+    }
+    if (!out_tmp) {
+        kout(KERNEL_SEVERE_FAULT,
+             "fscache_request_node_for_mounting(): fscache_request_node returned 0 but didn't set out_tmp!\n");
     }
 
-    return NULL;
-}
+    _fscache_upgrade_node_to_modifiable(out_tmp);
 
-fscache_block_header_t *fscache_create_block(size_t node_count) {
-    fscache_block_header_t *new_block
-        = (fscache_block_header_t *)kmalloc_heap(sizeof(fscache_block_header_t) + node_count * sizeof(fscache_node_t));
-
-    if (!new_block) {
-        return NULL;
+    if (!S_ISDIR(out_tmp->stat.mode)) {
+        _fscache_release_node_modifiable(out_tmp);
+        return -ENOTDIR;
     }
 
-    memset(new_block, 0, sizeof(fscache_block_header_t) + node_count * sizeof(fscache_node_t));
-
-    new_block->node_count = node_count;
-    new_block->prev       = fscache_tail;
-    new_block->next       = NULL;
-
-    if (fscache_tail) {
-        fscache_tail->next = new_block;
-    }
-    fscache_tail = new_block;
-
-    if (!fscache_head) {
-        fscache_head = new_block;
+    if (out_tmp->ref_count || out_tmp->first_child) {
+        _fscache_release_node_modifiable(out_tmp);
+        return -EBUSY;
     }
 
-    return new_block;
+    if (out) {
+        *out = out_tmp;
+        fscache_node_ref(out_tmp);
+        out_tmp->flags |= FSCACHE_FLAG_MOUNT_POINT;
+        out_tmp->fsops  = NULL;
+        memset(out_tmp->internal_data, 0, sizeof(out_tmp->internal_data));
+    } else {
+        _fscache_release_node_modifiable(out_tmp);
+    }
+
+    return 0;
 }
 
 // TODO: limit how many nodes can be cached; evict old nodes if necessary
-// TODO: ensure this node is properly read-locked so it can't be evicted immediately
+// Can't be evicted immediately, because parent is initially NULL plus it isn't linked anywhere in the tree
 // This is guaranteed to return either NULL or a cleared, read-locked node with type set to DT_UNKNOWN
 fscache_node_t *fscache_allocate_node() {
-    fscache_block_header_t *current_block = fscache_head;
-
-    while (current_block) {
-        fscache_node_t *node = find_next_available_node_in_block(current_block);
-        if (node) {
-            // Found a node
-            _fscache_wait_for_node_readable(node);
-            return node;
-        }
-        current_block = current_block->next;
-    }
-
-    // No available nodes; create a new block
-    current_block = fscache_create_block(FSCACHE_INIT_NODES);
-    if (!current_block) {
-        return NULL;
-    }
-
-    fscache_node_t *node = find_next_available_node_in_block(current_block);
+    fscache_node_t *node = fsa_alloc(&_fscache_fsa);
     if (node) {
         _fscache_wait_for_node_readable(node);
     }
     return node;
 }
 
+int fscache_node_ref(fscache_node_t *node) {
+#ifdef _KERNEL_FSCACHE_CHECK_LOCKS
+    if (!rw_lock_is_some_locked(&node->rwlock)) {
+        kout(KERNEL_SEVERE_FAULT, "fscache_node_ref(): node must already be locked!\n");
+    }
+#endif
+
+    int old = atomic_fetch_add_explicit(&node->ref_count, 1, memory_order_release);
+
+#ifdef _KERNEL_FSCACHE_CHECK_LOCKS
+    if (!rw_lock_is_some_locked(&node->rwlock)) {
+        kout(KERNEL_SEVERE_FAULT, "fscache_node_ref(): node became unlocked!\n");
+    }
+#endif
+
+    if (old < 0 || old == INT32_MAX) {
+        kout(KERNEL_SEVERE_FAULT, "fscache_node_ref(): ref_count out of range");
+        // atomic_fetch_sub_explicit(&node->ref_count, 1, memory_order_release);
+        // return -EIO;
+    }
+    return old + 1;
+}
+
+int fscache_node_unref(fscache_node_t *node) {
+    int old = atomic_fetch_sub_explicit(&node->ref_count, 1, memory_order_acq_rel);
+    if (old <= 0) {
+        kout(KERNEL_SEVERE_FAULT, "fscache_node_unref(): node not reffed!\n");
+    }
+    return old - 1;
+}
+
 ssize_t kernelfs_load(fscache_node_t *node, const char *name, fscache_node_t *out);
 
 int fscache_init() {
-    fscache_cached_nodes_count = 0;
-
-    fscache_create_block(FSCACHE_INIT_NODES);
-
     fscache_root_node = fscache_allocate_node();
     if (!fscache_root_node) {
         printf("fscache_init: failed to allocate root node!\n");
@@ -388,8 +422,7 @@ int fscache_init() {
     }
 
     kernelfs_load(NULL, NULL, fscache_root_node);
-    // TODO: octal
-    printf("fscache_init: loaded root node of mode %u\n", fscache_root_node->stat.mode);
+    printf("fscache_init: loaded root node of mode %o\n", fscache_root_node->stat.mode);
 
     _fscache_release_node_readable(fscache_root_node);
 

@@ -59,6 +59,7 @@ endif
 
 # Internal C flags that should not be changed by the user.
 # VLAs are banned because they can cause stack overflows in kernel code.
+# If LTO is enabled, we will either need memory fences or forced no-inlines on the functions in lock.c
 override CFLAGS += \
     -Wall \
     -Wextra \
@@ -68,8 +69,8 @@ override CFLAGS += \
 	-pedantic \
     -ffreestanding \
     -fno-stack-protector \
-	-Wframe-larger-than=512 \
-	-Werror=frame-larger-than=512 \
+	-Wframe-larger-than=1024 \
+	-Werror=frame-larger-than=1024 \
     -fno-stack-check \
 	-fno-omit-frame-pointer \
     -fno-lto \

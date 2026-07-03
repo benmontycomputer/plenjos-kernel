@@ -1,6 +1,4 @@
-#include <stdint.h>
-
-#define LIMINE_API_REVISION 3
+#include "cpu/cpu.h"
 
 #include "arch/x86_64/apic/apic.h"
 #include "arch/x86_64/apic/ioapic.h"
@@ -10,22 +8,22 @@
 #include "arch/x86_64/idt.h"
 #include "arch/x86_64/irq.h"
 #include "arch/x86_64/pic/pic.h"
-#include "cpu/cpu.h"
 #include "kernel.h"
 #include "lib/stdio.h"
-#include "limine.h"
 #include "memory/detect.h"
 #include "memory/mm.h"
 #include "proc/scheduler.h"
 #include "timer/pit.h"
+
+#include <limine.h>
+#include <stdint.h>
 
 // TODO: do we want to enable sse/sse2/avx instructions?
 
 __attribute__((used, section(".limine_requests"))) static volatile LIMINE_BASE_REVISION(0);
 
 __attribute__((used, section(".limine_requests"))) //
-static volatile struct limine_mp_request mp_request
-    = { .id = LIMINE_MP_REQUEST, .revision = 3 };
+static volatile struct limine_mp_request mp_request = { .id = LIMINE_MP_REQUEST, .revision = 3 };
 
 volatile struct limine_mp_response *mp_response;
 

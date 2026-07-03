@@ -11,7 +11,7 @@
 #include "vfs/kernelfs.h"
 #include "vfs/vfs.h"
 
-int next_free_drive;
+int next_free_drive = 1; // Reserve drive 0 for boot
 
 #define DRIVE_NUM_SHIFT 8
 #define MAX_DRIVES      0x1000
@@ -45,15 +45,28 @@ void populate_and_register_drive(DRIVE_t *drive, uint64_t numsectors, uint32_t l
     drive->irq           = irq;
     drive->internal_data = internal_data;
 
+    drive->first_partition = NULL;
+
+    struct MBR mbr = { 0 };
+    drive_read_mbr(drive, &mbr);
+
+    int drive_no = 0;
+
+    uint32_t mbr_disk_signature = *(uint32_t *)mbr.disk_signature;
+
+    if (mbr_disk_signature && mbr_disk_signature == executable_file_request.response->executable_file->mbr_disk_id) {
+        kout(KERNEL_INFO, "Found boot drive.\n");
+    } else {
+        // NOT the minor number of the endpoint; have to bitshift to get that
+        drive_no = next_free_drive;
+        next_free_drive++;
+        if (drive_no >= MAX_DRIVES) {
+            kout(KERNEL_SEVERE_FAULT, "populate_and_register_drive(): no more free drives! (should never happen)\n");
+        }
+    }
+
     char name[NAME_MAX + 1];
     strncpy(name, "drive", 5);
-
-    // NOT the minor number of the endpoint
-    int drive_no = next_free_drive;
-    next_free_drive++;
-    if (drive_no >= MAX_DRIVES) {
-        kout(KERNEL_SEVERE_FAULT, "populate_and_register_drive(): no more free drives! (should never happen)\n");
-    }
 
     char *name_end     = name + strlen("drive");
     uint32_t drive_hex = (uint32_t)drive_no;
@@ -77,9 +90,19 @@ void populate_and_register_drive(DRIVE_t *drive, uint64_t numsectors, uint32_t l
 
     // TODO: sysfs: pass actual physical device here
     drive->endpoint = register_device_endpoint(name, &_drive_endpoint_driver, drive_no << DRIVE_NUM_SHIFT, NULL, drive);
-    drive->first_partition = NULL;
 
-    drive_read_mbr(drive, NULL);
+    if (mbr_disk_signature && mbr_disk_signature == executable_file_request.response->executable_file->mbr_disk_id) {
+        // TODO: better cmdline parsing
+        int partition_no = executable_cmdline_request.response->cmdline[0] - '0';
+        if (partition_no < 1 || partition_no > 4) {
+            kout(KERNEL_WARN, "WARN: Bad partition no %d. Can't find root.\n", partition_no);
+        } else {
+            int res = mbr_mount(drive, partition_no, (uid_t)0, "/");
+            if (res) {
+                kout(KERNEL_WARN, "Failed to mount root dir (partition %d): res %d\n", partition_no, res);
+            }
+        }
+    }
 }
 
 ssize_t drive_endpoint_read(vfs_handle_t *handle, void *buf, size_t len) {

@@ -1,10 +1,10 @@
 #include "fixed_size_allocator.h"
 
+#include "kernel.h"
 #include "lib/stdio.h"
 #include "memory/mm.h"
 
-#define FREE_IND_MASK                0xFFF
-#define _KERNEL_CORRUPTION_CHECK_FSA 1 // Temporary
+#define FREE_IND_MASK 0xFFF
 
 static fixed_size_allocator_t _fsa_root = FSA_DEFAULT(sizeof(fixed_size_allocator_t));
 
@@ -152,16 +152,17 @@ void *fsa_alloc(fixed_size_allocator_t *fsa) {
         }
     }
 
+#ifdef _KERNEL_CORRUPTION_CHECK_FSA
+    if (*(void **)fsa->first_free == NULL && fsa->first_free != fsa->last_free) {
+        kout(KERNEL_SEVERE_FAULT, "fsa_alloc(): first_free says next free is NULL, but last_free != first_free!");
+        return NULL;
+    }
+#endif
+
     void *res       = fsa->first_free;
     fsa->first_free = *(void **)res;
     if (!fsa->first_free) {
         fsa->last_free = NULL;
-#ifdef _KERNEL_CORRUPTION_CHECK_FSA
-        if (fsa->last_free != res) {
-            kout(KERNEL_SEVERE_FAULT, "fsa_alloc(): first_free says next free is NULL, but last_free != first_free!");
-            return NULL;
-        }
-#endif
     }
 
     void *page        = (void *)((uintptr_t)res & ~FREE_IND_MASK);
@@ -180,6 +181,8 @@ void *fsa_alloc(fixed_size_allocator_t *fsa) {
     } else {
         _fsa_set_page_free_ind(page, FREE_IND_MASK);
     }
+
+    memset(res, 0, fsa->item_size);
 
     mutex_unlock(&fsa->mutex);
     return res;

@@ -1,7 +1,12 @@
 #ifndef _KERNEL_H
 #define _KERNEL_H
 
+#define _KERNEL_CORRUPTION_CHECK_FSA 1
+#define _KERNEL_FSCACHE_CHECK_LOCKS 1
+
 #include "plenjos/types.h"
+
+#define LIMINE_API_REVISION 3
 
 #include <stdbool.h>
 #include <stddef.h>

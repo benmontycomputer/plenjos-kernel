@@ -234,7 +234,6 @@ slnode_t *slnode_alloc(void *data) {
     slnode_t *node = (slnode_t *)fsa_alloc(&_slnode_fsa);
     if (!node) return NULL;
     node->data = data;
-    node->next = NULL;
     return node;
 }
 
@@ -242,8 +241,6 @@ dlnode_t *dlnode_alloc(void *data) {
     dlnode_t *node = (dlnode_t *)fsa_alloc(&_dlnode_fsa);
     if (!node) return NULL;
     node->data = data;
-    node->prev = NULL;
-    node->next = NULL;
     return node;
 }
 
@@ -273,7 +270,6 @@ list_t *singly_linked_list_new() {
         return NULL;
     }
 
-    memset(res, 0, sizeof(list_t));
     res->ops = &sll_ops;
     return res;
 }

@@ -25,6 +25,13 @@ void rw_lock_write_lock(rw_lock_t *lock);
 void rw_lock_write_unlock(rw_lock_t *lock);
 bool rw_lock_is_write_locked(rw_lock_t *lock);
 
+// This checks for ANY lock (read or write), not just a read lock
+bool rw_lock_is_some_locked(rw_lock_t *lock);
+
+// Don't forget to unlock at some point if these succeed!
+bool rw_lock_try_write_lock(rw_lock_t *lock);
+bool rw_lock_try_read_lock(rw_lock_t *lock);
+
 // Unlike downgrading, this DOES allow other things to acquire a write lock in between. There is no way around this;
 // read locks aren't exclusive, so, if we try to upgrade multiple different ones concurrently, one will have to go
 // first, so the other one has to wait until the first one is done, and other write locks can be acquired during this

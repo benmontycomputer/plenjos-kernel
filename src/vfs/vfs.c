@@ -1,5 +1,6 @@
 #include "vfs/vfs.h"
 
+#include "kernel.h" // for _KERNEL_FSCACHE_CHECK_LOCKS
 #include "lib/mode.h"
 #include "lib/stdio.h"
 #include "memory/kmalloc.h"
@@ -19,12 +20,20 @@ int vfs_close(vfs_handle_t *f) {
         return -EINVAL;
     }
 
-    if (f->backing_node == NULL || f->backing_node->fsops == NULL || f->backing_node->fsops->close == NULL) {
+    fscache_node_t *backing_node = f->backing_node;
+    int res                      = 0;
+
+    if (backing_node == NULL || backing_node->fsops == NULL || backing_node->fsops->close == NULL) {
         kfree_heap(f);
-        return 0;
+    } else {
+        res = f->backing_node->fsops->close(f);
     }
 
-    return f->backing_node->fsops->close(f);
+    if (backing_node) {
+        fscache_node_unref(f->backing_node);
+    }
+
+    return res;
 }
 
 ssize_t vfs_read(vfs_handle_t *f, void *buf, size_t len) {
@@ -84,6 +93,11 @@ off_t vfs_seek(vfs_handle_t *f, off_t offset, vfs_seek_whence_t whence) {
 
 // Helper function to create a vfs_handle_t; DOES NOT check permissions. out MUST NOT be NULL.
 static int vfs_helper_create_handle(fscache_node_t *node, access_t access, vfs_handle_t **out) {
+#ifdef _KERNEL_FSCACHE_CHECK_LOCKS
+    if (!rw_lock_is_some_locked(&node->rwlock)) {
+        kout(KERNEL_SEVERE_FAULT, "vfs_helper_create_handle(): node must already be locked!\n");
+    }
+#endif
     if (!node) {
         return -EINVAL;
     }
@@ -92,21 +106,18 @@ static int vfs_helper_create_handle(fscache_node_t *node, access_t access, vfs_h
     if (!handle) {
         return -ENOMEM;
     }
+    memset(handle, 0, sizeof(vfs_handle_t));
 
     handle->backing_node = node;
-    int oldval           = atomic_fetch_add(&node->ref_count, 1);
-    if (oldval < 0 || oldval == INT32_MAX) {
-        atomic_fetch_sub(&node->ref_count, 1);
-        // Failed to acquire reference
-        kfree_heap(handle);
-        return -EIO;
-    }
+    int oldval = fscache_node_ref(node);
 
     handle->access = access;
 
     // TODO: implement this properly?
     memset(handle->instance_data, 0, sizeof(handle->instance_data));
     *out = handle;
+
+    // No final lock check needed; that's done in fscache_node_ref
 
     return 0;
 }
@@ -163,9 +174,9 @@ int vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_create
 
             fscache_node_t *new_node = NULL;
             /* TODO: use egid instead */
-            struct kstat stat        = { .uid = uid, .gid = 0, .mode = mode_if_create };
+            struct kstat stat        = { .uid = uid, .gid = 0, .mode = (mode_if_create & ~S_IFMT) & S_IFREG };
             // This function properly masks the mode; we don't have to do that here.
-            res = vfs_creatat(node, last_slash, stat, &new_node);
+            res                      = vfs_creatat(node, last_slash, stat, &new_node);
 
             if (res < 0) {
                 goto cleanup_and_return;
@@ -336,7 +347,8 @@ int vfs_mkdir(const char *path, struct kstat stat) {
             goto cleanup;
         }
 
-        stat.mode = stat.mode & ~022 & (0777 | S_ISVTX); // TODO: apply actual umask from process
+        stat.mode  = stat.mode & ~022 & (0777 | S_ISVTX); // TODO: apply actual umask from process
+        stat.mode |= S_IFDIR;
 
         res = parent->fsops->create_child(parent, last_slash, stat, new_dir_node);
         _fscache_release_node_readable(new_dir_node);

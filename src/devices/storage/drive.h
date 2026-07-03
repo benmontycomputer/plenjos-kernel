@@ -2,8 +2,12 @@
 
 #include "kernel.h"
 
+#include <limine.h>
 #include <stddef.h>
 #include <stdint.h>
+
+extern volatile struct limine_executable_file_request executable_file_request;
+extern volatile struct limine_executable_cmdline_request executable_cmdline_request;
 
 typedef struct DRIVE DRIVE_t;
 typedef struct partition partition_t;

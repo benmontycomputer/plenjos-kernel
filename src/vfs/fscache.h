@@ -26,12 +26,12 @@ typedef struct fscache_node fscache_node_t;
 struct fscache_node {
     // This is at the beginning to make it easy to use memset to clear a node without unsetting type (allowing us to
     // keep it reserved)
-    struct kstat stat;
+    struct kstat stat; // TODO: atomics?
 
     char name[NAME_MAX + 1];
 
     // This is used to stop this from being freed while it is still in use. You must acquire read_lock (NOT write_lock)
-    // before incrementing this.
+    // before incrementing this. However, you do NOT need to acquire any locks at all to decrement.
     atomic_int ref_count;
 
     rw_lock_t rwlock;
@@ -51,21 +51,18 @@ struct fscache_node {
     uint64_t internal_data[4];
 };
 
-typedef struct fscache_block_header fscache_block_header_t;
-
-// The nodes are stored in the memory addresses directly following this header
-struct fscache_block_header {
-    size_t node_count;
-    fscache_block_header_t *prev;
-    fscache_block_header_t *next;
-} __attribute__((packed));
-
 int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out);
+
+// Outputs a write-locked node that is a valid mount point
+int fscache_request_node_for_mounting(const char *path, uid_t uid, fscache_node_t **out);
 
 void _fscache_wait_for_node_readable(fscache_node_t *node);
 void _fscache_release_node_readable(fscache_node_t *node);
 void _fscache_wait_for_node_modifiable(fscache_node_t *node);
 void _fscache_release_node_modifiable(fscache_node_t *node);
+
+int fscache_node_ref(fscache_node_t *node);
+int fscache_node_unref(fscache_node_t *node);
 
 // This must be called after kernelfs_init()
 int fscache_init();

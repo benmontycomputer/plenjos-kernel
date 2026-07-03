@@ -124,7 +124,7 @@ int handle_string_arg(pml4_t *current_pml4, uint64_t user_ptr, const char **out)
     return 0;
 }
 
-int handle_relative_path(const char *rel, proc_t *proc, char out[PATH_MAX]) {
+int handle_relative_path(const char *rel, proc_t *proc, char *out) {
     if (!rel || !proc || !out) {
         return -EINVAL;
     }
@@ -162,7 +162,7 @@ int handle_relative_path(const char *rel, proc_t *proc, char out[PATH_MAX]) {
     }
 }
 
-int collapse_path(const char *path_in, char path_out[PATH_MAX]) {
+int collapse_path(const char *path_in, char *path_out) {
     if (!path_in || !path_out) {
         return -EINVAL;
     }

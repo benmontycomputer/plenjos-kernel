@@ -4,9 +4,9 @@
 #include "kernel.h"
 #include "lib/stdio.h"
 #include "lib/string.h"
-#include "limine.h"
 #include "memory/mm.h"
 
+#include <limine.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -15,8 +15,7 @@
 
 // Get RSDP info
 __attribute__((used, section(".limine_requests"))) //
-static volatile struct limine_rsdp_request rsdp_request
-    = { .id = LIMINE_RSDP_REQUEST, .revision = 0 };
+static volatile struct limine_rsdp_request rsdp_request = { .id = LIMINE_RSDP_REQUEST, .revision = 0 };
 
 bool checksum_sdt(ACPISDTHeader_t *tableHeader) {
     unsigned char sum = 0;

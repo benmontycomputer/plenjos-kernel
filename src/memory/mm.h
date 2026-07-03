@@ -4,16 +4,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define LIMINE_API_REVISION 3
-
-#include "limine.h"
-
 #ifndef _KERNEL_MEMORYMANAGER_H
 #define _KERNEL_MEMORYMANAGER_H
 
-#include "memory/mm_common.h"
-
 #include "memory/detect.h"
+#include "memory/mm_common.h"
 
 void init_memory_manager();
 
@@ -54,7 +49,8 @@ uint64_t virt_to_phys(uint64_t virt);
 
 uint64_t *alloc_paging_node();
 
-void map_virtual_memory_using_alloc(uint64_t phys_start, uint64_t virt_start, size_t len, uint64_t flags, uint64_t *alloc_func(), pml4_t *pml4);
+void map_virtual_memory_using_alloc(uint64_t phys_start, uint64_t virt_start, size_t len, uint64_t flags,
+                                    uint64_t *alloc_func(), pml4_t *pml4);
 void map_virtual_memory(uint64_t phys_addr, size_t size, uint64_t flags, pml4_t *pml4);
 
 // Returns the physical address of the allocated memory

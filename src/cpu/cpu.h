@@ -1,11 +1,10 @@
 #pragma once
 
-#include <stdint.h>
-#include <stdbool.h>
-
-#include "limine.h"
-
 #include "kernel.h"
+
+#include <limine.h>
+#include <stdbool.h>
+#include <stdint.h>
 
 #define MAX_CORES 256
 

@@ -230,6 +230,28 @@ void printf_hex_long(uint64_t hex, uint16_t pad_to) {
     }
 }
 
+void printf_octal(uint32_t octal, uint16_t pad_to) {
+    uint32_t adj = octal;
+
+    printf_str("0o", 2);
+
+    char digits[11];
+    int digit_count = 0;
+
+    while (adj || digit_count == 0) {
+        digits[digit_count++] = (char)('0' + (adj & 0x7));
+        adj >>= 3;
+    }
+
+    while (digit_count < pad_to) {
+        digits[digit_count++] = '0';
+    }
+
+    while (digit_count > 0) {
+        printf_ch(digits[--digit_count]);
+    }
+}
+
 // TODO: re-enable when SSE is available
 /* void printf_float(double f, uint8_t precision) {
     int int_part = (int)f;
@@ -332,10 +354,17 @@ int _printf_internal(const char *format, va_list list) {
                 case 'x':
                     printf_hex((uint32_t)va_arg(list, uint32_t), precision);
                     break;
+                case 'o':
+                    printf_octal((uint32_t)va_arg(list, uint32_t), precision);
+                    break;
                 default:
                     va_arg(list, void *); // consume arg
                     break;
                 }
+                break;
+            }
+            case 'o': {
+                printf_octal((uint32_t)va_arg(list, uint32_t), 0);
                 break;
             }
             default:
@@ -363,7 +392,7 @@ int printf_nolock(const char *format, ...) {
 }
 
 // %d or %i for integers, %f for floating-point, %s for string, %c for char, %x for hex, %p for pointer, %ld for signed
-// long, %lu for unsigned long
+// long, %lu for unsigned long, %o for octal
 int printf(const char *format, ...) {
     request_console();
 

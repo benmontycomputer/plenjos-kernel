@@ -1,6 +1,7 @@
 #include "mbr.h"
 
 #include "drive.h"
+#include "lib/special_mem/fixed_size_allocator.h"
 #include "lib/stdio.h"
 #include "memory/kmalloc.h"
 #include "vfs/fat/exfat.h"
@@ -8,9 +9,9 @@
 #include "vfs/fat/fat12.h"
 #include "vfs/fat/fat16.h"
 #include "vfs/fat/fat32.h"
+#include "vfs/fscache.h"
 #include "vfs/fscommon.h"
 #include "vfs/iso9660/iso9660.h"
-#include "lib/special_mem/fixed_size_allocator.h"
 
 static char *mbr_pretty_partition_type(mbr_partition_type_t type) {
     switch (type) {
@@ -52,9 +53,10 @@ static char *mbr_pretty_partition_type(mbr_partition_type_t type) {
 static fixed_size_allocator_t _mbr_part_fsa = FSA_DEFAULT(sizeof(partition_t));
 
 // Note: MBR lba values are defined in 512-byte sectors, regardless of the drive's logical sector size
+// Another note: do NOT expect drive to have an endpoint or name yet (but read sectors will be populated)
 void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
-    if (!drive || !mbr_out) {
-        kout(KERNEL_SEVERE_FAULT, "Kernel Programming Error: drive_read_mbr called with NULL drive or mbr_out\n");
+    if (!drive) {
+        kout(KERNEL_SEVERE_FAULT, "Kernel Programming Error: drive_read_mbr called with NULL drive\n");
         return;
     }
 
@@ -71,36 +73,37 @@ void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
         return;
     }
 
-    uint8_t *buf = kmalloc_heap(drive->logical_sector_size);
-    if (!buf) {
+    uint8_t *full_buf = kmalloc_heap(drive->logical_sector_size);
+    if (!full_buf) {
         kout(KERNEL_SEVERE_FAULT, "OOM Error: could not allocate memory for MBR read buffer\n");
         return;
     }
 
     // MBR is located in the first sector (LBA 0)
-    ssize_t res = drive->read_sectors(drive, 0, 1, buf);
+    ssize_t res = drive->read_sectors(drive, 0, 1, full_buf);
     if (res < 0) {
         kout(KERNEL_EXTERNAL_FAULT, "Error reading MBR from drive\n");
-        kfree_heap(buf);
+        kfree_heap(full_buf);
         return;
     }
 
     if (res < sizeof(struct MBR)) {
         kout(KERNEL_EXTERNAL_FAULT, "Error: Incomplete MBR read from drive (expected %u bytes, got %d bytes)\n",
              sizeof(struct MBR), res);
-        kfree_heap(buf);
+        kfree_heap(full_buf);
         return;
     }
 
     if (mbr_out) {
-        memcpy(mbr_out, buf, sizeof(struct MBR));
+        memcpy(mbr_out, full_buf, sizeof(struct MBR));
     }
-    struct MBR *mbr = (struct MBR *)buf;
+    struct MBR *mbr = (struct MBR *)full_buf;
 
     kout(KERNEL_INFO, "MBR read successfully from drive\n");
-    kout(KERNEL_INFO, "MBR Signature: %x\n", mbr->signature);
+    kout(KERNEL_INFO, "MBR Signature: %x; disk_signature: %x\n", (uint32_t)mbr->signature,
+         *(uint32_t *)mbr->disk_signature);
     kout(KERNEL_INFO, "Partitions:\n");
-    drive->partition_count = 0;
+    drive->partition_count = 4;
     for (int i = 0; i < 4; i++) {
         struct mbr_partition_entry *part = &mbr->partitions[i];
 
@@ -111,8 +114,6 @@ void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
                  mbr_pretty_partition_type(part->partition_type), part->partition_type,
                  (part->boot_indicator == 0x80) ? "Yes" : "No", lba_act, part->size_in_sectors);
         }
-
-        memset(buf, 0, drive->logical_sector_size);
 
         partition_t *drive_part = fsa_alloc(&_mbr_part_fsa);
         if (!drive_part) {
@@ -135,141 +136,191 @@ void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
             drive->first_partition = drive_part;
         }
 
-        drive_part->drive = drive;
+        drive_part->drive          = drive;
         drive_part->partition_type = part->partition_type;
-        drive_part->lba_act = lba_act;
-        drive_part->next = NULL;
+        drive_part->lba_act        = lba_act;
+        drive_part->next           = NULL;
+    }
 
-        if (read_first_sector(drive, lba_act, buf) < 0) {
-            kout(KERNEL_WARN, "Error reading first sector of partition %d\n", i + 1);
-            drive_part->partition_type = MBR_PARTITION_TYPE_UNKNOWN; // TODO: should this be something else?
-            continue;
+    kfree_heap(full_buf);
+}
+
+// Partition no. starts at 1, NOT 0
+// drive MUST have its endpoint populated
+int mbr_mount(struct DRIVE *drive, int partition_no, uid_t uid, const char *path) {
+    fscache_node_t *node = NULL;
+    int res              = fscache_request_node_for_mounting(path, uid, &node);
+    if (res) {
+        // node will still be NULL; no releasing needed
+        kout(KERNEL_SEVERE_EXTERNAL_FAULT, "mbr_mount(): fscache_request_node_for_mounting() failed with res %d\n", res);
+        return res;
+    }
+
+    partition_t *part = drive->first_partition;
+    for (int i = 1; i < partition_no; i++) {
+        if (part) {
+            part = part->next;
         }
+    }
 
-        if (lba_act == 16) {
-            // Potential ISO9660 partition (e.g., Live CD)
-            if (memcmp(buf + 1, "CD001", 5) == 0) {
-                lba_act = 0;
+    if (!part) {
+        kout(KERNEL_SEVERE_EXTERNAL_FAULT, "mbr_mount(): invalid partition no %d for drive %s\n", partition_no,
+             drive->endpoint->name);
+        return -EINVAL;
+    }
 
-                kout(KERNEL_INFO, "    ISO9660 filesystem detected on partition %d\n", i + 1);
+    uint8_t *buf = kmalloc_heap(drive->logical_sector_size);
+    if (!buf) {
+        kout(KERNEL_SEVERE_EXTERNAL_FAULT, "mbr_mount(): kmalloc_heap() failed (OOM?)\n");
+        return -ENOMEM;
+    }
 
-                if (buf[0] != 0x01) {
-                    kout(KERNEL_WARN, "    Warning: Primary Volume Descriptor type is not 0x01 (got %02x)\n", buf[0]);
-                    continue;
-                }
+    res = read_first_sector(drive, part->lba_act, buf);
+    if (res) {
+        kout(KERNEL_SEVERE_EXTERNAL_FAULT, "Error reading first sector of partition %d (errno %d)\n", partition_no,
+             res);
+        res = -EIO; // TODO: should we just return res instead?
+        goto cleanup;
+    }
 
-                struct filesystem_iso9660 *fs = kmalloc_heap(sizeof(struct filesystem_iso9660));
-                if (!fs) {
-                    kout(KERNEL_SEVERE_FAULT,
-                         "OOM Error: could not allocate memory for ISO9660 filesystem structure\n");
-                    continue;
-                }
-                memset(fs, 0, sizeof(struct filesystem_iso9660));
-                memcpy(&fs->pvd, buf, sizeof(struct iso9660_primary_volume_descriptor));
-                fs->read_status |= 0x01; // Mark primary volume descriptor as read
-                if (iso9660_setup(fs, drive, lba_act) == 0) {
-                    kout(KERNEL_INFO, "    ISO9660 setup successful on partition %d\n", i + 1);
-                } else {
-                    kout(KERNEL_SEVERE_EXTERNAL_FAULT, "    Failed to setup ISO9660 filesystem on partition %d\n",
-                         i + 1);
-                }
+    res = 0;
+
+    if (part->partition_type == MBR_PARTITION_TYPE_EMPTY) {
+        kout(KERNEL_INFO, "mbr_mount(): partition type is empty; cannot mount.\n");
+        res = -EINVAL;
+        goto cleanup;
+    }
+
+    if (part->lba_act == 16) {
+        // Potential ISO9660 partition (e.g., Live CD)
+        if (memcmp(buf + 1, "CD001", 5) == 0) {
+            kout(KERNEL_INFO, "    ISO9660 filesystem detected on partition %d\n", partition_no);
+
+            if (buf[0] != 0x01) {
+                kout(KERNEL_WARN, "    Warning: Primary Volume Descriptor type is not 0x01 (got %02x)\n", buf[0]);
+                res = -EIO; // TODO: is this correct?
             }
 
-            continue;
+            struct filesystem_iso9660 *fs = kmalloc_heap(sizeof(struct filesystem_iso9660));
+            if (!fs) {
+                kout(KERNEL_SEVERE_EXTERNAL_FAULT,
+                     "OOM Error: could not allocate memory for ISO9660 filesystem structure\n");
+                res = -ENOMEM;
+            }
+            memset(fs, 0, sizeof(struct filesystem_iso9660));
+            memcpy(&fs->pvd, buf, sizeof(struct iso9660_primary_volume_descriptor));
+            fs->read_status |= 0x01; // Mark primary volume descriptor as read
+            res              = iso9660_setup(fs, drive, 0, node);
+            if (res == 0) {
+                kout(KERNEL_INFO, "    ISO9660 setup successful on partition %d\n", partition_no);
+            } else {
+                kout(KERNEL_SEVERE_EXTERNAL_FAULT, "    Failed to setup ISO9660 filesystem on partition %d (res %d)\n",
+                     partition_no, res);
+                goto cleanup;
+            }
         }
 
-        switch (part->partition_type) {
-        case MBR_PARTITION_TYPE_FAT32:
-        case MBR_PARTITION_TYPE_FAT32_LBA: {
+        goto cleanup;
+    }
+
+    /* switch (part->partition_type) {
+    case MBR_PARTITION_TYPE_FAT32:
+    case MBR_PARTITION_TYPE_FAT32_LBA: {
+        struct filesystem_fat32 *fs = kmalloc_heap(sizeof(struct filesystem_fat32));
+        memcpy(&fs->boot_sector_raw, (struct fat_boot_sector *)buf, sizeof(struct fat_boot_sector));
+        kout(KERNEL_INFO, "    FAT32 boot sector read successfully on partition %d\n", +1);
+        if (fat32_setup(fs, drive, part->lba_act) == 0) {
+            kout(KERNEL_INFO, "    FAT32 filesystem detected on partition %d: Total clusters: %u\n", partition_no,
+                 fs->total_clusters);
+            // Parse and list root directory for basic validation
+            fat32_parse_root(fs);
+        } else {
+            kout(KERNEL_SEVERE_EXTERNAL_FAULT, "    Failed to setup FAT32 filesystem on partition %d\n", partition_no);
+        }
+
+        break;
+    }
+    case MBR_PARTITION_TYPE_FAT16_SMALL:
+    case MBR_PARTITION_TYPE_FAT16_LARGE: {
+        break;
+    }
+    case MBR_PARTITION_TYPE_FAT12: {
+        break;
+    }
+    case MBR_PARTITION_TYPE_EFI_SYSTEM: {
+        // Can be FAT12, FAT16, or FAT32
+        fat_type_t fat_type = fat_detect_type(drive, part->lba_act, (struct fat_boot_sector *)buf);
+
+        switch (fat_type) {
+        case FAT_TYPE_12: {
+            kout(KERNEL_INFO, "    FAT12 filesystem detected on EFI System Partition %d\n", partition_no);
+            struct filesystem_fat12 *fs = kmalloc_heap(sizeof(struct filesystem_fat12));
+            memcpy(&fs->boot_sector_raw, (struct fat_boot_sector *)buf, sizeof(struct fat_boot_sector));
+            fs->read_status |= 0x01; // Mark boot sector as read
+            fat12_setup(fs, drive, part->lba_act);
+            break;
+        }
+        case FAT_TYPE_16: {
+            kout(KERNEL_INFO, "    FAT16 filesystem detected on EFI System Partition %d\n", partition_no);
+            struct filesystem_fat16 *fs = kmalloc_heap(sizeof(struct filesystem_fat16));
+            memcpy(&fs->boot_sector_raw, (struct fat_boot_sector *)buf, sizeof(struct fat_boot_sector));
+            fs->read_status |= 0x01; // Mark boot sector as read
+            fat16_setup(fs, drive, part->lba_act);
+            break;
+        }
+        case FAT_TYPE_32: {
+            kout(KERNEL_INFO, "    FAT32 filesystem detected on EFI System Partition %d\n", partition_no);
             struct filesystem_fat32 *fs = kmalloc_heap(sizeof(struct filesystem_fat32));
             memcpy(&fs->boot_sector_raw, (struct fat_boot_sector *)buf, sizeof(struct fat_boot_sector));
-            kout(KERNEL_INFO, "    FAT32 boot sector read successfully on partition %d\n", i + 1);
-            if (fat32_setup(fs, drive, lba_act) == 0) {
-                kout(KERNEL_INFO, "    FAT32 filesystem detected on partition %d: Total clusters: %u\n", i + 1,
-                     fs->total_clusters);
-                // Parse and list root directory for basic validation
+            fs->read_status |= 0x01; // Mark boot sector as read
+            if (fat32_setup(fs, drive, part->lba_act) == 0) {
                 fat32_parse_root(fs);
-            } else {
-                kout(KERNEL_SEVERE_EXTERNAL_FAULT, "    Failed to setup FAT32 filesystem on partition %d\n", i + 1);
-            }
-
-            break;
-        }
-        case MBR_PARTITION_TYPE_FAT16_SMALL:
-        case MBR_PARTITION_TYPE_FAT16_LARGE: {
-            break;
-        }
-        case MBR_PARTITION_TYPE_FAT12: {
-            break;
-        }
-        case MBR_PARTITION_TYPE_EFI_SYSTEM: {
-            // Can be FAT12, FAT16, or FAT32
-            fat_type_t fat_type = fat_detect_type(drive, lba_act, (struct fat_boot_sector *)buf);
-
-            switch (fat_type) {
-            case FAT_TYPE_12: {
-                kout(KERNEL_INFO, "    FAT12 filesystem detected on EFI System Partition %d\n", i + 1);
-                struct filesystem_fat12 *fs = kmalloc_heap(sizeof(struct filesystem_fat12));
-                memcpy(&fs->boot_sector_raw, (struct fat_boot_sector *)buf, sizeof(struct fat_boot_sector));
-                fs->read_status |= 0x01; // Mark boot sector as read
-                fat12_setup(fs, drive, lba_act);
-                break;
-            }
-            case FAT_TYPE_16: {
-                kout(KERNEL_INFO, "    FAT16 filesystem detected on EFI System Partition %d\n", i + 1);
-                struct filesystem_fat16 *fs = kmalloc_heap(sizeof(struct filesystem_fat16));
-                memcpy(&fs->boot_sector_raw, (struct fat_boot_sector *)buf, sizeof(struct fat_boot_sector));
-                fs->read_status |= 0x01; // Mark boot sector as read
-                fat16_setup(fs, drive, lba_act);
-                break;
-            }
-            case FAT_TYPE_32: {
-                kout(KERNEL_INFO, "    FAT32 filesystem detected on EFI System Partition %d\n", i + 1);
-                struct filesystem_fat32 *fs = kmalloc_heap(sizeof(struct filesystem_fat32));
-                memcpy(&fs->boot_sector_raw, (struct fat_boot_sector *)buf, sizeof(struct fat_boot_sector));
-                fs->read_status |= 0x01; // Mark boot sector as read
-                if (fat32_setup(fs, drive, lba_act) == 0) {
-                    fat32_parse_root(fs);
-                }
-                break;
-            }
-            default: {
-                kout(KERNEL_INFO, "    Unknown or unsupported filesystem on EFI System Partition %d\n", i + 1);
-                break;
-            }
-            }
-            break;
-        }
-        case MBR_PARTITION_TYPE_NTFS: {
-            // NTFS or exFAT
-            char *signature = (buf + 3);
-            if (memcmp(signature, "EXFAT   ", 8) == 0) {
-                kout(KERNEL_INFO, "    exFAT filesystem detected on partition %d\n", i + 1);
-
-                struct filesystem_exfat *fs = kmalloc_heap(sizeof(struct filesystem_exfat));
-                memcpy(&fs->boot_sector, buf, sizeof(struct exfat_boot_sector));
-                fs->read_status |= 0x01; // Mark boot sector as read
-                int res          = exfat_setup(fs, drive, lba_act);
-                if (res == 0) {
-                    kout(KERNEL_INFO, "    exFAT setup successful on partition %d: Total clusters: %u\n", i + 1,
-                         fs->total_clusters);
-                } else {
-                    kout(KERNEL_SEVERE_EXTERNAL_FAULT, "    Failed to setup exFAT filesystem on partition %d\n", i + 1);
-                }
-            } else if (memcmp(signature, "NTFS    ", 8) == 0) {
-                kout(KERNEL_INFO, "    NTFS filesystem detected on partition %d\n", i + 1);
-            } else {
-                kout(KERNEL_SEVERE_EXTERNAL_FAULT,
-                     "    Unknown filesystem signature (%.8s, jmp %02x %02x %02x) on NTFS partition %d\n", signature,
-                     (uint8_t)buf[0], (uint8_t)buf[1], (uint8_t)buf[2], i + 1);
             }
             break;
         }
         default: {
+            kout(KERNEL_INFO, "    Unknown or unsupported filesystem on EFI System Partition %d\n", partition_no);
             break;
         }
         }
+        break;
     }
+    case MBR_PARTITION_TYPE_NTFS: {
+        // NTFS or exFAT
+        char *signature = (buf + 3);
+        if (memcmp(signature, "EXFAT   ", 8) == 0) {
+            kout(KERNEL_INFO, "    exFAT filesystem detected on partition %d\n", partition_no);
 
+            struct filesystem_exfat *fs = kmalloc_heap(sizeof(struct filesystem_exfat));
+            memcpy(&fs->boot_sector, buf, sizeof(struct exfat_boot_sector));
+            fs->read_status |= 0x01; // Mark boot sector as read
+            int res          = exfat_setup(fs, drive, part->lba_act);
+            if (res == 0) {
+                kout(KERNEL_INFO, "    exFAT setup successful on partition %d: Total clusters: %u\n", partition_no,
+                     fs->total_clusters);
+            } else {
+                kout(KERNEL_SEVERE_EXTERNAL_FAULT, "    Failed to setup exFAT filesystem on partition %d\n",
+                     partition_no);
+            }
+        } else if (memcmp(signature, "NTFS    ", 8) == 0) {
+            kout(KERNEL_INFO, "    NTFS filesystem detected on partition %d\n", partition_no);
+        } else {
+            kout(KERNEL_SEVERE_EXTERNAL_FAULT,
+                 "    Unknown filesystem signature (%.8s, jmp %02x %02x %02x) on NTFS partition %d\n", signature,
+                 (uint8_t)buf[0], (uint8_t)buf[1], (uint8_t)buf[2], partition_no);
+        }
+        break;
+    }
+    default: {
+        break;
+    }
+    } */
+
+cleanup:
+    if (res) {
+        fscache_node_unref(node);
+    }
+    _fscache_release_node_modifiable(node);
     kfree_heap(buf);
+    return res;
 }

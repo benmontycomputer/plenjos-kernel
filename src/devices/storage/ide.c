@@ -220,7 +220,7 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive_no,
 
     dev->flags |= IDE_DEVICE_FLAG_PRESENT;
 
-    drive_read_sectors_func_t read_sectors = NULL;
+    drive_read_sectors_func_t read_sectors   = NULL;
     drive_write_sectors_func_t write_sectors = NULL;
 
     switch (type) {
@@ -241,7 +241,9 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive_no,
     }
     }
 
-    populate_and_register_drive(&dev->drive, dev->numsectors, dev->logical_sector_size, dev->physical_sector_size, dev->identify.model, "IDE", read_sectors, write_sectors, dev->drive.irq, (void *)dev);
+    populate_and_register_drive(&dev->drive, dev->numsectors, dev->logical_sector_size, dev->physical_sector_size,
+                                dev->identify.model, "IDE", read_sectors, write_sectors, (uint32_t)channel->irq_no,
+                                (void *)dev);
     return type;
 }
 
@@ -262,7 +264,7 @@ void ide_irq_routine(registers_t *regs, void *data) {
     atomic_store(&channel->last_status, inb(channel->cmd_base + ATA_REG_STATUS));
 
     // Increment IRQ processing count
-    if (atomic_fetch_add_explicit(&channel->irq_cnt, 1, memory_order_acquire) > 0) {
+    if (atomic_fetch_add_explicit(&channel->irq_cnt, 1, memory_order_acq_rel) > 0) {
         kout_nolock(
             KERNEL_WARN,
             "KERNEL ERROR/WARN: IDE bus w/ IRQ %d has multiple (%d) IRQs being processed simultaneously. IRQs may be "
@@ -283,7 +285,7 @@ void ide_init() {
         irq_unregister_routine(IDE_PRIMARY_IRQ);
     }
     if (!(ide_probe_device(&legacy_ide_channels[1], 0, &legacy_ide_devices[2])
-        || ide_probe_device(&legacy_ide_channels[1], 1, &legacy_ide_devices[3]))) {
+          || ide_probe_device(&legacy_ide_channels[1], 1, &legacy_ide_devices[3]))) {
         // No device(s) found on secondary channel
         kout(KERNEL_INFO, "Unregistering secondary IDE IRQ handler\n");
         irq_unregister_routine(IDE_SECONDARY_IRQ);

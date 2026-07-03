@@ -8,9 +8,9 @@
  */
 
 // Required by C standard
-#define EDOM   39 // Device not managed
+#define EDOM   33 // Device not managed
 #define ERANGE 34 // Result too large
-#define EILSEQ 42 // Illegal byte sequence
+#define EILSEQ 84 // Illegal byte sequence
 
 // General errors
 #define ENOMEM    12 // Out of memory
@@ -24,10 +24,12 @@
 #define EIO          5  // I/O error
 #define EBADF        9  // Bad file descriptor
 #define EACCES       13 // Permission denied
+#define EBUSY        16
 #define EEXIST       17 // File exists
 #define ENOTDIR      20 // Not a directory
 #define EISDIR       21 // Is a directory
 #define EMFILE       24 // Too many open files
 #define ENAMETOOLONG 36 // Filename too long
+#define ENOTEMPTY    39 // Not empty
 
 #endif /* _PLENJOS_ERRNO_H */

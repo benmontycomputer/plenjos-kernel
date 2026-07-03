@@ -48,3 +48,4 @@ struct MBR {
 } __attribute__((packed));
 
 void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out);
+int mbr_mount(struct DRIVE *drive, int partition_no, uid_t uid, const char *path);

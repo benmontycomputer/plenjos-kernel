@@ -269,7 +269,12 @@ int kernelfs_helper_mkdir(const char *path, struct kstat stat) {
     }
 
     path_copy         = path_copy_ptr;
-    *(last_token - 1) = '\0';
+    if (last_token == path_copy_ptr) {
+        // No slash in the path; parent is root and the directory name is the whole string.
+        path_copy[0] = '\0';
+    } else {
+        *(last_token - 1) = '\0';
+    }
 
     vfs_handle_t *open_handle = NULL;
     // uid, etc. here simply specifies the user trying to find the parent directory; this function assumes full

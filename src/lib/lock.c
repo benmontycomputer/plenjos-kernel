@@ -24,6 +24,36 @@ void rw_lock_init(rw_lock_t *lock) {
     atomic_store(&lock->writers_waiting, 0);
 }
 
+// The try's are inlined with an underscore so they don't get repeatedly called inside the loops of their non-try
+// equivalents; the code is just dropped in place.
+inline bool _rw_lock_try_write_lock(rw_lock_t *lock) {
+    int expected = 0;
+
+    /* Try to acquire lock exclusively */
+    if (atomic_compare_exchange_weak_explicit(&lock->state, &expected, -1, memory_order_acquire,
+                                              memory_order_relaxed)) {
+        return true;
+    }
+
+    return false;
+}
+
+inline bool _rw_lock_try_read_lock(rw_lock_t *lock) {
+    int v = atomic_load_explicit(&lock->state, memory_order_acquire);
+
+    /* Writer active or writer pending */
+    if (v < 0 || atomic_load_explicit(&lock->writers_waiting, memory_order_acquire)) {
+        return false;
+    }
+
+    /* Try to increment reader count */
+    if (atomic_compare_exchange_weak_explicit(&lock->state, &v, v + 1, memory_order_acquire, memory_order_relaxed)) {
+        return true;
+    }
+
+    return false;
+}
+
 static inline void cpu_relax(void) {
     atomic_signal_fence(memory_order_acquire);
 }
@@ -32,20 +62,9 @@ void rw_lock_read_lock(rw_lock_t *lock) {
     int v;
 
     for (;;) {
-        v = atomic_load_explicit(&lock->state, memory_order_acquire);
-
-        /* Writer active or writer pending */
-        if (v < 0 || atomic_load_explicit(&lock->writers_waiting, memory_order_acquire)) {
-            cpu_relax();
-            continue;
-        }
-
-        /* Try to increment reader count */
-        if (atomic_compare_exchange_weak_explicit(&lock->state, &v, v + 1, memory_order_acquire,
-                                                  memory_order_relaxed)) {
+        if (_rw_lock_try_read_lock(lock)) {
             return;
         }
-
         cpu_relax();
     }
 }
@@ -57,14 +76,10 @@ void rw_lock_read_unlock(rw_lock_t *lock) {
 void rw_lock_write_lock(rw_lock_t *lock) {
     int expected;
 
-    atomic_fetch_add_explicit(&lock->writers_waiting, 1, memory_order_acquire);
+    atomic_fetch_add_explicit(&lock->writers_waiting, 1, memory_order_release);
 
     for (;;) {
-        expected = 0;
-
-        /* Try to acquire lock exclusively */
-        if (atomic_compare_exchange_weak_explicit(&lock->state, &expected, -1, memory_order_acquire,
-                                                  memory_order_relaxed)) {
+        if (_rw_lock_try_write_lock(lock)) {
             break;
         }
 
@@ -72,6 +87,14 @@ void rw_lock_write_lock(rw_lock_t *lock) {
     }
 
     atomic_fetch_sub_explicit(&lock->writers_waiting, 1, memory_order_release);
+}
+
+bool rw_lock_try_write_lock(rw_lock_t *lock) {
+    return _rw_lock_try_write_lock(lock);
+}
+
+bool rw_lock_try_read_lock(rw_lock_t *lock) {
+    return _rw_lock_try_read_lock(lock);
 }
 
 void rw_lock_write_unlock(rw_lock_t *lock) {
@@ -83,8 +106,13 @@ bool rw_lock_is_write_locked(rw_lock_t *lock) {
     return v < 0;
 }
 
+bool rw_lock_is_some_locked(rw_lock_t *lock) {
+    int v = atomic_load_explicit(&lock->state, memory_order_acquire);
+    return v != 0;
+}
+
 void rw_lock_upgrade_read_to_write(rw_lock_t *lock) {
-    atomic_fetch_add_explicit(&lock->writers_waiting, 1, memory_order_acquire);
+    atomic_fetch_add_explicit(&lock->writers_waiting, 1, memory_order_release);
 
     // First, release our read lock
     atomic_fetch_sub_explicit(&lock->state, 1, memory_order_release);
@@ -92,11 +120,7 @@ void rw_lock_upgrade_read_to_write(rw_lock_t *lock) {
     int expected;
 
     for (;;) {
-        expected = 0;
-
-        /* Try to acquire lock exclusively */
-        if (atomic_compare_exchange_weak_explicit(&lock->state, &expected, -1, memory_order_acquire,
-                                                  memory_order_relaxed)) {
+        if (_rw_lock_try_write_lock(lock)) {
             break;
         }
 

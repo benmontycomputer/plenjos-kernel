@@ -1,9 +1,8 @@
-#define LIMINE_API_REVISION 3
-
 #include "arch/platform.h"
 #include "cpu/cpu.h"
 #include "devices/manager.h"
 #include "exec/elf.h"
+#include "kernel.h"
 #include "lib/serial.h"
 #include "lib/stdio.h"
 #include "lib/string.h"
@@ -15,7 +14,6 @@
 #include "syscall/syscall.h"
 #include "timer/pit.h"
 #include "vfs/fscache.h"
-#include "vfs/iso9660/iso9660.h"
 #include "vfs/vfs.h"
 
 #include <limine.h>
@@ -27,6 +25,7 @@
 #if ARCH(X86_64)
 #include "arch/x86_64/common.h"
 #include "arch/x86_64/gdt/gdt.h"
+#include "arch/x86_64/gdt/tss.h"
 #endif
 
 bool debug_serial = false;
@@ -52,12 +51,23 @@ static volatile struct limine_framebuffer_request framebuffer_request
 
 // Get Module info by using limine bootloader
 __attribute__((used, section(".limine_requests"))) //
-static volatile struct limine_module_request module_request
-    = { .id = LIMINE_MODULE_REQUEST, .revision = 3 };
+static volatile struct limine_module_request module_request = { .id = LIMINE_MODULE_REQUEST, .revision = 3 };
+
+__attribute__((used, section(".limine_requests"))) //
+volatile struct limine_executable_file_request executable_file_request
+    = { .id = LIMINE_EXECUTABLE_FILE_REQUEST, .revision = 3 };
 
 __attribute__((used, section(".limine_requests"))) //
 static volatile struct limine_executable_address_request executable_addr_request
     = { .id = LIMINE_EXECUTABLE_ADDRESS_REQUEST, .revision = 3 };
+
+__attribute__((used, section(".limine_requests"))) //
+volatile struct limine_executable_cmdline_request executable_cmdline_request
+    = { .id = LIMINE_EXECUTABLE_CMDLINE_REQUEST, .revision = 3 };
+
+__attribute__((used, section(".limine_requests"))) //
+static volatile struct limine_stack_size_request stack_size_request
+    = { .id = LIMINE_STACK_SIZE_REQUEST, .revision = 3, .stack_size = KERNEL_STACK_SIZE };
 
 uint64_t kernel_load_phys = 0;
 uint64_t kernel_load_virt = 0;
@@ -196,6 +206,9 @@ void kmain(void) {
     init_serial();
 
     kout(KERNEL_INFO, "Debugging to serial output now...\n");
+    kout(KERNEL_INFO, "KERNEL CMDLINE: %s\n", executable_cmdline_request.response->cmdline);
+    kout(KERNEL_INFO, "Boot disk info: mbr %x, GPT not supported by kernel yet\n",
+         executable_file_request.response->executable_file->mbr_disk_id);
 
     load_smp();
 
@@ -208,13 +221,12 @@ void kmain(void) {
     clear();
 
     vfs_handle_t *ld_handle = NULL;
-    int res                 = vfs_open("/iso9660/lib/ld.so", SYSCALL_OPEN_FLAG_READ, 0, 0, &ld_handle);
+    int res                 = vfs_open("/lib/ld.so", SYSCALL_OPEN_FLAG_READ, 0, 0, &ld_handle);
     void *linker_elf_buf    = NULL;
     ssize_t linker_read_bytes;
     if (res == 0) {
-        kout(KERNEL_INFO, "Loading ld.so from iso9660...\n\n");
-        uint64_t file_size = ((struct vfs_iso9660_cache_node_data *)ld_handle->backing_node->internal_data)
-                                 ->dir_record->data_length_le;
+        kout(KERNEL_INFO, "Loading ld.so...\n\n");
+        uint64_t file_size = ld_handle->backing_node->stat.size;
 
         linker_elf_buf = kmalloc_heap(file_size);
         if (!linker_elf_buf) {
@@ -224,22 +236,21 @@ void kmain(void) {
         linker_read_bytes = vfs_read(ld_handle, linker_elf_buf, file_size);
         vfs_close(ld_handle);
         if (linker_read_bytes < 0) {
-            panic("Error reading iso9660/lib/ld.so: %d\n", (int)linker_read_bytes);
+            panic("Error reading /lib/ld.so: %d\n", (int)linker_read_bytes);
         } else if ((uint64_t)linker_read_bytes != file_size) {
-            panic("Short read reading iso9660/lib/ld.so: expected %p, got %p\n", (void *)file_size,
-                   (void *)linker_read_bytes);
+            panic("Short read reading /lib/ld.so: expected %p, got %p\n", (void *)file_size,
+                  (void *)linker_read_bytes);
         }
     } else {
-        panic("Error opening iso9660/lib/ld.so: %d\n", res);
+        panic("Error opening /lib/ld.so: %d\n", res);
     }
 
     // ld_handle has already been closed
 
-    res = vfs_open("/iso9660/bin/init", SYSCALL_OPEN_FLAG_READ, 0, 0, &ld_handle);
+    res = vfs_open("/bin/init", SYSCALL_OPEN_FLAG_READ, 0, 0, &ld_handle);
     if (res == 0) {
-        kout(KERNEL_INFO, "Loading init from iso9660...\n\n");
-        uint64_t file_size = ((struct vfs_iso9660_cache_node_data *)ld_handle->backing_node->internal_data)
-                                 ->dir_record->data_length_le;
+        kout(KERNEL_INFO, "Loading init...\n\n");
+        uint64_t file_size = ld_handle->backing_node->stat.size;
         proc_t *shell_proc = create_proc("init", NULL);
 
         uint64_t entry;
@@ -251,12 +262,13 @@ void kmain(void) {
         ssize_t read_bytes = vfs_read(ld_handle, elf_buf, file_size);
         vfs_close(ld_handle);
         if (read_bytes < 0) {
-            panic("Error reading iso9660/bin/init: %d\n", (int)read_bytes);
+            panic("Error reading /bin/init: %d\n", (int)read_bytes);
         } else if ((uint64_t)read_bytes != file_size) {
-            panic("Short read reading iso9660/bin/init: expected %p, got %p\n", (void *)file_size, (void *)read_bytes);
+            panic("Short read reading /bin/init: expected %p, got %p\n", (void *)file_size, (void *)read_bytes);
         }
 
-        kout(KERNEL_INFO, "Read %p bytes for init and %p bytes for ld.so\n", (void *)read_bytes, (void *)linker_read_bytes);
+        kout(KERNEL_INFO, "Read %p bytes for init and %p bytes for ld.so\n", (void *)read_bytes,
+             (void *)linker_read_bytes);
 
         // Load the linker first
         uint64_t linker_entry;
@@ -276,7 +288,7 @@ void kmain(void) {
         uint64_t *rsp = rsp_og;
 
         // First, setup the stack
-        const char *argv0 = "/iso9660/bin/init";
+        const char *argv0 = "/bin/init";
         const char *argv1 = NULL;
 
         const char *envp0 = NULL;
@@ -304,7 +316,7 @@ void kmain(void) {
         shell_thread->regs.iret_rsp -= (uint64_t)rsp_og - (uint64_t)rsp;
 
         kout(KERNEL_INFO, "Final stack pointer for init: %p from %p; entry: %p\n", (void *)shell_thread->regs.iret_rsp,
-               (void *)rsp, (void *)entry);
+             (void *)rsp, (void *)entry);
 
         shell_thread->regs.rdi = shell_thread->regs.iret_rsp;
         shell_thread->regs.rsi = LINKER_OFFS; // Linker base addr

@@ -49,7 +49,6 @@ proc_t *create_proc(const char *name, proc_t *parent) {
         kout(KERNEL_WARN, "create_proc(): fsa_alloc() returned NULL (OOM?)\n");
         return NULL;
     }
-    memset(proc, 0, sizeof(proc_t));
 
     uint64_t cwd_frame = find_next_free_frame();
     if (!cwd_frame) {
