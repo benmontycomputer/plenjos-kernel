@@ -168,7 +168,7 @@ struct uhci_qh {
     uint64_t padding;
 
     /* Not accessible by the controller; for kernel use only */
-    uint64_t data_prev;
+    uint64_t _unused_data_prev;
     uint64_t data_first_td;
 } __attribute__((aligned(16))) __attribute__((packed));
 

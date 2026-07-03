@@ -94,20 +94,42 @@ int copy_to_kernel_buf(void *dest, void *src, size_t count, pml4_t *current_pml4
     return 0;
 }
 
+static ssize_t strnlen_user(pml4_t *pml4, uint64_t user_ptr, size_t max_len) {
+    size_t len = 0;
+
+    while (len < max_len) {
+        uint64_t addr = user_ptr + len;
+
+        page_t *page = find_page(addr, false, pml4);
+        if (!page || !page->present || !page->user) {
+            return -EFAULT;
+        }
+
+        uint64_t page_off = addr % PAGE_LEN;
+        size_t in_page    = PAGE_LEN - page_off;
+        const char *chunk = (const char *)phys_to_virt((page->frame << 12) + page_off);
+
+        for (size_t i = 0; i < in_page && len < max_len; i++, len++) {
+            if (chunk[i] == '\0') {
+                return (ssize_t)len;
+            }
+        }
+    }
+
+    return -ENAMETOOLONG;
+}
+
 int handle_string_arg(pml4_t *current_pml4, uint64_t user_ptr, const char **out) {
     if (user_ptr == 0) {
         printf("handle_string_arg: null pointer passed from userland\n");
         return -EFAULT;
     }
-
-    uint64_t str_ptr = phys_to_virt(get_physaddr(user_ptr, current_pml4));
-
-    if (str_ptr == phys_to_virt(0)) {
-        printf("handle_string_arg: bad pointer passed from userland\n");
-        return -EFAULT;
-    }
     
-    uint64_t len     = strlen((char *)str_ptr) + 1;
+    ssize_t len = strnlen_user(current_pml4, user_ptr, PATH_MAX) + 1;
+    if (len < 0) {
+        printf("handle_string_arg: bad pointer passed from userland (errno %d)\n", (int)len);
+        return (int)len;
+    }
 
     char *kstr = kmalloc_heap(len);
     if (!kstr) {

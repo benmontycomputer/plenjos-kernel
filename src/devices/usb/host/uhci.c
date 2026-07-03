@@ -78,8 +78,6 @@ int uhci_insert_qh(uhci_controller_t *controller, struct uhci_qh *qh) {
            get_physaddr(qh->data_first_td, kernel_pml4)); */
 
     qh->horiz_link_ptr = controller->qh_1ms.horiz_link_ptr;
-    if (!controller->qh_1ms.horiz_link_ptr.enable)
-        qh->data_prev = phys_to_virt((uint64_t)controller->qh_1ms.horiz_link_ptr.ptr << 4);
 
     controller->qh_1ms.horiz_link_ptr
         = (struct uhci_frame_list_entry) { .enable   = 0,
@@ -138,21 +136,21 @@ int uhci_remove_qh(uhci_controller_t *controller, struct uhci_qh *qh) {
         td->next_td.ptr       = 0;
     }
 
-    /* Remove the QH from the chain */
-    struct uhci_qh *prev = (struct uhci_qh *)qh->data_prev;
-    if (prev) {
-        prev->horiz_link_ptr = qh->horiz_link_ptr;
-    }
-
-    /* Wait for all TDs to complete */
-    for (struct uhci_td *td = (struct uhci_td *)qh->data_first_td; td; td = (struct uhci_td *)td->data_next) {
-        uhci_wait_td(td, 100);
+    uint32_t qh_phys = get_physaddr32((uint64_t)qh, kernel_pml4);
+    volatile struct uhci_frame_list_entry *link = &controller->qh_1ms.horiz_link_ptr;
+    while (!link->enable) {
+        if (((uint32_t)link->ptr << 4) == qh_phys) {
+            *link = qh->horiz_link_ptr;   /* splice it out */
+            break;
+        }
+        link = &((struct uhci_qh *)phys_to_virt((uint64_t)link->ptr << 4))->horiz_link_ptr;
     }
 
     mutex_unlock(&controller->qh_lock);
     if (ints) {
         asm volatile("sti");
     }
+    ksleep_nonblocking_ms(2, UHCI_WAIT_PRIO);
 
     return 0;
 }
@@ -314,7 +312,6 @@ int uhci_control_transfer(uhci_controller_t *controller, uint8_t device_address,
 
     /* Add into QH schedule */
     uhci_insert_qh(controller, qh);
-
     res = uhci_wait_td(status_td, timeout_ms);
 
     if (res == -1) {
@@ -328,6 +325,7 @@ int uhci_control_transfer(uhci_controller_t *controller, uint8_t device_address,
     }
 
 cleanup:
+    uhci_remove_qh(controller, qh);
     uhci_free_td_chain(setup_td);
     uhci_free_qh(qh);
 
@@ -427,6 +425,7 @@ int uhci_bulk_transfer(usb_endpoint_t *endpoint, uint8_t *buffer, size_t length,
     }
 
 cleanup:
+    uhci_remove_qh(dev->host_driver_data, qh);
     if (qh->data_first_td) uhci_free_td_chain((struct uhci_td *)qh->data_first_td);
     uhci_free_qh(qh);
 

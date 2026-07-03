@@ -22,8 +22,6 @@ int syscall_routine_open(const char *restrict path, syscall_open_flags_t flags, 
         return res;
     }
 
-    printf("debug %s %p\n\n", path_abs, strlen(path_abs));
-
     vfs_handle_t *handle = NULL;
 
     res = vfs_open(path_abs, flags, mode, proc->uid, &handle);

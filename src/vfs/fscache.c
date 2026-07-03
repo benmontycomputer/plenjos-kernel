@@ -269,10 +269,10 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
                 }
 
                 if (load_res != 0) {
-                    atomic_store(&child->stat.mode, 0);
+                    // mark the allocated node as free again
+                    fsa_free(&_fscache_fsa, child);
                     // load_node indicated node doesn't exist
                     if (next_slash_char == '\0' && load_res == -ENOENT) {
-                        // mark the allocated node as free again
                         res = FSCACHE_REQUEST_NODE_ONE_LEVEL_AWAY;
                         goto res_downgrade_and_set_and_return;
                     }
