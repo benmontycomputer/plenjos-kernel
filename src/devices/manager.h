@@ -1,7 +1,7 @@
 #pragma once
 
 #include "plenjos/errno.h"
-#include "vfs/fscache.h"
+#include "vfs/vfs.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -62,12 +62,11 @@ section STORAGE_DEVICES:
  */
 
 typedef struct device_id {
-
+    int unused;
 } device_id_t;
 
 struct device {
     device_t *parent;
-
 };
 
 #define ENDPOINT_DRIVER_FLAG_BLOCK 0x01 // Bit 0: 0 = character device, 1 = block device
@@ -77,21 +76,25 @@ typedef struct endpoint_driver {
     vfs_write_func_t write;
     vfs_seek_func_t seek;
 
-
+    uint64_t major;
+    uint16_t flags;
 } endpoint_driver_t;
 
 typedef struct endpoint {
     char name[NAME_MAX + 1];
 
+    dev_t dev; // major and minor
+    device_t *hw_dev;
     endpoint_driver_t *driver;
+    void *func_args;
 } endpoint_t;
 
 inline bool is_block_endpoint(endpoint_t *endpoint) {
-    return (endpoint->driver->flags & DEVICE_FLAG_BLOCK) != 0;
+    return (endpoint->driver->flags & ENDPOINT_DRIVER_FLAG_BLOCK) != 0;
 }
 
-inline bool is_char_endpoint(endpoint_t *dev) {
-    return (endpoint->driver->flags & DEVICE_FLAG_BLOCK) != 0;
+inline bool is_char_endpoint(endpoint_t *endpoint) {
+    return (endpoint->driver->flags & ENDPOINT_DRIVER_FLAG_BLOCK) == 0;
 }
 
 typedef enum {
@@ -107,3 +110,5 @@ typedef enum {
 typedef enum { DEVICE_CLASS_CONTROLLER, DEVICE_CLASS_ } device_class_t;
 
 int device_manager_init();
+endpoint_t *register_device_endpoint(char *name, endpoint_driver_t *driver, uint64_t minor, device_t *hw_dev,
+                                     void *func_args);

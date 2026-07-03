@@ -220,25 +220,18 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive_no,
 
     dev->flags |= IDE_DEVICE_FLAG_PRESENT;
 
-    dev->drive.internal_data = (void *)dev;
-    strncpy(dev->drive.model, dev->identify.model, 40);
-    dev->drive.model[40] = '\0';
-    strncpy(dev->drive.interface, "IDE", 15);
-    dev->drive.interface[15]        = '\0';
-    dev->drive.logical_sector_size  = dev->logical_sector_size;
-    dev->drive.physical_sector_size = dev->physical_sector_size;
-    dev->drive.numsectors           = dev->numsectors;
-    dev->drive.irq                  = channel->irq_no;
+    drive_read_sectors_func_t read_sectors = NULL;
+    drive_write_sectors_func_t write_sectors = NULL;
 
     switch (type) {
     case ATADEV_PATAPI: {
-        dev->drive.read_sectors  = atapi_read_sectors_func;
-        dev->drive.write_sectors = NULL; // Not supported
+        read_sectors  = atapi_read_sectors_func;
+        write_sectors = NULL; // Not supported
         break;
     }
     case ATADEV_PATA: {
-        dev->drive.read_sectors  = pata_read_sectors_func;
-        dev->drive.write_sectors = NULL; // TODO: implement
+        read_sectors  = pata_read_sectors_func;
+        write_sectors = NULL; // TODO: implement
         break;
     }
     default: {
@@ -248,10 +241,7 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive_no,
     }
     }
 
-    struct MBR *mbr = kmalloc_heap(sizeof(struct MBR));
-
-    drive_read_mbr(&dev->drive, mbr);
-
+    populate_and_register_drive(&dev->drive, dev->numsectors, dev->logical_sector_size, dev->physical_sector_size, dev->identify.model, "IDE", read_sectors, write_sectors, dev->drive.irq, (void *)dev);
     return type;
 }
 

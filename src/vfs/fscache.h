@@ -4,9 +4,6 @@
 #include "plenjos/limits.h"
 #include "plenjos/stat.h"
 #include "plenjos/types.h"
-#include "proc/proc.h"
-#include "vfs/fscache.h"
-#include "vfs/kernelfs.h"
 #include "vfs/vfs.h"
 
 #include <stdatomic.h>

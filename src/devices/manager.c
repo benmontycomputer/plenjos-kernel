@@ -1,8 +1,14 @@
 #include "manager.h"
 
+#include "lib/special_mem/fixed_size_allocator.h"
 #include "lib/stdio.h"
 #include "lib/string.h"
-#include "lib/special_mem/fixed_size_allocator.h"
+#include "plenjos/sysmacros.h"
+#include "sysdrivers.h"
+#include "vfs/fscache.h"
+#include "vfs/kernelfs.h"
+
+// TODO: IMPORTANT: this entire stack is not thread-safe (and neither is kernelfs)
 
 // Keyboard support is built-in; I don't plan to make it a config option.
 #include "devices/input/keyboard/keyboard.h"
@@ -25,7 +31,8 @@
 
 static fixed_size_allocator_t _endpoint_fsa = FSA_DEFAULT(sizeof(endpoint_t));
 
-endpoint_t *register_device_endpoint(char *name) {
+endpoint_t *register_device_endpoint(char *name, endpoint_driver_t *driver, uint64_t minor, device_t *hw_dev,
+                                     void *func_args) {
     endpoint_t *endpoint = fsa_alloc(&_endpoint_fsa);
 
     if (!endpoint) {
@@ -35,12 +42,32 @@ endpoint_t *register_device_endpoint(char *name) {
 
     strncpy(endpoint->name, name, NAME_MAX);
     endpoint->name[NAME_MAX] = 0;
+    endpoint->dev            = full_dev(driver->major, minor);
+    endpoint->driver         = driver;
+    endpoint->func_args      = func_args;
+    endpoint->hw_dev         = hw_dev;
 
-    
+    struct kstat stat = { 0 };
+    stat.mode         = S_DFLT | ((driver->flags & ENDPOINT_DRIVER_FLAG_BLOCK) ? S_IFBLK : S_IFCHR);
+    stat.dev          = full_dev(ENDPOINT_MEM, ENDPOINT_MEM_DEVFS);
+    stat.rdev         = endpoint->dev;
+
+    int res = kernelfs_helper_create_file("/dev", (const char *)endpoint->name, stat, driver->read, driver->write,
+                                          driver->seek, endpoint->func_args);
+    if (res) {
+        kout(KERNEL_WARN, "register_device_endpoint(): kernelfs_helper_create_file() failed on endpoint %s (rdev=%x)\n",
+             endpoint->name, endpoint->dev);
+        fsa_free(&_endpoint_fsa, endpoint);
+        return NULL;
+    }
+
+    kout(KERNEL_INFO, "Registered endpoint %s (rdev=%x)\n", endpoint->name, endpoint->dev);
+
+    return endpoint;
 }
 
 int device_manager_init() {
-    vfs_mkdir("/dev", 0, 0, 0755);
+    vfs_mkdir("/dev", (struct kstat) { .mode = S_DFLT });
 
     // TODO: make this better, we shouldn't use one global buffer as our entire keyboard layer.
     init_keyboard();

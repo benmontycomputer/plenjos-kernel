@@ -2,6 +2,7 @@
 
 #include "kernel.h"
 #include "lib/lock.h"
+#include "memory/mm_common.h"
 #include "stdint.h"
 
 #define ITEMS_PER_PAGE(item_size) ((PAGE_LEN - sizeof(void *)) / (item_size))

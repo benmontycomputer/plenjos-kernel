@@ -286,6 +286,7 @@ int vfs_creatat(fscache_node_t *parent, const char *name, struct kstat stat, fsc
 
 // This honors the lower 10 (not 12) bits of mode (the rwxrwxrwx bits and the sticky bit).
 // Unlike vfs_creatat, this function does NOT honor the setuid and setgid bits, as they have no meaning on directories.
+// This ignores anything on stat other than mode and uid/gid
 int vfs_mkdir(const char *path, struct kstat stat) {
     if (!path) {
         return -EINVAL;

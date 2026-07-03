@@ -334,8 +334,11 @@ int iso9660_load_func(fscache_node_t *node, const char *name, fscache_node_t *ou
                 child_data->unused[0] = 0;
                 child_data->unused[1] = 0;
 
-                fscache_node_populate(out, (dir_record->file_flags & 0x02) ? DT_DIR : DT_REG, 0, name, 0, 0, 0755,
-                                      dir_record->data_length_le,
+                struct kstat stat = { 0 };
+                stat.dev          = child_data->fs->drive->endpoint->dev;
+                stat.mode         = S_DFLT | (dir_record->file_flags & 0x02) ? S_IFDIR : S_IFREG;
+                stat.size         = dir_record->data_length_le;
+                fscache_node_populate(out, 0, name, stat,
                                       (dir_record->file_flags & 0x02) ? (vfs_ops_block_t *)iso9660_directory_fsops
                                                                       : (vfs_ops_block_t *)iso9660_file_fsops);
 
@@ -352,8 +355,7 @@ int iso9660_load_func(fscache_node_t *node, const char *name, fscache_node_t *ou
     return -ENOENT;
 }
 
-int iso9660_create_child_func(fscache_node_t *parent, const char *name, uid_t uid, gid_t gid, mode_t mode,
-                              fscache_node_t *node) {
+int iso9660_create_child_func(fscache_node_t *parent, const char *name, struct kstat stat, fscache_node_t *node) {
     // To be implemented
     return -ENOSYS;
 }
@@ -412,11 +414,9 @@ int iso9660_setup(struct filesystem_iso9660 *fs, DRIVE_t *drive, uint32_t partit
         return -ENOMEM;
     }
 
-    node->type  = DT_DIR;
-    node->fsops = (vfs_ops_block_t *)iso9660_directory_fsops;
-    node->mode  = 0755; // TODO: set proper mode
-    node->uid   = 0;    // TODO: decide if we want to support xattr for ownership
-    node->gid   = 0;    // TODO: decide if we want to support xattr for ownership
+    node->stat.mode = S_DFLT | S_IFDIR;
+    node->fsops     = (vfs_ops_block_t *)iso9660_directory_fsops;
+    // TODO: decide if we want to support xattr for ownership
     strncpy(node->name, "iso9660", NAME_MAX);
     node->name[NAME_MAX]                     = '\0';
     vfs_iso9660_cache_node_data_t *node_data = (vfs_iso9660_cache_node_data_t *)node->internal_data;

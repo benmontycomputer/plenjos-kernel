@@ -5,10 +5,6 @@
 
 #include "lib/stdio.h"
 
-vfs_ops_block_t endpoint_ops_override_keyboard = {
-
-}
-
 kbd_buffer_state_t kbd_buffer_state;
 
 static void advance_tail() {

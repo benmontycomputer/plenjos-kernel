@@ -5,28 +5,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef enum mbr_partition_type mbr_partition_type_t;
-
-enum mbr_partition_type {
-    MBR_PARTITION_TYPE_EMPTY        = 0x00,
-    MBR_PARTITION_TYPE_FAT12        = 0x01,
-    MBR_PARTITION_TYPE_FAT16_SMALL  = 0x04,
-    MBR_PARTITION_TYPE_EXTENDED     = 0x05,
-    MBR_PARTITION_TYPE_FAT16_LARGE  = 0x06,
-    MBR_PARTITION_TYPE_NTFS         = 0x07, // Also exFAT (and HPFS, QNX, IFS, but we will never see those)
-    MBR_PARTITION_TYPE_FAT32        = 0x0B,
-    MBR_PARTITION_TYPE_FAT32_LBA    = 0x0C,
-    MBR_PARTITION_TYPE_NTFS_LBA     = 0x0E,
-    MBR_PARTITION_TYPE_EXTENDED_LBA = 0x0F,
-    MBR_PARTITION_TYPE_LINUX_SWAP   = 0x82,
-    MBR_PARTITION_TYPE_LINUX_NATIVE = 0x83,
-    MBR_PARTITION_TYPE_LINUX_LVM    = 0x8E,
-    MBR_PARTITION_TYPE_APPLE_HFS    = 0xAF,
-    MBR_PARTITION_TYPE_EFI_SYSTEM   = 0xEF,
-    MBR_PARTITION_TYPE_BIOS_BOOT    = 0xEF, // Same as EFI System Partition
-    MBR_PARTITION_TYPE_UNKNOWN      = 0xFF,
-};
-
 struct mbr_partition_entry {
     union {
         uint8_t boot_indicator; // 0x80 = bootable, 0x00 = non-bootable and non-existent

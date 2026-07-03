@@ -10,6 +10,7 @@
 #include "vfs/fat/fat32.h"
 #include "vfs/fscommon.h"
 #include "vfs/iso9660/iso9660.h"
+#include "lib/special_mem/fixed_size_allocator.h"
 
 static char *mbr_pretty_partition_type(mbr_partition_type_t type) {
     switch (type) {
@@ -48,6 +49,8 @@ static char *mbr_pretty_partition_type(mbr_partition_type_t type) {
     }
 }
 
+static fixed_size_allocator_t _mbr_part_fsa = FSA_DEFAULT(sizeof(partition_t));
+
 // Note: MBR lba values are defined in 512-byte sectors, regardless of the drive's logical sector size
 void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
     if (!drive || !mbr_out) {
@@ -57,6 +60,14 @@ void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
 
     if (!drive->read_sectors) {
         kout(KERNEL_EXTERNAL_FAULT, "Error: drive does not support reading sectors\n");
+        return;
+    }
+
+    if (drive->logical_sector_size < sizeof(struct MBR)) {
+        kout(KERNEL_SEVERE_FAULT,
+             "Kernel Programming Error: drive_read_mbr(): drive logical sector size (%x) is smaller than sizeof(struct "
+             "MBR) (%x)\n",
+             drive->logical_sector_size, (uint32_t)sizeof(struct MBR));
         return;
     }
 
@@ -74,18 +85,24 @@ void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
         return;
     }
 
-    if (res != sizeof(struct MBR)) {
-        kout(KERNEL_WARN, "Warning: Incomplete MBR read from drive (expected %u bytes, got %d bytes)\n",
+    if (res < sizeof(struct MBR)) {
+        kout(KERNEL_EXTERNAL_FAULT, "Error: Incomplete MBR read from drive (expected %u bytes, got %d bytes)\n",
              sizeof(struct MBR), res);
+        kfree_heap(buf);
+        return;
     }
 
-    memcpy(mbr_out, buf, sizeof(struct MBR));
+    if (mbr_out) {
+        memcpy(mbr_out, buf, sizeof(struct MBR));
+    }
+    struct MBR *mbr = (struct MBR *)buf;
 
     kout(KERNEL_INFO, "MBR read successfully from drive\n");
-    kout(KERNEL_INFO, "MBR Signature: %x\n", mbr_out->signature);
+    kout(KERNEL_INFO, "MBR Signature: %x\n", mbr->signature);
     kout(KERNEL_INFO, "Partitions:\n");
+    drive->partition_count = 0;
     for (int i = 0; i < 4; i++) {
-        struct mbr_partition_entry *part = &mbr_out->partitions[i];
+        struct mbr_partition_entry *part = &mbr->partitions[i];
 
         uint32_t lba_act = part->starting_lba * 512 / drive->logical_sector_size;
 
@@ -97,8 +114,35 @@ void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
 
         memset(buf, 0, drive->logical_sector_size);
 
+        partition_t *drive_part = fsa_alloc(&_mbr_part_fsa);
+        if (!drive_part) {
+            partition_t *cur = drive->first_partition;
+            while (cur) {
+                partition_t *next = cur->next;
+                fsa_free(&_mbr_part_fsa, (void *)cur);
+                cur = next;
+            }
+            kout(KERNEL_WARN, "drive_read_mbr(): fsa_alloc() failed (OOM?)\n");
+        }
+
+        if (drive->first_partition) {
+            partition_t *cur = drive->first_partition;
+            while (cur->next) {
+                cur = cur->next;
+            }
+            cur->next = drive_part;
+        } else {
+            drive->first_partition = drive_part;
+        }
+
+        drive_part->drive = drive;
+        drive_part->partition_type = part->partition_type;
+        drive_part->lba_act = lba_act;
+        drive_part->next = NULL;
+
         if (read_first_sector(drive, lba_act, buf) < 0) {
             kout(KERNEL_WARN, "Error reading first sector of partition %d\n", i + 1);
+            drive_part->partition_type = MBR_PARTITION_TYPE_UNKNOWN; // TODO: should this be something else?
             continue;
         }
 

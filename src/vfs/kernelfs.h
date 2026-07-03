@@ -54,6 +54,8 @@ void kernelfs_init();
 int kernelfs_close(vfs_handle_t *f);
 int kernelfs_create_child(fscache_node_t *parent, const char *name, struct kstat stat, fscache_node_t *node);
 
+void *kernelfs_get_func_args(vfs_handle_t *handle);
+
 // WARN: only use absolute paths
 int kernelfs_helper_mkdir(const char *path, struct kstat stat);
 int kernelfs_helper_create_file(const char *parent, const char *name, struct kstat stat, vfs_read_func_t read,

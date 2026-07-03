@@ -56,7 +56,7 @@ int syscall_routine_mkdir(const char *restrict path, mode_t mode, proc_t *proc) 
     }
 
     kfree_heap(path_abs);
-    return vfs_mkdir(path_abs, proc->uid, 0 /* TODO: use egid here */, mode);
+    return vfs_mkdir(path_abs, (struct kstat) { .uid = proc->uid, .gid = 0 /* TODO: use egid here */, .mode = mode });
 }
 
 int syscall_routine_rmdir(const char *restrict path, proc_t *proc) {

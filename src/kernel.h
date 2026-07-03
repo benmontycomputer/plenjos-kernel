@@ -99,25 +99,17 @@ typedef uint64_t (*hash64_func_t)(void *data);
 typedef const char *(*key_func_t)(void *data);
 typedef int (*compare_func_t)(void *a, void *b, void *data);
 
-inline dirent_type_t mode_to_dt(mode_t mode) {
-    switch (mode & S_IFMT) {
-    case S_IFREG:
-        return DT_REG;
-    case S_IFDIR:
-        return DT_DIR;
-    case S_IFLNK:
-        return DT_LNK;
-    case S_IFCHR:
-        return DT_CHR;
-    case S_IFBLK:
-        return DT_BLK;
-    case S_IFIFO:
-        return DT_FIFO;
-    case S_IFSOCK:
-        return DT_SOCK;
-    default:
-        return DT_UNKNOWN;
-    }
+inline char hex_to_char(uint8_t val) {
+    if (val > 15) return '?';
+    if (val < 10) return '0' + val;
+    return 'A' + (val - 10);
+}
+
+inline uint8_t char_to_hex(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    return 0xFF; // Invalid
 }
 
 #endif

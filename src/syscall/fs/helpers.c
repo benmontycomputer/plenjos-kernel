@@ -25,7 +25,7 @@ int syscall_fs_helper_get_dir_handle(int fd, proc_t *proc, vfs_handle_t **out_ha
         return res;
     }
 
-    if (handle->backing_node->type != DT_DIR) {
+    if (!S_ISDIR(handle->backing_node->stat.mode)) {
         printf("syscall_fs_helper_get_dir_handle: fd %p for process %s (pid %p) is not a directory\n", fd,
                proc->name, proc->pid);
         return -ENOTDIR;
@@ -42,7 +42,7 @@ int syscall_fs_helper_get_not_dir_handle(int fd, proc_t *proc, vfs_handle_t **ou
         return res;
     }
 
-    if (handle->backing_node->type == DT_DIR) {
+    if (S_ISDIR(handle->backing_node->stat.mode)) {
         printf("syscall_fs_helper_get_not_dir_handle: fd %p for process %s (pid %p) is a directory\n", fd,
                proc->name, proc->pid);
         return -EISDIR;

@@ -3,6 +3,7 @@
 #ifdef __KERNEL_SUPPORT_DEV_PCI
 
 # include "devices/io/ports.h"
+# include "kernel.h"
 # include "lib/stdio.h"
 # include "lib/string.h"
 # include "memory/kmalloc.h"
@@ -208,7 +209,8 @@ void pci_print_device_info(pci_device_t *dev) {
     kout(KERNEL_INFO, " - Header Type: %.2x\n", dev->header_type);
     kout(KERNEL_INFO, " - Bus %.2x, device %.2x, function %.2x\n", dev->bus, dev->device, dev->function);
     kout(KERNEL_INFO, " - Vendor ID: %.4x (%s), Device ID: %.4x\n", dev->vendor_id, vendor_pretty, dev->device_id);
-    kout(KERNEL_INFO, " - Class %.2x (%s), Subclass %.2x (%s), ProgIF %.2x\n", dev->class_code, class_pretty, dev->subclass_code, subclass_pretty, dev->prog_if);
+    kout(KERNEL_INFO, " - Class %.2x (%s), Subclass %.2x (%s), ProgIF %.2x\n", dev->class_code, class_pretty,
+         dev->subclass_code, subclass_pretty, dev->prog_if);
 }
 
 pci_device_t pci_check_device(uint8_t bus, uint8_t device, uint8_t function) {
@@ -348,19 +350,6 @@ pci_device_t pci_check_device(uint8_t bus, uint8_t device, uint8_t function) {
     return dev;
 }
 
-static char hex_to_char(uint8_t val) {
-    if (val > 15) return '?';
-    if (val < 10) return '0' + val;
-    return 'A' + (val - 10);
-}
-
-static uint8_t char_to_hex(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    return 0xFF; // Invalid
-}
-
 # define PCI_DEV_PREFIX "pci_dev_0x"
 
 ssize_t pci_dev_file_read(vfs_handle_t *handle, void *buf, size_t len) {
@@ -404,8 +393,8 @@ static void pci_add_device_to_array(uint8_t bus, uint8_t device, uint8_t functio
     devaddr[strlen(PCI_DEV_PREFIX) + 4] = 0;
 
     // This probably can't go through fscache for creation, as it's not a regular file?
-    kernelfs_helper_create_file("/dev/pci", devaddr, PCI_DEV_FS_TYPE, 0, 0, PCI_DEV_FS_MODE, pci_dev_file_read, NULL,
-                                NULL, &pci_devices[pci_device_count]);
+    // kernelfs_helper_create_file("/dev/pci", devaddr, PCI_DEV_FS_TYPE, 0, 0, PCI_DEV_FS_MODE, pci_dev_file_read, NULL,
+    //                             NULL, &pci_devices[pci_device_count]);
     // kernelfs_create_node("/dev/pci", devaddr, DT_DIR, NULL, pci_dev_file_read, NULL, NULL,
     // &pci_devices[pci_device_count]);
 
@@ -416,22 +405,6 @@ static void pci_add_device_to_array(uint8_t bus, uint8_t device, uint8_t functio
 void pci_scan() {
     uint16_t bus;
     uint8_t device;
-
-    /* ssize_t res = vfs_mkdir("/dev", 0, 0, 0755);
-    if (res < 0) {
-        kout(KERNEL_SEVERE_FAULT, "pci_scan: failed to create /dev directory, errno %d\n", res);
-        return;
-    }
-    res = vfs_mkdir("/dev/pci", 0, 0, 0755);
-    if (res < 0) {
-        kout(KERNEL_SEVERE_FAULT, "pci_scan: failed to create /dev/pci directory, errno %d\n", res);
-        return;
-    }
-    res = vfs_mkdir("/dev/pci/subftest", 0, 0, 0755);
-    if (res < 0) {
-        kout(KERNEL_SEVERE_FAULT, "pci_scan: failed to create /dev/pci/subftest directory, errno %d\n", res);
-        return;
-    } */
 
     for (bus = 0; bus < 256; bus++) {
         for (device = 0; device < 32; device++) {

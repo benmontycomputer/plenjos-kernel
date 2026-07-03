@@ -123,7 +123,7 @@ override ROOT_BOOT_DIR := root/boot
 # Default target. This must come first, before header dependencies.
 .PHONY: all $(SUBDIRS) $(ROOT_BIN_DIR) $(ROOT_BOOT_DIR) $(ROOT_LIB_DIR)
 
-all: bin/$(OUTPUT) $(ROOT_BIN_DIR) $(ROOT_BOOT_DIR) $(ROOT_LIB_DIR) $(SUBDIRS)
+all: $(ROOT_BIN_DIR) $(ROOT_BOOT_DIR) $(ROOT_LIB_DIR) bin/$(OUTPUT) $(SUBDIRS)
 
 # Subdir dependencies
 usr/shell: usr/libc

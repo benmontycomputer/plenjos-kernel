@@ -1,5 +1,6 @@
 #include "vfs/fscache.h"
 
+#include "kernel.h"
 #include "lib/mode.h"
 #include "lib/stdio.h"
 #include "lib/string.h"
@@ -55,11 +56,13 @@ void _fscache_downgrade_node_to_readable(fscache_node_t *node) {
     rw_lock_downgrade_write_to_read(&node->rwlock);
 }
 
-bool _fscache_try_lock_node_for_eviction(fscache_node_t *node) {
+// This never got finished and isn't referenced, so I'm pretty sure it's unnecessary. However, I don't remember what it
+// was supposed to do, so I'm leaving it here in case I find later that it was actually needed.
+/* bool _fscache_try_lock_node_for_eviction(fscache_node_t *node) {
     if (atomic_compare_exchange_strong(&node->ref_count, &(int) { 0 }, -1)) {
         // Now, we must try to
     }
-}
+} */
 
 // The parent node must be read-locked before calling this.
 // No locks are modified in this function.
@@ -164,16 +167,16 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
         // Empty token (e.g. trailing slash, etc.)
         if (token_len == 0) break;
 
-        switch (cur->type) {
-        case DT_DIR:
+        switch (cur->stat.mode & S_IFMT) {
+        case S_IFDIR:
             // OK
-            access_t mode = access_check(cur->mode, cur->uid, cur->gid, uid);
+            access_t mode = access_check(cur->stat.mode, cur->stat.uid, cur->stat.gid, uid);
             if (mode & ACCESS_EXECUTE) {
                 // OK
             } else {
                 printf("fscache_request_node: execute access denied on directory %s for uid %u; directory mode %B, "
                        "calculated effective mode %B\n",
-                       cur->name, uid, (uint64_t)cur->mode, (uint64_t)mode);
+                       cur->name, uid, (uint64_t)cur->stat.mode, (uint64_t)mode);
                 res = -EACCES;
                 goto res_set_and_return;
             }
@@ -236,7 +239,7 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
                 ssize_t load_res = cur->fsops->load_node(cur, token, child);
 
                 if (load_res != 0) {
-                    atomic_store(&child->type, 0);
+                    atomic_store(&child->stat.mode, 0);
                     // load_node indicated node doesn't exist
                     if (next_slash_char == '\0' && load_res == -ENOENT) {
                         // We are at the end; node not found — caller may want parent
@@ -274,7 +277,7 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
 // Put cur in out as-is
 res_set_and_return:
     if (res == 0) {
-        if (cur->type != DT_DIR) {
+        if (!S_ISDIR(cur->stat.mode)) {
             if (path[path_len - 1] == '/') {
                 // Pathname ended with a slash, but the final node is not a directory
                 res = -ENOTDIR;
@@ -385,7 +388,8 @@ int fscache_init() {
     }
 
     kernelfs_load(NULL, NULL, fscache_root_node);
-    printf("fscache_init: loaded root node of type %u\n", fscache_root_node->type);
+    // TODO: octal
+    printf("fscache_init: loaded root node of mode %u\n", fscache_root_node->stat.mode);
 
     _fscache_release_node_readable(fscache_root_node);
 
