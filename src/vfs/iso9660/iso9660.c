@@ -65,7 +65,7 @@ size_t iso9660_normalize_name(char *out, size_t out_size, const uint8_t *in, siz
     out[o] = '\0';
 
     // Remove trailing dot if present (for files without extensions)
-    if (out[o - 1] == '.') {
+    if (o > 0 && out[o - 1] == '.') {
         out[--o] = '\0';
     }
 

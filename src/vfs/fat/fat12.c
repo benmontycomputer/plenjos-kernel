@@ -102,7 +102,7 @@ int fat12_next_cluster(struct filesystem_fat12 *fs, uint16_t cluster, uint16_t *
         entry |= ((uint16_t)sector_buf[0]) << 8;
     } else {
         // Both bytes are in the same sector
-        entry = *((uint16_t *)&sector_buf[offset_in_sector]);
+        memcpy(&entry, &sector_buf[offset_in_sector], sizeof(entry));
     }
 
     kfree_heap(sector_buf);
@@ -241,6 +241,8 @@ ssize_t fat12_file_read_func(vfs_handle_t *handle, void *buf, size_t len) {
         if (to_copy < bytes_per_cluster - offset_in_cluster) {
             // Stopped mid-cluster
             offset_in_cluster += to_copy;
+            remaining -= to_copy;
+            out_ptr   += to_copy;
             break;
         } else {
             // Move to next cluster
@@ -270,7 +272,7 @@ ssize_t fat12_file_read_func(vfs_handle_t *handle, void *buf, size_t len) {
 
     size_t bytes_read               = len - remaining;
     instance_data->current_cluster  = cluster;
-    instance_data->cluster_pos      = offset_in_cluster + bytes_read % bytes_per_cluster;
+    instance_data->cluster_pos      = offset_in_cluster;
     instance_data->cluster_index    = cluster_index;
     instance_data->seek_pos        += bytes_read;
 

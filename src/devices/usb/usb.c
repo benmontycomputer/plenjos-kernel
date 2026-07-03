@@ -159,7 +159,7 @@ int usb_iso_transfer(usb_endpoint_t *ep, uint8_t *buffer, size_t length, uint32_
 }
 
 struct usb_host_driver usb_populate_host_driver(usb_host_driver_control_transfer_func_t ctrl_transfer, usb_host_driver_bulk_transfer_func_t bulk_transfer) {
-    return (struct usb_host_driver) { .control_transfer_func = ctrl_transfer };
+    return (struct usb_host_driver) { .control_transfer_func = ctrl_transfer, .bulk_transfer_func = bulk_transfer };
 }
 
 usb_endpoint_t usb_generate_endpoint(uint8_t addr, bool in, usb_endpoint_attr_t attrs, usb_interface_t *interface,
@@ -263,6 +263,11 @@ usb_device_t *usb_setup_device(usb_device_t *parent, struct usb_bus *bus, uint8_
         goto err_res;
     }
 
+    if (cfg_header_len < sizeof(struct usb_configuration_descriptor)) {
+        printf("ERROR: usb_setup_device: configuration descriptor length %u is too small.\n", cfg_header_len);
+        goto err_res;
+    }
+
     uint8_t cfg_header_full_packet[8];
     usb_generate_setup_packet_get_config_full(cfg_header_full_packet, cfg_header_len);
 
@@ -286,8 +291,18 @@ usb_device_t *usb_setup_device(usb_device_t *parent, struct usb_bus *bus, uint8_
     uint8_t *desc_end = (uint8_t *)((uint64_t)dev->config_desc + dev->config_desc->w_total_length);
     for (uint8_t i = 0; i < dev->num_interfaces; i++) {
         /* Populate interface */
+        if (desc + sizeof(struct usb_interface_descriptor) > desc_end) {
+            printf("WARN: usb: truncated interface descriptor\n");
+            break;
+        }
+
         struct usb_interface_descriptor *iface_desc = (struct usb_interface_descriptor *)desc;
         usb_interface_t *iface                      = &dev->interfaces[i];
+
+        if (iface_desc->b_length < sizeof(struct usb_interface_descriptor)) {
+            printf("WARN: usb: malformed interface descriptor with short length %u\n", iface_desc->b_length);
+            break;
+        }
 
         iface->i_num         = iface_desc->i_num;
         iface->alt_setting   = iface_desc->alt_setting;
@@ -306,11 +321,16 @@ usb_device_t *usb_setup_device(usb_device_t *parent, struct usb_bus *bus, uint8_
         printf(" - protocol: %.2x\n", iface->i_protocol);
 
         uint8_t ep_no  = 0;
-        desc          += iface_desc->b_length;
-        while (desc[1] != USB_DESC_TYPE_INTERFACE && desc < desc_end) {
+        desc += iface_desc->b_length;
+        while (desc + 1 < desc_end && desc[1] != USB_DESC_TYPE_INTERFACE) {
             if (desc[1] == USB_DESC_TYPE_ENDPOINT) {
                 /* TODO: populate endpoint */
                 printf(" - usb: found endpoint under interface %d", i);
+                if (desc[0] < 7 || desc + 7 >= desc_end) {
+                    printf("WARN: usb: malformed endpoint descriptor under interface %d\n", i);
+                    break;
+                }
+
                 if (ep_no >= iface->num_endpoints) {
                     /* TODO: should we increase num_endpoints and realloc the array instead? */
                     printf("\nWARN: usb: potentially non-compliant device; endpoint %d >= num_endpoints (%d). Skipping "
@@ -333,10 +353,20 @@ usb_device_t *usb_setup_device(usb_device_t *parent, struct usb_bus *bus, uint8_
                 printf(" - usb: found unknown descriptor %d under interface %d\n", desc[1], i);
             }
 
+            if (desc[0] == 0) {
+                printf("WARN: usb: malformed descriptor with zero length under interface %d\n", i);
+                break;
+            }
+
+            if (desc + desc[0] >= desc_end) {
+                printf("WARN: usb: descriptor overruns configuration buffer under interface %d\n", i);
+                break;
+            }
+
             desc += desc[0];
         }
 
-        if (iface->endpoints[iface->num_endpoints - 1].address == 0) {
+        if (iface->num_endpoints > 0 && iface->endpoints[iface->num_endpoints - 1].address == 0) {
             printf("WARN: usb: potentially non-compliant device; not all endpoints have been populated.\n");
         }
 

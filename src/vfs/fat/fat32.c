@@ -204,7 +204,8 @@ int fat32_next_cluster(struct filesystem_fat32 *fs, uint32_t cluster, uint32_t *
         return -1;
     }
 
-    uint32_t entry = *((uint32_t *)&sector_buf[offset_in_sector]);
+    uint32_t entry = 0;
+    memcpy(&entry, &sector_buf[offset_in_sector], sizeof(entry));
     kfree_heap(sector_buf);
 
     // Mask to 28 bits as per FAT32 spec
