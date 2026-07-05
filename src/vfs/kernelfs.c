@@ -1,5 +1,6 @@
 #include "vfs/kernelfs.h"
 
+#include "kernel.h"
 #include "lib/stdio.h"
 #include "lib/string.h"
 #include "memory/kmalloc.h"
@@ -39,14 +40,19 @@ typedef enum kernelfs_find_node_result {
 } kernelfs_find_node_result_t;
 
 kernelfs_node_t *kernelfs_get_node_from_handle(vfs_handle_t *handle) {
+#ifdef _KERNEL_EXTRA_CHECKS_FOR_NULL_ARGS
     if (!handle || !handle->backing_node) {
-        return NULL;
+        kout(KERNEL_PANIC, "kernelfs_get_node_from_handle(): handle or backing node is NULL!\n");
     }
+#endif
 
     kernelfs_cache_data_t *cache_data = (kernelfs_cache_data_t *)handle->backing_node->internal_data;
+
+#ifdef _KERNEL_EXTRA_CHECKS_FOR_NULL_ARGS
     if (!cache_data) {
-        return NULL;
+        kout(KERNEL_PANIC, "kernelfs_get_node_from_handle(): cache_data is NULL!\n");
     }
+#endif
 
     return cache_data->node;
 }
@@ -59,7 +65,7 @@ ssize_t kernelfs_read(vfs_handle_t *f, void *buf, size_t len) {
     if (node && node->read) {
         return node->read(f, buf, len);
     }
-    return -1;
+    return -EIO;
 }
 
 ssize_t kernelfs_write(vfs_handle_t *f, const void *buf, size_t len) {
@@ -68,7 +74,7 @@ ssize_t kernelfs_write(vfs_handle_t *f, const void *buf, size_t len) {
     if (node && node->write) {
         return node->write(f, buf, len);
     }
-    return -1;
+    return -EIO;
 }
 
 off_t kernelfs_seek(vfs_handle_t *f, off_t offset, vfs_seek_whence_t whence) {
@@ -77,7 +83,7 @@ off_t kernelfs_seek(vfs_handle_t *f, off_t offset, vfs_seek_whence_t whence) {
     if (node && node->seek) {
         return node->seek(f, offset, whence);
     }
-    return -1;
+    return -EIO;
 }
 
 // This is a default function allowing for listing kernelfs directory contents.
@@ -268,7 +274,7 @@ int kernelfs_helper_mkdir(const char *path, struct kstat stat) {
         path_copy++;
     }
 
-    path_copy         = path_copy_ptr;
+    path_copy = path_copy_ptr;
     if (last_token == path_copy_ptr) {
         // No slash in the path; parent is root and the directory name is the whole string.
         path_copy[0] = '\0';

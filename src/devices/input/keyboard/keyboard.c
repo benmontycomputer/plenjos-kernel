@@ -3,6 +3,7 @@
 #include "devices/console/tty.h"
 #include "devices/manager.h"
 #include "devices/sysdrivers.h"
+#include "kernel.h"
 #include "lib/special_mem/fixed_size_allocator.h"
 #include "lib/stdio.h"
 #include "lib/string.h"
@@ -86,15 +87,19 @@ ssize_t kbd_read(vfs_handle_t *handle, void *buf, size_t len) {
 }
 
 int kbd_console_in(void *func_args) {
+#ifdef _KERNEL_EXTRA_CHECKS_FOR_NULL_ARGS
     if (!func_args) {
         kout(KERNEL_PANIC, "kbd_console_in(): func_args was NULL!\n");
         return -EIO;
     }
+#endif
 
     struct tty *tty = (struct tty *)func_args;
+#ifdef _KERNEL_TTY_BUFFER_CORRECTNESS_CHECKS
     if (tty->in_buf[0]) {
         kout(KERNEL_PANIC, "kbd_console_in(): tty->in_buf not cleared!\n");
     }
+#endif
 
     kbd_event_t event = { 0 };
     int res;
@@ -133,10 +138,12 @@ run:
 }
 
 int kbd_register(kbd_buffer_state_t **out, endpoint_t **endpoint_out) {
+#ifdef _KERNEL_EXTRA_CHECKS_FOR_NULL_ARGS
     if (!out) {
         kout(KERNEL_PANIC, "kbd_register(): out must not be NULL!\n");
         return -EINVAL;
     }
+#endif
     mutex_lock(&keyboards_lock);
     for (int i = 0; i < MAX_KEYBOARDS; i++) {
         if (!keyboards[i]) {
@@ -169,6 +176,6 @@ int kbd_register(kbd_buffer_state_t **out, endpoint_t **endpoint_out) {
     }
 
     mutex_unlock(&keyboards_lock);
-    kout(KERNEL_WARN, "kbd_register(): too many keyboards!\n");
+    kout(KERNEL_SEVERE_FAULT, "kbd_register(): too many keyboards!\n");
     return -EIO;
 }

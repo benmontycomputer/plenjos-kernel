@@ -2,6 +2,7 @@
 
 #ifdef __KERNEL_SUPPORT_DEV_USB_DEVICE_HID
 
+# include "kernel.h"
 # include "lib/stdio.h"
 # include "memory/kmalloc.h"
 
@@ -13,25 +14,31 @@ static const uint8_t usbhid_set_protocol_boot[8] = { 0x21, 0x0B, 0x00, 0x00, 0x0
 static const uint8_t usbhid_set_protocol_report[8] = { 0x21, 0x0B, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 int usbhid_set_protocol(usb_interface_t *iface, bool use_report) {
+# ifdef _KERNEL_EXTRA_CHECKS_FOR_NULL_ARGS
     if (!iface) {
         kout(KERNEL_PANIC, "ERROR: ushbid_set_protocol: iface is NULL!\n");
         return -EINVAL;
     }
+# endif
 
+# ifdef _KERNEL_ALWAYS_CHECK_DEVICE_TYPE
     if (iface->iface_driver != &usbhid_iface_driver) {
         kout(KERNEL_PANIC, "ERROR: calling usbhid_set_protocol on a non-HID device!\n");
         return -EINVAL;
     }
+# endif
 
     struct usbhid_interface_driver_data *driver_data = (struct usbhid_interface_driver_data *)iface->iface_driver_data;
 
     if (!driver_data->supports_boot) {
         if (use_report) {
-            kout(KERNEL_WARN, "WARN: calling usbhid_set_protocol to set the device to use the report protocol, but the device "
-                   "only supports the report protocol, so we can't set protocol! Not sending anything.\n");
+            kout(KERNEL_WARN,
+                 "WARN: calling usbhid_set_protocol to set the device to use the report protocol, but the device "
+                 "only supports the report protocol, so we can't set protocol! Not sending anything.\n");
             return 0;
         } else {
-            kout(KERNEL_SEVERE_FAULT, "ERROR: usbhid_set_protocol: the boot protocol is not supported by this device!\n");
+            kout(KERNEL_SEVERE_FAULT,
+                 "ERROR: usbhid_set_protocol: the boot protocol is not supported by this device!\n");
             return -EINVAL;
         }
     }
@@ -41,10 +48,12 @@ int usbhid_set_protocol(usb_interface_t *iface, bool use_report) {
 }
 
 int usbhid_bind_driver(usb_interface_t *iface) {
+# ifdef _KERNEL_ALWAYS_CHECK_DEVICE_TYPE
     if (iface->i_class != USB_IFACE_CLASS_HID) {
         kout(KERNEL_PANIC, "ERROR: calling usbhid_bind_driver() on a non-HID interface.\n");
         return -EINVAL;
     }
+# endif
 
     kout(KERNEL_INFO, "usbhid_bind_driver: binding driver...\n");
 
@@ -62,7 +71,7 @@ int usbhid_bind_driver(usb_interface_t *iface) {
     struct usbhid_interface_driver_data *driver_data = (struct usbhid_interface_driver_data *)iface->iface_driver_data;
 
     switch (iface->i_protocol) {
-    case 0x01: { 
+    case 0x01: {
         driver_data->type = USBKBD;
         kout(KERNEL_INFO, " - device type: keyboard\n");
         break;

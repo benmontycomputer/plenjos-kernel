@@ -10,7 +10,13 @@ extern void printf_ch_fb(char ch);
 
 int tty_default_out(void *func_args) {
     struct tty *tty = func_args;
-    int i = 1;
+#ifdef _KERNEL_EXTRA_CHECKS_FOR_NULL_ARGS
+    if (!tty) {
+        kout(KERNEL_PANIC, "tty_default_out(): tty is NULL!");
+    }
+#endif
+
+    int i   = 1;
     int res = 0;
     char ch = tty->out_buf[0];
     switch (ch) {
@@ -22,12 +28,15 @@ int tty_default_out(void *func_args) {
             }
             i++;
         }
+#ifdef _KERNEL_TTY_BUFFER_CORRECTNESS_CHECKS
         if (i == sizeof(tty->out_buf)) {
             kout(KERNEL_PANIC, "tty_default_write(): can't find end of sequence!\n");
             res = -EIO;
         } else if (!tty->out_buf[i++]) {
-            kout(KERNEL_PANIC, "tty_default_write(): incomplete escape sequence but out_buf wasn't full (shouldn't happen)\n");
+            kout(KERNEL_PANIC,
+                 "tty_default_write(): incomplete escape sequence but out_buf wasn't full (shouldn't happen)\n");
         } else {
+#endif
             if (i == 4 && !memcmp(tty->out_buf, "\x1b[2J", i)) {
                 // Clear
                 clear();
@@ -48,7 +57,9 @@ int tty_default_out(void *func_args) {
                 }
                 kout(KERNEL_INFO, "\n");
             }
+#ifdef _KERNEL_TTY_BUFFER_CORRECTNESS_CHECKS
         }
+#endif
         break;
     case '\b':
         backs();
@@ -57,9 +68,11 @@ int tty_default_out(void *func_args) {
         printf_ch_fb(ch);
         break;
     }
+#ifdef _KERNEL_TTY_BUFFER_CORRECTNESS_CHECKS
     if (i <= sizeof(tty->out_buf) && tty->out_buf[i]) {
-        kout(KERNEL_WARN, "tty_default_write(): ignoring excess char(s) in out buf\n");
+        kout(KERNEL_PANIC, "tty_default_write(): excess char(s) in out buf\n");
     }
+#endif
     memset(tty->out_buf, 0, sizeof(tty->out_buf));
     return res;
 }
@@ -102,8 +115,14 @@ ssize_t tty_read(vfs_handle_t *handle, void *buf, size_t len) {
     endpoint_t *endpoint = devfs_get_endpoint_from_handle(handle);
     struct tty *tty      = endpoint->func_args;
 
-    if (!tty || !tty->in) {
-        kout(KERNEL_WARN, "tty_read(): tty or tty->in is NULL!\n");
+#ifdef _KERNEL_EXTRA_CHECKS_FOR_NULL_ARGS
+    if (!tty) {
+        kout(KERNEL_PANIC, "tty_read(): tty is NULL!\n");
+    }
+#endif
+
+    if (!tty->in) {
+        kout(KERNEL_WARN, "tty_read(): tty->in is NULL!\n");
         return -EIO;
     }
 
@@ -129,8 +148,14 @@ ssize_t tty_write(vfs_handle_t *handle, const void *buf, size_t len) {
     endpoint_t *endpoint = devfs_get_endpoint_from_handle(handle);
     struct tty *tty      = endpoint->func_args;
 
-    if (!tty || !tty->out) {
-        kout(KERNEL_WARN, "tty_write(): tty or tty->out is NULL!\n");
+#ifdef _KERNEL_EXTRA_CHECKS_FOR_NULL_ARGS
+    if (!tty) {
+        kout(KERNEL_PANIC, "tty_write(): tty is NULL!\n");
+    }
+#endif
+
+    if (!tty->out) {
+        kout(KERNEL_WARN, "tty_write(): tty->out is NULL!\n");
         return -EIO;
     }
 
@@ -144,7 +169,7 @@ ssize_t tty_write(vfs_handle_t *handle, const void *buf, size_t len) {
                 j++;
             }
             while (i < len && j < sizeof(tty->out_buf)) {
-                ch = ((char *)buf)[i];
+                ch              = ((char *)buf)[i];
                 tty->out_buf[j] = ch;
                 if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) {
                     break;

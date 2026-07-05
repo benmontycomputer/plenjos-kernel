@@ -9,6 +9,7 @@
 #include "memory/mm.h"
 #include "proc/scheduler.h"
 
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -29,6 +30,28 @@ __attribute__((aligned(0x10))) static idt_entry_t idt[256]; // Create an array o
 idtr_t idtr;
 
 extern void release_console();
+extern int _printf_internal(const char *format, va_list list);
+
+static int kout_panic(kernel_msg_level_t msg_level, const char *format, ...) {
+    va_list list;
+    va_start(list, format);
+
+    int res = _printf_internal(format, list);
+
+    va_end(list);
+
+    if (msg_level = KERNEL_PANIC) {
+        debug_serial = !debug_serial;
+
+        va_start(list, format);
+
+        res = _printf_internal(format, list);
+
+        va_end(list);
+
+        debug_serial = !debug_serial;
+    }
+}
 
 // The below function will print some debug message for page fault
 void page_fault_handler(registers_t *regs) {
@@ -45,59 +68,59 @@ void page_fault_handler(registers_t *regs) {
     int id       = regs->err_code & 0x10;   // Caused by an instruction fetch?
 
     // Output an error message with details about the page fault.
-    kout(KERNEL_SEVERE_FAULT, "\nPage fault! ( ");
-    if (present) kout(KERNEL_SEVERE_FAULT, "Page not present, ");
-    if (rw) kout(KERNEL_SEVERE_FAULT, "Not writable, ");
-    if (us) kout(KERNEL_SEVERE_FAULT, "User-mode, ");
-    if (reserved) kout(KERNEL_SEVERE_FAULT, "Reserved, ");
-    if (id) kout(KERNEL_SEVERE_FAULT, "Instruction fetch, ");
-    if (present || reserved) kout(KERNEL_SEVERE_FAULT, ") at address %p\n", faulting_address);
+    kout_panic(KERNEL_PANIC, "\nPage fault! ( ");
+    if (present) kout_panic(KERNEL_PANIC, "Page not present, ");
+    if (rw) kout_panic(KERNEL_PANIC, "Not writable, ");
+    if (us) kout_panic(KERNEL_PANIC, "User-mode, ");
+    if (reserved) kout_panic(KERNEL_PANIC, "Reserved, ");
+    if (id) kout_panic(KERNEL_PANIC, "Instruction fetch, ");
+    if (present || reserved) kout_panic(KERNEL_PANIC, ") at address %p\n", faulting_address);
     else
-        kout(KERNEL_SEVERE_FAULT, ") at address %p, paddr %p\n", faulting_address,
+        kout_panic(KERNEL_PANIC, ") at address %p, paddr %p\n", faulting_address,
              get_physaddr(faulting_address, (pml4_t *)phys_to_virt(get_cr3_addr())));
 
-    kout(KERNEL_SEVERE_FAULT, "RIP: %p, RSP: %p, RFLAGS: %p, CR3: %p\n", regs->iret_rip, regs->iret_rsp,
+    kout_panic(KERNEL_PANIC, "RIP: %p, RSP: %p, RFLAGS: %p, CR3: %p\n", regs->iret_rip, regs->iret_rsp,
          regs->iret_rflags, regs->cr3);
 }
 
 void gpf_handler(registers_t *regs) {
-    kout(KERNEL_SEVERE_FAULT, "%s\n", "gpf error");
-    kout(KERNEL_SEVERE_FAULT, "received interrupt: %d\n", regs->int_no);
-    kout(KERNEL_SEVERE_FAULT, "Error Code: %p\n", regs->err_code);
-    kout(KERNEL_SEVERE_FAULT, "CS: %p, RIP : %p\n", regs->iret_cs, regs->iret_rip);
+    kout_panic(KERNEL_PANIC, "%s\n", "gpf error");
+    kout_panic(KERNEL_PANIC, "received interrupt: %d\n", regs->int_no);
+    kout_panic(KERNEL_PANIC, "Error Code: %p\n", regs->err_code);
+    kout_panic(KERNEL_PANIC, "CS: %p, RIP : %p\n", regs->iret_cs, regs->iret_rip);
 
     if ((regs->iret_cs & CS_MASK) == KERNEL_CS) {
-        kout(KERNEL_SEVERE_FAULT, "Kernel mode GPF occurred at RIP: %p\n", regs->iret_rip);
+        kout_panic(KERNEL_PANIC, "Kernel mode GPF occurred at RIP: %p\n", regs->iret_rip);
 
         uint64_t *rsp = (uint64_t *)regs->iret_rsp;
-        kout(KERNEL_SEVERE_FAULT, "Stack (rsp = %p) Contents(First 26) :\n", (uint64_t)rsp);
+        kout_panic(KERNEL_PANIC, "Stack (rsp = %p) Contents(First 26) :\n", (uint64_t)rsp);
 
         for (int i = 0; i < 26; i++) {
-            kout(KERNEL_SEVERE_FAULT, "  [%p] = %p\n", (uint64_t)(rsp + i), rsp[i]);
+            kout_panic(KERNEL_PANIC, "  [%p] = %p\n", (uint64_t)(rsp + i), rsp[i]);
         }
     } else if ((regs->iret_cs & CS_MASK) == USER_CS) {
         pml4_t *pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
 
-        kout(KERNEL_SEVERE_FAULT, "User mode GPF occurred at RIP: %p\n", regs->iret_rip);
+        kout_panic(KERNEL_PANIC, "User mode GPF occurred at RIP: %p\n", regs->iret_rip);
 
         uint64_t *rsp = (uint64_t *)regs->iret_rsp;
-        kout(KERNEL_SEVERE_FAULT, "Stack (rsp = %p) Contents(First 26) :\n", (uint64_t)rsp);
+        kout_panic(KERNEL_PANIC, "Stack (rsp = %p) Contents(First 26) :\n", (uint64_t)rsp);
 
         for (int i = 0; i < 26; i++) {
             uint64_t stack_phys_addr = get_physaddr((uint64_t)(rsp + i), pml4);
             if (stack_phys_addr == 0) {
-                kout(KERNEL_SEVERE_FAULT, "  [%p] = Invalid Address\n", (uint64_t)(rsp + i));
+                kout_panic(KERNEL_PANIC, "  [%p] = Invalid Address\n", (uint64_t)(rsp + i));
             } else {
-                kout(KERNEL_SEVERE_FAULT, "  [%p] = %p\n", (uint64_t)(rsp + i),
+                kout_panic(KERNEL_PANIC, "  [%p] = %p\n", (uint64_t)(rsp + i),
                      *(uint64_t *)phys_to_virt(stack_phys_addr));
             }
         }
     } else {
-        kout(KERNEL_SEVERE_FAULT, "GPF occurred in unknown segment: CS: %p\n", regs->iret_cs);
+        kout_panic(KERNEL_PANIC, "GPF occurred in unknown segment: CS: %p\n", regs->iret_cs);
     }
 
     // debug_error_code(regs->err_code);
-    // kout(KERNEL_SEVERE_FAULT, "System Halted!\n");
+    // kout_panic(KERNEL_PANIC, "System Halted!\n");
     // hcf();
 }
 
@@ -117,10 +140,10 @@ void dump_machine_check_msrs() {
     val            = read_msr(IA32_MCG_CAP);
     unsigned banks = (unsigned)(val & 0xff);
 
-    kout(KERNEL_SEVERE_FAULT, "=== Machine Check Global ===\n");
-    kout(KERNEL_SEVERE_FAULT, "IA32_MCG_CTL    (0x177): %p\n", read_msr(IA32_MCG_CTL));
-    kout(KERNEL_SEVERE_FAULT, "IA32_MCG_CAP    (0x179): %p  (banks=%d)\n", val, banks);
-    kout(KERNEL_SEVERE_FAULT, "IA32_MCG_STATUS (0x17A): %p\n", read_msr(IA32_MCG_STATUS));
+    kout_panic(KERNEL_PANIC, "=== Machine Check Global ===\n");
+    kout_panic(KERNEL_PANIC, "IA32_MCG_CTL    (0x177): %p\n", read_msr(IA32_MCG_CTL));
+    kout_panic(KERNEL_PANIC, "IA32_MCG_CAP    (0x179): %p  (banks=%d)\n", val, banks);
+    kout_panic(KERNEL_PANIC, "IA32_MCG_STATUS (0x17A): %p\n", read_msr(IA32_MCG_STATUS));
 
     for (unsigned i = 0; i < banks; i++) {
         uint64_t status = read_msr(IA32_MC_STATUS(i));
@@ -128,15 +151,15 @@ void dump_machine_check_msrs() {
             // VAL bit clear: no valid error logged
             continue;
         }
-        kout(KERNEL_SEVERE_FAULT, "--- Bank %u ---\n", i);
-        kout(KERNEL_SEVERE_FAULT, "  CTL   (0x%03x): %p\n", IA32_MC_CTL(i), read_msr(IA32_MC_CTL(i)));
-        kout(KERNEL_SEVERE_FAULT, "  STATUS(0x%03x): %p\n", IA32_MC_STATUS(i), status);
+        kout_panic(KERNEL_PANIC, "--- Bank %u ---\n", i);
+        kout_panic(KERNEL_PANIC, "  CTL   (0x%03x): %p\n", IA32_MC_CTL(i), read_msr(IA32_MC_CTL(i)));
+        kout_panic(KERNEL_PANIC, "  STATUS(0x%03x): %p\n", IA32_MC_STATUS(i), status);
 
         if (status & (1ULL << 58)) { // ADDRV bit
-            kout(KERNEL_SEVERE_FAULT, "  ADDR (0x%03x): %p\n", IA32_MC_ADDR(i), read_msr(IA32_MC_ADDR(i)));
+            kout_panic(KERNEL_PANIC, "  ADDR (0x%03x): %p\n", IA32_MC_ADDR(i), read_msr(IA32_MC_ADDR(i)));
         }
         if (status & (1ULL << 59)) { // MISCV bit
-            kout(KERNEL_SEVERE_FAULT, "  MISC (0x%03x): %p\n", IA32_MC_MISC(i), read_msr(IA32_MC_MISC(i)));
+            kout_panic(KERNEL_PANIC, "  MISC (0x%03x): %p\n", IA32_MC_MISC(i), read_msr(IA32_MC_MISC(i)));
         }
     }
 }
@@ -146,8 +169,7 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
 
     uint64_t cr3 = get_cr3_addr();
 
-    /* Using KERNEL_SEVERE_FAULT instead of PANIC because we need to use kout multiple times before the panic */
-    kernel_msg_level_t msg_level = (regs->iret_cs == KERNEL_CS) ? KERNEL_SEVERE_FAULT : USER_FAULT;
+    kernel_msg_level_t msg_level = (regs->iret_cs == KERNEL_CS) ? KERNEL_PANIC : USER_FAULT;
 
     if (cr3 != kernel_pml4_phys) {
         set_cr3_addr(kernel_pml4_phys);
@@ -159,20 +181,20 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
     release_console();
 
     if (regs->int_no == 14) {
-        kout(msg_level, "\nPAGE FAULT\n");
+        kout_panic(msg_level, "\nPAGE FAULT\n");
         page_fault_handler(regs);
     } else if (regs->int_no == 13) {
-        kout(msg_level, "\nGPF ERROR\n");
+        kout_panic(msg_level, "\nGPF ERROR\n");
         gpf_handler(regs);
     } else if (regs->int_no < 32) {
-        kout(msg_level, "\nCPU EXCEPTION\n");
-        kout(msg_level, "RSP: %p\n", regs->iret_rsp);
-        kout(msg_level, "RIP: %p\n", regs->iret_rip);
-        kout(msg_level, "Error Code: %p\n", regs->err_code);
+        kout_panic(msg_level, "\nCPU EXCEPTION\n");
+        kout_panic(msg_level, "RSP: %p\n", regs->iret_rsp);
+        kout_panic(msg_level, "RIP: %p\n", regs->iret_rip);
+        kout_panic(msg_level, "Error Code: %p\n", regs->err_code);
 
         dump_machine_check_msrs();
     } else {
-        kout(msg_level, "\nEXCEPTION %p\n", regs->int_no);
+        kout_panic(msg_level, "\nEXCEPTION %p\n", regs->int_no);
     }
 
     if (regs->iret_cs == KERNEL_CS) {
@@ -183,8 +205,8 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
             pid_t pid = thread->parent->pid;
             pid_t tid = thread->tid;
 
-            kout(msg_level, "Faulting process: PID %p, TID %p\n", pid, tid);
-            kout(msg_level, "Killing offending process...\n");
+            kout_panic(msg_level, "Faulting process: PID %p, TID %p\n", pid, tid);
+            kout_panic(msg_level, "Killing offending process...\n");
 
             process_exit(thread->parent);
 

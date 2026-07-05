@@ -146,8 +146,7 @@ void process_exit(proc_t *proc) {
     if (!proc) return;
 
     if (proc->pid == 0) {
-        printf("\n\n[ FATAL ERROR: process_exit called on pid 0! ]\n");
-        hcf();
+        kout(KERNEL_PANIC, "\n\n[ FATAL ERROR: process_exit called on pid 0! ]\n");
     }
 
     // Kill all child processes

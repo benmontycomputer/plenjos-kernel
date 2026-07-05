@@ -1,10 +1,10 @@
+#include "stdio.h"
+#include "string.h"
+#include "sys/syscall.h"
+#include "uconsole.h"
+
 #include <stdbool.h>
 #include <stdint.h>
-
-#include "sys/syscall.h"
-
-#include "string.h"
-#include "uconsole.h"
 
 // http://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf
 // The following functions define a portable implementation of rand and srand.
@@ -25,9 +25,9 @@ void srand(unsigned int seed) {
 // #define FB_WIDTH  800
 // #define FB_HEIGHT 600
 // #define FB_BPP    4 // bytes per pixel (32-bit)
-#define FB_WIDTH fb_width
-#define FB_HEIGHT fb_height
-#define FB_BPP fb_bytes_per_pixel
+#define FB_WIDTH   fb_width
+#define FB_HEIGHT  fb_height
+#define FB_BPP     fb_bytes_per_pixel
 #define BLOCK_SIZE 24
 
 // Framebuffer pointer (should be mapped to actual framebuffer address)
@@ -39,12 +39,12 @@ void srand(unsigned int seed) {
 #define BOARD_H 20
 
 // Colors (ARGB)
-#define COLOR_BG 0xFF222222
-#define COLOR_GRID 0xFF444444
+#define COLOR_BG     0xFF222222
+#define COLOR_GRID   0xFF444444
 #define COLOR_BLOCKS 0xFF00FF00
 
 // Bit array to track dirty cells
-static uint8_t dirty[(BOARD_H * BOARD_W + 7) / 8] = { [0 ...((BOARD_H * BOARD_W + 7) / 8) - 1] = 0xff };
+static uint8_t dirty[(BOARD_H * BOARD_W + 7) / 8];
 
 static inline bool is_cell_dirty(int x, int y) {
     if (x < 0 || x >= BOARD_W || y < 0 || y >= BOARD_H) return false;
@@ -72,39 +72,39 @@ static inline void mark_row_as_dirty(int row) {
 const int tetrominoes[7][4][4][4] = {
     // I
     { { { 0, 0, 0, 0 }, { 1, 1, 1, 1 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 } },
-      { { 0, 0, 1, 0 }, { 0, 0, 1, 0 }, { 0, 0, 1, 0 }, { 0, 0, 1, 0 } },
-      { { 0, 0, 0, 0 }, { 1, 1, 1, 1 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 } },
-      { { 0, 1, 0, 0 }, { 0, 1, 0, 0 }, { 0, 1, 0, 0 }, { 0, 1, 0, 0 } } },
+     { { 0, 0, 1, 0 }, { 0, 0, 1, 0 }, { 0, 0, 1, 0 }, { 0, 0, 1, 0 } },
+     { { 0, 0, 0, 0 }, { 1, 1, 1, 1 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 } },
+     { { 0, 1, 0, 0 }, { 0, 1, 0, 0 }, { 0, 1, 0, 0 }, { 0, 1, 0, 0 } } },
     // O
     { { { 0, 0, 0, 0 }, { 0, 1, 1, 0 }, { 0, 1, 1, 0 }, { 0, 0, 0, 0 } },
-      { { 0, 0, 0, 0 }, { 0, 1, 1, 0 }, { 0, 1, 1, 0 }, { 0, 0, 0, 0 } },
-      { { 0, 0, 0, 0 }, { 0, 1, 1, 0 }, { 0, 1, 1, 0 }, { 0, 0, 0, 0 } },
-      { { 0, 0, 0, 0 }, { 0, 1, 1, 0 }, { 0, 1, 1, 0 }, { 0, 0, 0, 0 } } },
+     { { 0, 0, 0, 0 }, { 0, 1, 1, 0 }, { 0, 1, 1, 0 }, { 0, 0, 0, 0 } },
+     { { 0, 0, 0, 0 }, { 0, 1, 1, 0 }, { 0, 1, 1, 0 }, { 0, 0, 0, 0 } },
+     { { 0, 0, 0, 0 }, { 0, 1, 1, 0 }, { 0, 1, 1, 0 }, { 0, 0, 0, 0 } } },
     // T
     { { { 0, 0, 0, 0 }, { 1, 1, 1, 0 }, { 0, 1, 0, 0 }, { 0, 0, 0, 0 } },
-      { { 0, 1, 0, 0 }, { 1, 1, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 0, 0 } },
-      { { 0, 1, 0, 0 }, { 1, 1, 1, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 } },
-      { { 0, 1, 0, 0 }, { 0, 1, 1, 0 }, { 0, 1, 0, 0 }, { 0, 0, 0, 0 } } },
+     { { 0, 1, 0, 0 }, { 1, 1, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 0, 0 } },
+     { { 0, 1, 0, 0 }, { 1, 1, 1, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 } },
+     { { 0, 1, 0, 0 }, { 0, 1, 1, 0 }, { 0, 1, 0, 0 }, { 0, 0, 0, 0 } } },
     // S
     { { { 0, 0, 0, 0 }, { 0, 1, 1, 0 }, { 1, 1, 0, 0 }, { 0, 0, 0, 0 } },
-      { { 1, 0, 0, 0 }, { 1, 1, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 0, 0 } },
-      { { 0, 0, 0, 0 }, { 0, 1, 1, 0 }, { 1, 1, 0, 0 }, { 0, 0, 0, 0 } },
-      { { 1, 0, 0, 0 }, { 1, 1, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 0, 0 } } },
+     { { 1, 0, 0, 0 }, { 1, 1, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 0, 0 } },
+     { { 0, 0, 0, 0 }, { 0, 1, 1, 0 }, { 1, 1, 0, 0 }, { 0, 0, 0, 0 } },
+     { { 1, 0, 0, 0 }, { 1, 1, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 0, 0 } } },
     // Z
     { { { 0, 0, 0, 0 }, { 1, 1, 0, 0 }, { 0, 1, 1, 0 }, { 0, 0, 0, 0 } },
-      { { 0, 1, 0, 0 }, { 1, 1, 0, 0 }, { 1, 0, 0, 0 }, { 0, 0, 0, 0 } },
-      { { 0, 0, 0, 0 }, { 1, 1, 0, 0 }, { 0, 1, 1, 0 }, { 0, 0, 0, 0 } },
-      { { 0, 1, 0, 0 }, { 1, 1, 0, 0 }, { 1, 0, 0, 0 }, { 0, 0, 0, 0 } } },
+     { { 0, 1, 0, 0 }, { 1, 1, 0, 0 }, { 1, 0, 0, 0 }, { 0, 0, 0, 0 } },
+     { { 0, 0, 0, 0 }, { 1, 1, 0, 0 }, { 0, 1, 1, 0 }, { 0, 0, 0, 0 } },
+     { { 0, 1, 0, 0 }, { 1, 1, 0, 0 }, { 1, 0, 0, 0 }, { 0, 0, 0, 0 } } },
     // J
     { { { 0, 0, 0, 0 }, { 1, 1, 1, 0 }, { 0, 0, 1, 0 }, { 0, 0, 0, 0 } },
-      { { 0, 1, 0, 0 }, { 0, 1, 0, 0 }, { 1, 1, 0, 0 }, { 0, 0, 0, 0 } },
-      { { 1, 0, 0, 0 }, { 1, 1, 1, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 } },
-      { { 0, 1, 1, 0 }, { 0, 1, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 0, 0 } } },
+     { { 0, 1, 0, 0 }, { 0, 1, 0, 0 }, { 1, 1, 0, 0 }, { 0, 0, 0, 0 } },
+     { { 1, 0, 0, 0 }, { 1, 1, 1, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 } },
+     { { 0, 1, 1, 0 }, { 0, 1, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 0, 0 } } },
     // L
     { { { 0, 0, 0, 0 }, { 1, 1, 1, 0 }, { 1, 0, 0, 0 }, { 0, 0, 0, 0 } },
-      { { 1, 1, 0, 0 }, { 0, 1, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 0, 0 } },
-      { { 0, 0, 1, 0 }, { 1, 1, 1, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 } },
-      { { 0, 1, 0, 0 }, { 0, 1, 0, 0 }, { 0, 1, 1, 0 }, { 0, 0, 0, 0 } } }
+     { { 1, 1, 0, 0 }, { 0, 1, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 0, 0 } },
+     { { 0, 0, 1, 0 }, { 1, 1, 1, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 } },
+     { { 0, 1, 0, 0 }, { 0, 1, 0, 0 }, { 0, 1, 1, 0 }, { 0, 0, 0, 0 } } }
 };
 
 typedef struct {
@@ -122,7 +122,7 @@ void fb_draw_rect(int x, int y, int w, int h, uint32_t color) {
             int py = y + j;
             if (px < 0 || px >= FB_WIDTH || py < 0 || py >= FB_HEIGHT) continue;
             uint32_t *p = (uint32_t *)(framebuffer + (py * FB_WIDTH + px) * FB_BPP);
-            *p = color;
+            *p          = color;
         }
     }
 }
@@ -131,7 +131,7 @@ void fb_clear(uint32_t color) {
     for (int y = 0; y < FB_HEIGHT; ++y) {
         for (int x = 0; x < FB_WIDTH; ++x) {
             uint32_t *p = (uint32_t *)(framebuffer + (y * FB_WIDTH + x) * FB_BPP);
-            *p = color;
+            *p          = color;
         }
     }
 }
@@ -189,7 +189,9 @@ void place_tetromino(const Tetromino *t) {
             if (tetrominoes[t->type][t->rotation][j][i]) {
                 int bx = t->x + i;
                 int by = t->y + j;
-                if (bx >= 0 && bx < BOARD_W && by >= 0 && by < BOARD_H) { board[by][bx] = 1; }
+                if (bx >= 0 && bx < BOARD_W && by >= 0 && by < BOARD_H) {
+                    board[by][bx] = 1;
+                }
             }
         }
     }
@@ -219,24 +221,31 @@ void clear_lines() {
 // Dummy input function (TODO: replace with actual input handling)
 int get_input() {
     // Return 0: none, 1: left, 2: right, 3: rotate, 4: down
-    // if (kbd_buffer_empty()) return 0;
-    kbd_event_t event;
-    // kbd_get(&event);
-    // TOOD: non-blocking
-    if (event.state != KEY_PRESSED) return 0;
-    if (event.code == KEY_A) return 1;
-    if (event.code == KEY_D) return 2;
-    if (event.code == KEY_W) return 3;
-    if (event.code == KEY_S) return 4;
+    char ch = fgetc(stdin);
+    switch (ch) {
+    case 'a':
+    case 'A':
+        return 1;
+    case 'd':
+    case 'D':
+        return 2;
+    case 'w':
+    case 'W':
+        return 3;
+    case 's':
+    case 'S':
+        return 4;
+    }
     return 0;
 }
 
 void tetris_main() {
     fb_clear(COLOR_BG);
 
+    memset(dirty, 0xFF, sizeof(dirty));
     memset(board, 0, sizeof(board));
     Tetromino current = { 0, 0, BOARD_W / 2 - 2, 0 };
-    int tick = 0;
+    int tick          = 0;
     while (1) {
         draw_board();
         draw_tetromino(&current, COLOR_BLOCKS);
@@ -253,10 +262,10 @@ void tetris_main() {
             } else {
                 place_tetromino(&current);
                 clear_lines();
-                current.type = rand() % 7;
+                current.type     = rand() % 7;
                 current.rotation = 0;
-                current.x = BOARD_W / 2 - 2;
-                current.y = 0;
+                current.x        = BOARD_W / 2 - 2;
+                current.y        = 0;
                 if (check_collision(&current, 0, 0, 0)) {
                     // Game over
                     break;

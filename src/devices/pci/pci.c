@@ -350,8 +350,7 @@ pci_device_t pci_check_device(uint8_t bus, uint8_t device, uint8_t function) {
     return dev;
 }
 
-# define PCI_DEV_PREFIX "pci_dev_0x"
-
+// Leaving this here for later when sysfs is implemented
 ssize_t pci_dev_file_read(vfs_handle_t *handle, void *buf, size_t len) {
     kernelfs_node_t *node = kernelfs_get_node_from_handle(handle);
     if (!node || !node->func_args) {
@@ -380,23 +379,6 @@ ssize_t pci_dev_file_read(vfs_handle_t *handle, void *buf, size_t len) {
 
 static void pci_add_device_to_array(uint8_t bus, uint8_t device, uint8_t function) {
     pci_devices[pci_device_count] = pci_check_device(bus, device, function);
-
-    // Ex: pci_dev_0000
-    char *devaddr = (char *)kmalloc_heap(strlen(PCI_DEV_PREFIX) + 5);
-
-    strncpy(devaddr, PCI_DEV_PREFIX, strlen(PCI_DEV_PREFIX) + 1);
-    // TODO: once snprintf is implemented, use that instead
-    devaddr[strlen(PCI_DEV_PREFIX) + 0] = hex_to_char((pci_device_count / 16 / 16 / 16) % 16);
-    devaddr[strlen(PCI_DEV_PREFIX) + 1] = hex_to_char((pci_device_count / 16 / 16) % 16);
-    devaddr[strlen(PCI_DEV_PREFIX) + 2] = hex_to_char((pci_device_count / 16) % 16);
-    devaddr[strlen(PCI_DEV_PREFIX) + 3] = hex_to_char((pci_device_count) % 16);
-    devaddr[strlen(PCI_DEV_PREFIX) + 4] = 0;
-
-    // This probably can't go through fscache for creation, as it's not a regular file?
-    // kernelfs_helper_create_file("/dev/pci", devaddr, PCI_DEV_FS_TYPE, 0, 0, PCI_DEV_FS_MODE, pci_dev_file_read, NULL,
-    //                             NULL, &pci_devices[pci_device_count]);
-    // kernelfs_create_node("/dev/pci", devaddr, DT_DIR, NULL, pci_dev_file_read, NULL, NULL,
-    // &pci_devices[pci_device_count]);
 
     pci_device_count++;
 }
