@@ -411,7 +411,7 @@ int kernelfs_create_node(kernelfs_node_t *parent_node, const char *name, struct 
 
 void *kernelfs_get_func_args(vfs_handle_t *handle) {
     if (strncmp(handle->backing_node->fsops->fsname, "kernelfs", NAME_MAX)) {
-        kout(KERNEL_SEVERE_FAULT, "kernelfs_get_func_args(): not in kernelfs!\n");
+        kout(KERNEL_PANIC, "kernelfs_get_func_args(): not in kernelfs!\n");
     }
     kernelfs_cache_data_t *cache_data = (kernelfs_cache_data_t *)handle->backing_node->internal_data;
     return cache_data->node->func_args;

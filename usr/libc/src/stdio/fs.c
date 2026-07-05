@@ -1,10 +1,11 @@
 #pragma once
 
-#include "sys/syscall.h"
-#include "stdio.h"
-#include "sys/types.h"
-#include "stdlib.h"
 #include "errno.h"
+#include "stdio.h"
+#include "stdlib.h"
+#include "string.h"
+#include "sys/syscall.h"
+#include "sys/types.h"
 
 // TODO: implement errno
 // TODO: set the stream's error indicators in addition to errno
@@ -26,7 +27,7 @@ syscall_open_flags_t parse_mode(const char *mode_str) {
     } */
 
     if (mode_str[0] != '\0' && mode_str[1] == '+') {
-        flags |=  SYSCALL_OPEN_FLAG_READ | SYSCALL_OPEN_FLAG_WRITE;
+        flags |= SYSCALL_OPEN_FLAG_READ | SYSCALL_OPEN_FLAG_WRITE;
     }
 
     return flags;
@@ -80,7 +81,17 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
     return (size_t)(res / size);
 }
 
-size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream);
+size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) {
+    ssize_t res = syscall_write(stream->fd, ptr, size * nmemb);
+    if (res < 0) {
+        printf("fwrite: write error on fd %d, errno %d\n", (int)stream->fd, (int)res);
+        errno = -res;
+        return 0;
+    }
+
+    return (size_t)(res / size);
+}
+
 int fseek(FILE *stream, long offset, int whence);
 long ftell(FILE *stream);
 
@@ -97,4 +108,12 @@ int fgetc(FILE *stream) {
     }
 
     return (int)ch;
+}
+
+int fputc(int c, FILE *stream) {
+    return fwrite(&c, sizeof(unsigned char), 1, stream);
+}
+
+int fputs(const char *restrict str, FILE *restrict stream) {
+    return fwrite(str, sizeof(unsigned char), strlen(str), stream);
 }

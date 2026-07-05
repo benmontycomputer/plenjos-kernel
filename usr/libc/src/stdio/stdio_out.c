@@ -1,5 +1,5 @@
 #include "stdio.h"
-#include "uconsole.h"
+#include "string.h"
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -10,74 +10,18 @@
 FILE *stderr = NULL;
 FILE *stdout = NULL;
 
-typedef struct {
-    bool held;
-} mutex;
-
-static mutex console_access;
-
-#define CONSOLE_W() (fb_width / FONT_W)
-#define CONSOLE_H() (fb_height / FONT_H)
-
-static uint64_t console_pos = 0;
-
-#define GET_CONSOLE_X(pos) (pos % CONSOLE_W())
-#define GET_CONSOLE_Y(pos) (pos / CONSOLE_W())
-
 static bool cursor;
 
-void request_console() {
-    while (true) {
-        if (!console_access.held) {
-            console_access.held = true;
-            return;
-        }
-    }
-}
-
-void release_console() {
-    console_access.held = false;
-}
-
-void scroll_console() {
-    // Scroll
-
-    uint64_t offset = fb_scanline * FONT_H;
-    uint64_t i;
-
-    for (i = 0; i < ((uint64_t)fb_scanline * (uint64_t)fb_height) - offset; i++) {
-        fb[i] = fb[i + offset];
-    }
-
-    for (; i < (uint64_t)fb_scanline * (uint64_t)fb_height; i++) {
-        fb[i] = 0;
-    }
-
-    console_pos -= CONSOLE_W();
-}
-
-void printf_ch(char ch) {
-    if ((int)GET_CONSOLE_Y(console_pos) >= CONSOLE_H()) scroll_console();
-
-    if (ch == '\n') {
-        // Remove the cursor (if any)
-        kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0xFFFFFF, 0x000000);
-        console_pos += (CONSOLE_W() - GET_CONSOLE_X(console_pos));
-        if ((int)GET_CONSOLE_Y(console_pos) >= CONSOLE_H()) scroll_console();
-    } else {
-        kputchar(ch, GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0xFFFFFF, 0x000000);
-        console_pos++;
-    }
-
-    if (cursor) kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0x000000, 0xFFFFFF);
+inline void printf_ch(char ch) {
+    fputc((int)ch, stdout);
 }
 
 void printf_str(const char *str, uint16_t max_chars) {
-    while (*str && max_chars--) {
-        printf_ch(*str);
-
-        str++;
+    int n = strlen(str);
+    if (n > max_chars) {
+        n = max_chars;
     }
+    fwrite(str, sizeof(char), n, stdout);
 }
 
 static char hex_indices[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
@@ -235,8 +179,6 @@ void printf_hex_long(uint64_t hex, uint16_t pad_to) {
 // %d or %i for integers, %f for floating-point, %s for string, %c for char, %x for hex, %p for pointer, %ld for signed
 // long, %lu for unsigned long
 int printf(const char *format, ...) {
-    request_console();
-
     va_list list;
     va_start(list, format);
 
@@ -339,75 +281,36 @@ int printf(const char *format, ...) {
         }
     }
 
-    release_console();
-
     return 0;
 }
 
 int backs() {
-    request_console();
-
-    kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0xFFFFFF, 0x000000);
-    console_pos--;
-    kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0xFFFFFF, 0x000000);
-    if (cursor) kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0x000000, 0xFFFFFF);
-
-    release_console();
+    fputc('\b', stdout);
 
     return 0;
 }
 
 int setcursor(bool curs) {
-    request_console();
-
-    cursor = curs;
-
-    kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0x000000, 0xFFFFFF);
-
-    release_console();
+    fputs(curs ? "\x1b[?12h" : "\x1b[?12l", stdout);
 
     return 0;
 }
 
-// #pragma GCC push_options
-// #pragma GCC optimize ("O0")
-
 int clear() {
-    request_console();
-
-    uint8_t *p     = (uint8_t *)fb_info.fb_ptr;
-    const size_t n = fb_height * fb_scanline;
-
-    for (size_t i = 0; i < n; i++) {
-        p[i] = (uint8_t)0;
-    }
-
-    console_pos = 0;
-
-    release_console();
+    fputs("\x1b[2J", stdout);
 
     return 0;
 }
 
 int putchar(int charc) {
-    request_console();
-
-    printf_ch((char)charc);
-
-    release_console();
+    fputc(charc, stdout);
 
     return charc;
 }
 
 int puts(const char *str) {
-    request_console();
-
-    printf_str(str, -1);
-    printf_ch('\n');
-
-    release_console();
+    // TODO: is this safe? Why is fputs's str a __restrict__ but not puts? (both are correct)
+    fputs(str, stdout);
 
     return 0;
 }
-
-// #pragma GCC pop_options

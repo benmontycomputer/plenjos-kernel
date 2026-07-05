@@ -36,7 +36,7 @@ static const enum key_codes usbkbd_boot_specials[]
         KEY_KP_1,    KEY_KP_2,     KEY_KP_3,         KEY_KP_4,        KEY_KP_5,      KEY_KP_6,    KEY_KP_7,
         KEY_KP_8,    KEY_KP_9,     KEY_KP_0,         KEY_KP_PERIOD };
 
-static inline void usbkbd_boot_send_from_packet(uint8_t packet, bool press, uint8_t mods_translated) {
+static inline void usbkbd_boot_send_from_packet(kbd_buffer_state_t *buffer_state, uint8_t packet, bool press, uint8_t mods_translated) {
     kbd_event_t event = { 0 };
     event.state       = press ? KEY_PRESSED : KEY_RELEASED;
     event.mods        = mods_translated;
@@ -56,7 +56,7 @@ static inline void usbkbd_boot_send_from_packet(uint8_t packet, bool press, uint
     }
 
     event.code = res_code;
-    kbd_buffer_push(event);
+    kbd_buffer_push(buffer_state, event);
 }
 
 void usbkbd_poll_timeout_func(struct timer_timeout *timeout) {
@@ -65,6 +65,7 @@ void usbkbd_poll_timeout_func(struct timer_timeout *timeout) {
         = (struct usbhid_interface_driver_data *)iface->iface_driver_data;
 
     uint8_t buf[8] = { 0 };
+    kbd_buffer_state_t *buffer_state = (kbd_buffer_state_t *)iface_driver_data->endpoint->func_args;
 
     usb_control_transfer(iface->device, usbkbd_getreport_packet, buf, 8, true, 0);
 
@@ -101,7 +102,7 @@ void usbkbd_poll_timeout_func(struct timer_timeout *timeout) {
             event.code        = usbkbd_boot_modcodes[i];
             event.mods        = mods_translated;
 
-            kbd_buffer_push(event);
+            kbd_buffer_push(buffer_state, event);
         }
     }
 
@@ -116,7 +117,7 @@ void usbkbd_poll_timeout_func(struct timer_timeout *timeout) {
             }
         }
 
-        if (released) usbkbd_boot_send_from_packet(code, false, mods_translated);
+        if (released) usbkbd_boot_send_from_packet(buffer_state, code, false, mods_translated);
     }
 
     /* Check for presses */
@@ -130,7 +131,7 @@ void usbkbd_poll_timeout_func(struct timer_timeout *timeout) {
             }
         }
 
-        if (pressed) usbkbd_boot_send_from_packet(code, true, mods_translated);
+        if (pressed) usbkbd_boot_send_from_packet(buffer_state, code, true, mods_translated);
     }
 
 end:
@@ -144,6 +145,14 @@ int usbkbd_driver_init(usb_interface_t *iface) {
     if (res != 0) {
         printf("ERROR: usbkbd_driver_init: failed to switch to boot protocol!\n");
         return -EIO;
+    }
+
+    kbd_buffer_state_t *buffer_state = NULL;
+    res = kbd_register(&buffer_state, &((struct usbhid_interface_driver_data *)iface->iface_driver_data)->endpoint);
+
+    if (res < 0) {
+        kout(KERNEL_SEVERE_EXTERNAL_FAULT, "usbkbd_driver_init(): kbd_register() failed (errno %d)\n", res);
+        return res;
     }
 
     set_timeout(10, usbkbd_poll_timeout_func, iface);

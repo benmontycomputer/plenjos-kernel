@@ -22,7 +22,6 @@ ssize_t syscall_getdents(int fd, struct plenjos_dirent *buf, size_t nbytes);
 int syscall_close(int fd);
 
 uint64_t syscall_get_fb(fb_info_t *out_fb_info);
-kbd_buffer_state_t *syscall_get_kb();
 
 int syscall_memmap(void *addr, size_t length, syscall_memmap_flags_t flags);
 int syscall_memmap_from_buffer(void *addr, size_t length, syscall_memmap_flags_t flags, void *buffer,

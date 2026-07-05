@@ -16,7 +16,6 @@ typedef struct fb_info fb_info_t; */
 #include "plenjos/dev/fb.h"
 
 extern fb_info_t fb_info;
-extern kbd_buffer_state_t *kbd_buffer_state;
 
 #define fb ((char *)fb_info.fb_ptr)
 #define fb_scanline (fb_info.fb_scanline)
@@ -38,3 +37,4 @@ void kputchar(
 
 void kputs(const char *str, int cx, int cy);
 void kputhex(uint64_t hex, int cx, int cy);
+// void kbd_get(kbd_event_t *out);

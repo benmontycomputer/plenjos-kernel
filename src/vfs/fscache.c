@@ -82,7 +82,7 @@ static fscache_node_t *_fscache_find_in_children(fscache_node_t *parent_node, ch
 
 #ifdef _KERNEL_FSCACHE_CHECK_LOCKS
     if (!rw_lock_is_some_locked(&parent_node->rwlock)) {
-        kout(KERNEL_SEVERE_FAULT, "_fscache_find_in_children(): parent_node must already be locked!\n");
+        kout(KERNEL_PANIC, "_fscache_find_in_children(): parent_node must already be locked!\n");
     }
 #endif
 
@@ -104,7 +104,7 @@ static fscache_node_t *_fscache_find_in_children(fscache_node_t *parent_node, ch
 
 #ifdef _KERNEL_FSCACHE_CHECK_LOCKS
     if (!rw_lock_is_some_locked(&parent_node->rwlock)) {
-        kout(KERNEL_SEVERE_FAULT, "_fscache_find_in_children(): parent_node became unlocked!\n");
+        kout(KERNEL_PANIC, "_fscache_find_in_children(): parent_node became unlocked!\n");
     }
 #endif
 
@@ -341,7 +341,7 @@ int fscache_request_node_for_mounting(const char *path, uid_t uid, fscache_node_
         return res;
     }
     if (!out_tmp) {
-        kout(KERNEL_SEVERE_FAULT,
+        kout(KERNEL_PANIC,
              "fscache_request_node_for_mounting(): fscache_request_node returned 0 but didn't set out_tmp!\n");
     }
 
@@ -384,7 +384,7 @@ fscache_node_t *fscache_allocate_node() {
 int fscache_node_ref(fscache_node_t *node) {
 #ifdef _KERNEL_FSCACHE_CHECK_LOCKS
     if (!rw_lock_is_some_locked(&node->rwlock)) {
-        kout(KERNEL_SEVERE_FAULT, "fscache_node_ref(): node must already be locked!\n");
+        kout(KERNEL_PANIC, "fscache_node_ref(): node must already be locked!\n");
     }
 #endif
 
@@ -392,12 +392,12 @@ int fscache_node_ref(fscache_node_t *node) {
 
 #ifdef _KERNEL_FSCACHE_CHECK_LOCKS
     if (!rw_lock_is_some_locked(&node->rwlock)) {
-        kout(KERNEL_SEVERE_FAULT, "fscache_node_ref(): node became unlocked!\n");
+        kout(KERNEL_PANIC, "fscache_node_ref(): node became unlocked!\n");
     }
 #endif
 
     if (old < 0 || old == INT32_MAX) {
-        kout(KERNEL_SEVERE_FAULT, "fscache_node_ref(): ref_count out of range");
+        kout(KERNEL_PANIC, "fscache_node_ref(): ref_count out of range");
         // atomic_fetch_sub_explicit(&node->ref_count, 1, memory_order_release);
         // return -EIO;
     }
@@ -407,7 +407,7 @@ int fscache_node_ref(fscache_node_t *node) {
 int fscache_node_unref(fscache_node_t *node) {
     int old = atomic_fetch_sub_explicit(&node->ref_count, 1, memory_order_acq_rel);
     if (old <= 0) {
-        kout(KERNEL_SEVERE_FAULT, "fscache_node_unref(): node not reffed!\n");
+        kout(KERNEL_PANIC, "fscache_node_unref(): node not reffed!\n");
     }
     return old - 1;
 }

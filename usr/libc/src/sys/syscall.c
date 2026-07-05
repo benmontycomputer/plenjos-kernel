@@ -55,10 +55,6 @@ uint64_t syscall_get_fb(fb_info_t *out_fb_info) {
     return syscall(SYSCALL_GET_FB, (uint64_t)out_fb_info, 0, 0, 0, 0);
 }
 
-kbd_buffer_state_t *syscall_get_kb() {
-    return (kbd_buffer_state_t *)syscall(SYSCALL_GET_KB, 0, 0, 0, 0, 0);
-}
-
 int syscall_memmap(void *addr, size_t length, syscall_memmap_flags_t flags) {
     return (int)syscall(SYSCALL_MEMMAP, (uint64_t)addr, (uint64_t)length, (uint64_t)flags, 0, 0);
 }

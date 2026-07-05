@@ -46,7 +46,7 @@ int atapi_send_packet_command(struct ide_device *dev, const uint8_t *packet, siz
     // Implementation to send ATAPI PACKET command with the given packet
     if (packet_len % 2) {
         // Packet length must be even
-        kout(KERNEL_SEVERE_FAULT, "Kernel Programming Error: ATAPI packet length must be even\n");
+        kout(KERNEL_PANIC, "Kernel Programming Error: ATAPI packet length must be even\n");
         res = -1;
         goto cleanup;
     }
@@ -58,7 +58,7 @@ int atapi_send_packet_command(struct ide_device *dev, const uint8_t *packet, siz
     }
 
     if (buffer && (uint64_t)buffer % 2 != 0) {
-        kout(KERNEL_SEVERE_FAULT, "Kernel Programming Error: ATAPI data buffer must be word-aligned\n");
+        kout(KERNEL_PANIC, "Kernel Programming Error: ATAPI data buffer must be word-aligned\n");
         res = -1;
         goto cleanup;
     }
@@ -305,7 +305,7 @@ ssize_t atapi_read_sectors_func(struct DRIVE *drive, uint64_t lba, size_t sector
     struct ide_device *dev = (struct ide_device *)drive->internal_data;
 
     if (!dev) {
-        kout(KERNEL_SEVERE_FAULT, "Error: DRIVE internal_data is NULL in atapi_read_sectors_func\n");
+        kout(KERNEL_PANIC, "Error: DRIVE internal_data is NULL in atapi_read_sectors_func\n");
         return -1;
     }
 

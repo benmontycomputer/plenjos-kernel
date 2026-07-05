@@ -162,7 +162,7 @@ static heap_segment_info_t *kheap_segment_split(heap_segment_info_t *segment, si
 
 static heap_segment_info_t *kheap_segment_merge(heap_segment_info_t *first, heap_segment_info_t *second) {
     if (!first || !second || second <= first) {
-        kout(KERNEL_SEVERE_FAULT, "kheap_segment_merge(): invalid arguments (first = %p, second = %p)");
+        kout(KERNEL_PANIC, "kheap_segment_merge(): invalid arguments (first = %p, second = %p)\n");
     }
 
     return NULL;

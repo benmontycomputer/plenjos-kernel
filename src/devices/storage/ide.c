@@ -57,7 +57,7 @@ static void ide_unlock_channel(struct ide_channel *channel) {
 
 int ide_lock_bus(struct ide_device *dev) {
     if (!dev || !dev->channel) {
-        kout(KERNEL_SEVERE_FAULT, "Kernel Programming Error: ide_lock_bus called with NULL device or channel\n");
+        kout(KERNEL_PANIC, "Kernel Programming Error: ide_lock_bus called with NULL device or channel\n");
         return -1; // Invalid device
     }
 
@@ -68,7 +68,7 @@ int ide_lock_bus(struct ide_device *dev) {
 
 int ide_unlock_bus(struct ide_device *dev) {
     if (!dev || !dev->channel) {
-        kout(KERNEL_SEVERE_FAULT, "Kernel Programming Error: ide_unlock_bus called with NULL device or channel\n");
+        kout(KERNEL_PANIC, "Kernel Programming Error: ide_unlock_bus called with NULL device or channel\n");
         return -1; // Invalid device
     }
 
@@ -295,7 +295,7 @@ void ide_init() {
 // This also serves to lock the bus (as long as 0 is returned)
 int ide_select_bus(struct ide_device *dev) {
     if (!dev || !dev->channel) {
-        kout(KERNEL_SEVERE_FAULT, "Kernel Programming Error: ide_select_bus called with NULL device or channel\n");
+        kout(KERNEL_PANIC, "Kernel Programming Error: ide_select_bus called with NULL device or channel\n");
         return -1; // Invalid device
     }
 

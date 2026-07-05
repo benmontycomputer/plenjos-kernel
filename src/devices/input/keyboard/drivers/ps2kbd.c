@@ -72,11 +72,13 @@ static uint8_t get_mods() {
 void keyboard_irq_routine(registers_t *regs, void *data) {
     uint8_t in = inb(PS2_DATA);
 
+    kbd_buffer_state_t *buf_state = data;
+
     if (ps2_kbd_state.e1) {
         if (in != PS2_PAUSE_SEQ[ps2_kbd_state.e1_count++]) {
             // Invalid pause sequence; reset state
             kout(KERNEL_EXTERNAL_FAULT, "I/O ERROR: invalid pause sequence byte: expected %x, got %x\n",
-                   PS2_PAUSE_SEQ[ps2_kbd_state.e1_count - 1], in);
+                 PS2_PAUSE_SEQ[ps2_kbd_state.e1_count - 1], in);
             ps2_kbd_state.e1       = false;
             ps2_kbd_state.e1_count = 0;
             goto end;
@@ -90,7 +92,7 @@ void keyboard_irq_routine(registers_t *regs, void *data) {
             event.mods  = get_mods();
 
             if (in_console_mode) {
-                kbd_buffer_push(event);
+                kbd_buffer_push(buf_state, event);
             }
 
             // Reset state
@@ -154,7 +156,7 @@ void keyboard_irq_routine(registers_t *regs, void *data) {
     event.mods = get_mods();
 
     if (in_console_mode) {
-        kbd_buffer_push(event);
+        kbd_buffer_push(buf_state, event);
     }
 
 end:
@@ -218,8 +220,8 @@ static int ps2_reset_device(int port) {
     return 0;
 }
 
-void register_keyboard_irq() {
-    irq_register_routine(KEYBOARD_IRQ, keyboard_irq_routine, NULL);
+void register_keyboard_irq(void *data) {
+    irq_register_routine(KEYBOARD_IRQ, keyboard_irq_routine, data);
 }
 
 void unregister_keyboard_irq() {
@@ -233,7 +235,8 @@ int init_ps2_keyboard() {
 
     asm volatile("cli");
 
-    register_keyboard_irq();
+    kbd_buffer_state_t orig_buf_state = { 0 };
+    register_keyboard_irq(&orig_buf_state);
 
     apic_send_eoi();
 
@@ -366,130 +369,75 @@ int init_ps2_keyboard() {
         ps2_write_cmd(PS2_ENABLE_PORT2);
     }
 
+    unregister_keyboard_irq();
+
+    kbd_buffer_state_t *buf_state = NULL;
+    res                           = kbd_register(&buf_state, NULL);
+
+    if (res) {
+        kout(KERNEL_WARN, "Failed to register ps2kbd.\n");
+        goto finally;
+    }
+
+    register_keyboard_irq(buf_state);
+
 finally:
     asm volatile("sti");
     return res;
 }
 
 const uint16_t _PS2_NORMAL_LOOKUP[256] = {
-    [0x01] = KEY_F9,
-    [0x03] = KEY_F5,
-    [0x04] = KEY_F3,
-    [0x05] = KEY_F1,
-    [0x06] = KEY_F2,
-    [0x07] = KEY_F12,
-    [0x09] = KEY_F10,
-    [0x0A] = KEY_F8,
-    [0x0B] = KEY_F6,
-    [0x0C] = KEY_F4,
-    [0x0D] = KEY_TAB,
-    [0x0E] = KEY_BACKTICK,
+    [0x01] = KEY_F9,          [0x03] = KEY_F5,         [0x04] = KEY_F3,          [0x05] = KEY_F1,
+    [0x06] = KEY_F2,          [0x07] = KEY_F12,        [0x09] = KEY_F10,         [0x0A] = KEY_F8,
+    [0x0B] = KEY_F6,          [0x0C] = KEY_F4,         [0x0D] = KEY_TAB,         [0x0E] = KEY_BACKTICK,
 
-    [0x11] = KEY_LEFT_ALT,
-    [0x12] = KEY_LEFT_SHIFT,
-    [0x14] = KEY_LEFT_CTRL,
-    [0x15] = KEY_Q,
+    [0x11] = KEY_LEFT_ALT,    [0x12] = KEY_LEFT_SHIFT, [0x14] = KEY_LEFT_CTRL,   [0x15] = KEY_Q,
     [0x16] = KEY_1,
 
-    [0x1A] = KEY_Z,
-    [0x1B] = KEY_S,
-    [0x1C] = KEY_A,
-    [0x1D] = KEY_W,
+    [0x1A] = KEY_Z,           [0x1B] = KEY_S,          [0x1C] = KEY_A,           [0x1D] = KEY_W,
     [0x1E] = KEY_2,
 
-    [0x21] = KEY_C,
-    [0x22] = KEY_X,
-    [0x23] = KEY_D,
-    [0x24] = KEY_E,
-    [0x25] = KEY_4,
-    [0x26] = KEY_3,
+    [0x21] = KEY_C,           [0x22] = KEY_X,          [0x23] = KEY_D,           [0x24] = KEY_E,
+    [0x25] = KEY_4,           [0x26] = KEY_3,
 
-    [0x29] = KEY_SPACE,
-    [0x2A] = KEY_V,
-    [0x2B] = KEY_F,
-    [0x2C] = KEY_T,
-    [0x2D] = KEY_R,
-    [0x2E] = KEY_5,
+    [0x29] = KEY_SPACE,       [0x2A] = KEY_V,          [0x2B] = KEY_F,           [0x2C] = KEY_T,
+    [0x2D] = KEY_R,           [0x2E] = KEY_5,
 
-    [0x31] = KEY_N,
-    [0x32] = KEY_B,
-    [0x33] = KEY_H,
-    [0x34] = KEY_G,
-    [0x35] = KEY_Y,
-    [0x36] = KEY_6,
+    [0x31] = KEY_N,           [0x32] = KEY_B,          [0x33] = KEY_H,           [0x34] = KEY_G,
+    [0x35] = KEY_Y,           [0x36] = KEY_6,
 
-    [0x3A] = KEY_M,
-    [0x3B] = KEY_J,
-    [0x3C] = KEY_U,
-    [0x3D] = KEY_7,
+    [0x3A] = KEY_M,           [0x3B] = KEY_J,          [0x3C] = KEY_U,           [0x3D] = KEY_7,
     [0x3E] = KEY_8,
 
-    [0x41] = KEY_COMMA,
-    [0x42] = KEY_K,
-    [0x43] = KEY_I,
-    [0x44] = KEY_O,
-    [0x45] = KEY_0,
-    [0x46] = KEY_9,
+    [0x41] = KEY_COMMA,       [0x42] = KEY_K,          [0x43] = KEY_I,           [0x44] = KEY_O,
+    [0x45] = KEY_0,           [0x46] = KEY_9,
 
-    [0x49] = KEY_PERIOD,
-    [0x4A] = KEY_SLASH,
-    [0x4B] = KEY_L,
-    [0x4C] = KEY_SEMICOLON,
-    [0x4D] = KEY_P,
-    [0x4E] = KEY_MINUS,
+    [0x49] = KEY_PERIOD,      [0x4A] = KEY_SLASH,      [0x4B] = KEY_L,           [0x4C] = KEY_SEMICOLON,
+    [0x4D] = KEY_P,           [0x4E] = KEY_MINUS,
 
-    [0x52] = KEY_QUOTE,
-    [0x54] = KEY_LBRACK,
-    [0x55] = KEY_EQUALS,
+    [0x52] = KEY_QUOTE,       [0x54] = KEY_LBRACK,     [0x55] = KEY_EQUALS,
 
     [0x58] = KEY_CAPS_LOCK,
 
-    [0x59] = KEY_RIGHT_SHIFT,
-    [0x5A] = KEY_ENTER,
-    [0x5B] = KEY_RBRACK,
-    [0x5D] = KEY_BACKSLASH,
+    [0x59] = KEY_RIGHT_SHIFT, [0x5A] = KEY_ENTER,      [0x5B] = KEY_RBRACK,      [0x5D] = KEY_BACKSLASH,
 
     [0x66] = KEY_BACKSPACE,
 
-    [0x69] = KEY_KP_1,
-    [0x6B] = KEY_KP_4,
-    [0x6C] = KEY_KP_7,
+    [0x69] = KEY_KP_1,        [0x6B] = KEY_KP_4,       [0x6C] = KEY_KP_7,
 
-    [0x70] = KEY_KP_0,
-    [0x71] = KEY_KP_PERIOD,
-    [0x72] = KEY_KP_2,
-    [0x73] = KEY_KP_5,
-    [0x74] = KEY_KP_6,
-    [0x75] = KEY_KP_8,
-    [0x76] = KEY_ESC,
-    [0x77] = KEY_NUM_LOCK,
-    [0x78] = KEY_F11,
-    [0x79] = KEY_KP_PLUS,
-    [0x7A] = KEY_KP_3,
-    [0x7B] = KEY_KP_MINUS,
-    [0x7C] = KEY_KP_ASTERISK,
-    [0x7D] = KEY_KP_9,
-    [0x7E] = KEY_SCROLL_LOCK,
-    [0x83] = KEY_F7,
+    [0x70] = KEY_KP_0,        [0x71] = KEY_KP_PERIOD,  [0x72] = KEY_KP_2,        [0x73] = KEY_KP_5,
+    [0x74] = KEY_KP_6,        [0x75] = KEY_KP_8,       [0x76] = KEY_ESC,         [0x77] = KEY_NUM_LOCK,
+    [0x78] = KEY_F11,         [0x79] = KEY_KP_PLUS,    [0x7A] = KEY_KP_3,        [0x7B] = KEY_KP_MINUS,
+    [0x7C] = KEY_KP_ASTERISK, [0x7D] = KEY_KP_9,       [0x7E] = KEY_SCROLL_LOCK, [0x83] = KEY_F7,
 };
 
 const uint16_t _PS2_EXTENDED_LOOKUP[256] = {
-    [0x11] = KEY_RIGHT_ALT,
-    [0x14] = KEY_RIGHT_CTRL,
+    [0x11] = KEY_RIGHT_ALT, [0x14] = KEY_RIGHT_CTRL,
 
-    [0x4A] = KEY_KP_SLASH,
-    [0x5A] = KEY_ENTER,
+    [0x4A] = KEY_KP_SLASH,  [0x5A] = KEY_ENTER,
 
-    [0x69] = KEY_END,
-    [0x6B] = KEY_LEFT,
-    [0x6C] = KEY_HOME,
-    [0x70] = KEY_INSERT,
-    [0x71] = KEY_DELETE,
-    [0x72] = KEY_DOWN,
-    [0x74] = KEY_RIGHT,
-    [0x75] = KEY_UP,
-    [0x7A] = KEY_PAGE_DOWN,
-    [0x7D] = KEY_PAGE_UP,
+    [0x69] = KEY_END,       [0x6B] = KEY_LEFT,       [0x6C] = KEY_HOME, [0x70] = KEY_INSERT,    [0x71] = KEY_DELETE,
+    [0x72] = KEY_DOWN,      [0x74] = KEY_RIGHT,      [0x75] = KEY_UP,   [0x7A] = KEY_PAGE_DOWN, [0x7D] = KEY_PAGE_UP,
 };
 
 // Set 1

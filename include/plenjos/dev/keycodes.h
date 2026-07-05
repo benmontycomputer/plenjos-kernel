@@ -237,4 +237,14 @@ static const uint8_t map_lowercase[256] = {
     [KEY_0] = '0',
 };
 
+#define ASCII_CTRL_C '\x03'
+#define ASCII_CTRL_X '\x18'
+#define ASCII_CTRL_Z '\x1a'
+
+static const uint8_t map_ctrl[256] = {
+    [KEY_C] = ASCII_CTRL_C,
+    [KEY_X] = ASCII_CTRL_X,
+    [KEY_Z] = ASCII_CTRL_Z,
+};
+
 #endif /* _PLENJOS_DEV_KEYCODES_H */

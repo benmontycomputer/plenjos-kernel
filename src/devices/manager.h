@@ -97,6 +97,8 @@ inline bool is_char_endpoint(endpoint_t *endpoint) {
     return (endpoint->driver->flags & ENDPOINT_DRIVER_FLAG_BLOCK) == 0;
 }
 
+endpoint_t *devfs_get_endpoint_from_handle(vfs_handle_t *handle);
+
 typedef enum {
     BUS_CLASS_PCI,
     BUS_CLASS_USB,

@@ -4,7 +4,6 @@
 #include "sys/syscall.h"
 
 #include "string.h"
-#include "keyboard.h"
 #include "uconsole.h"
 
 // http://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf
@@ -220,9 +219,10 @@ void clear_lines() {
 // Dummy input function (TODO: replace with actual input handling)
 int get_input() {
     // Return 0: none, 1: left, 2: right, 3: rotate, 4: down
-    if (kbd_buffer_empty()) return 0;
+    // if (kbd_buffer_empty()) return 0;
     kbd_event_t event;
-    kbd_buffer_pop(&event);
+    // kbd_get(&event);
+    // TOOD: non-blocking
     if (event.state != KEY_PRESSED) return 0;
     if (event.code == KEY_A) return 1;
     if (event.code == KEY_D) return 2;

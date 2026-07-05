@@ -23,6 +23,7 @@ struct usbhid_interface_driver_data {
     uint16_t int_endpoint_interval;
 
     uint8_t last_boot_status[8];
+    endpoint_t *endpoint;
 };
 
 int usbhid_bind_driver(usb_interface_t *iface);

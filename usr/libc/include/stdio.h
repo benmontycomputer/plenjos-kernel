@@ -53,6 +53,8 @@ int backs();
 int setcursor(bool curs);
 int clear();
 
+char getchar();
+
 /* Files */
 
 FILE *fopen(const char *filename, const char *mode);
@@ -62,5 +64,7 @@ size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream);
 int fseek(FILE *stream, long offset, int whence);
 long ftell(FILE *stream);
 int fgetc(FILE *stream);
+int fputc(int c, FILE *stream);
+int fputs(const char *restrict str, FILE *restrict stream);
 
 #endif /* _STDIO_H */

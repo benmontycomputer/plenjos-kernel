@@ -19,13 +19,6 @@ typedef struct {
     uint8_t mods; // Useful if userspace doesn't want to keep track of modifier states
 } __attribute__((packed)) kbd_event_t;
 
-typedef struct {
-    int head;
-    int tail;
-    kbd_event_t buffer[KBD_BUFFER_SIZE];
-    bool full;
-} __attribute__((packed)) kbd_buffer_state_t;
-
 /**
  * Checks if a scancode corresponds to a character affected by caps lock.
  */
@@ -42,11 +35,18 @@ static inline bool _kbdev_is_printable(uint16_t scan) {
     return (scan >= KEY_A && scan <= KEY_0) || (scan >= KEY_BACKTICK && scan <= KEY_SPACE);
 }
 
+static inline bool _ascii_is_printable(char ch) {
+    return ch >= ' ' && ch <= '~';
+}
+
 /**
  * Converts a scancode to a character. This includes non-printable characters like tab, return, and backspace.
  */
 static inline char _kbdev_get_ch(uint16_t scan, uint8_t mods) {
     if (mods & ~(KBD_MOD_SHIFT | KBD_MOD_CAPSLOCK)) {
+        if (mods == KBD_MOD_CTRL) {
+            return map_ctrl[scan];
+        }
         // Other modifiers pressed; ignore
         return 0;
     } else if (mods & KBD_MOD_SHIFT) {

@@ -238,8 +238,7 @@ void kmain(void) {
         if (linker_read_bytes < 0) {
             panic("Error reading /lib/ld.so: %d\n", (int)linker_read_bytes);
         } else if ((uint64_t)linker_read_bytes != file_size) {
-            panic("Short read reading /lib/ld.so: expected %p, got %p\n", (void *)file_size,
-                  (void *)linker_read_bytes);
+            panic("Short read reading /lib/ld.so: expected %p, got %p\n", (void *)file_size, (void *)linker_read_bytes);
         }
     } else {
         panic("Error opening /lib/ld.so: %d\n", res);
@@ -252,6 +251,21 @@ void kmain(void) {
         kout(KERNEL_INFO, "Loading init...\n\n");
         uint64_t file_size = ld_handle->backing_node->stat.size;
         proc_t *shell_proc = create_proc("init", NULL);
+
+        int res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_READ, 0, 0, &shell_proc->fds[0]);
+        if (res) {
+            kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stdin\n", res);
+        }
+
+        res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &shell_proc->fds[1]);
+        if (res) {
+            kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stdout\n", res);
+        }
+
+        res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &shell_proc->fds[2]);
+        if (res) {
+            kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stderr\n", res);
+        }
 
         uint64_t entry;
         void *elf_buf = kmalloc_heap(file_size);
@@ -347,4 +361,35 @@ void kmain(void) {
 
     printf("No more code. Halt!\n");
     hcf();
+}
+
+void populate_string_hexnum(char *buf, size_t len, const char *str, uint32_t hex) {
+    size_t str_len = strlen(str);
+
+    if (str_len + 9 > len) {
+        kout(KERNEL_PANIC, "populate_string_hexnum(): len too short!\n");
+        return;
+    }
+
+    strncpy(buf, str, str_len);
+
+    char *buf_end = buf + str_len;
+
+    int started   = 0;
+
+    for (int shift = 28; shift >= 0; shift -= 4) {
+        uint32_t nibble = (hex >> shift) & 0xF;
+
+        if (!started) {
+            if (nibble == 0 && shift != 0) {
+                continue;
+            }
+
+            started = 1;
+        }
+
+        *buf_end++ = "0123456789abcdef"[nibble];
+    }
+
+    *buf_end = '\0';
 }

@@ -117,4 +117,6 @@ inline uint8_t char_to_hex(char c) {
     return 0xFF; // Invalid
 }
 
+void populate_string_hexnum(char *buf, size_t len, const char *str, uint32_t hex);
+
 #endif

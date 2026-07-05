@@ -14,12 +14,12 @@ static const uint8_t usbhid_set_protocol_report[8] = { 0x21, 0x0B, 0x01, 0x00, 0
 
 int usbhid_set_protocol(usb_interface_t *iface, bool use_report) {
     if (!iface) {
-        kout(KERNEL_SEVERE_FAULT, "ERROR: ushbid_set_protocol: iface is NULL!\n");
+        kout(KERNEL_PANIC, "ERROR: ushbid_set_protocol: iface is NULL!\n");
         return -EINVAL;
     }
 
     if (iface->iface_driver != &usbhid_iface_driver) {
-        kout(KERNEL_SEVERE_FAULT, "ERROR: calling usbhid_set_protocol on a non-HID device!\n");
+        kout(KERNEL_PANIC, "ERROR: calling usbhid_set_protocol on a non-HID device!\n");
         return -EINVAL;
     }
 
@@ -42,7 +42,7 @@ int usbhid_set_protocol(usb_interface_t *iface, bool use_report) {
 
 int usbhid_bind_driver(usb_interface_t *iface) {
     if (iface->i_class != USB_IFACE_CLASS_HID) {
-        kout(KERNEL_SEVERE_FAULT, "ERROR: calling usbhid_bind_driver() on a non-HID interface.\n");
+        kout(KERNEL_PANIC, "ERROR: calling usbhid_bind_driver() on a non-HID interface.\n");
         return -EINVAL;
     }
 

@@ -72,7 +72,18 @@ ssize_t vfs_write(vfs_handle_t *f, const void *buf, size_t len) {
         return -EACCES;
     }
 
-    if (f->backing_node == NULL || f->backing_node->fsops == NULL || f->backing_node->fsops->write == NULL) {
+    if (f->backing_node == NULL) {
+        printf("vfs_write: backing_node is NULL\n");
+        return -EIO;
+    }
+
+    if (f->backing_node->fsops == NULL) {
+        printf("vfs_write: fsops is NULL\n");
+        return -EIO;
+    }
+
+    if (f->backing_node->fsops->write == NULL) {
+        printf("vfs_write: write function is NULL\n");
         return -EIO;
     }
 
@@ -95,7 +106,7 @@ off_t vfs_seek(vfs_handle_t *f, off_t offset, vfs_seek_whence_t whence) {
 static int vfs_helper_create_handle(fscache_node_t *node, access_t access, vfs_handle_t **out) {
 #ifdef _KERNEL_FSCACHE_CHECK_LOCKS
     if (!rw_lock_is_some_locked(&node->rwlock)) {
-        kout(KERNEL_SEVERE_FAULT, "vfs_helper_create_handle(): node must already be locked!\n");
+        kout(KERNEL_PANIC, "vfs_helper_create_handle(): node must already be locked!\n");
     }
 #endif
     if (!node) {
@@ -109,7 +120,7 @@ static int vfs_helper_create_handle(fscache_node_t *node, access_t access, vfs_h
     memset(handle, 0, sizeof(vfs_handle_t));
 
     handle->backing_node = node;
-    int oldval = fscache_node_ref(node);
+    int oldval           = fscache_node_ref(node);
 
     handle->access = access;
 
@@ -126,6 +137,7 @@ static int vfs_helper_create_handle(fscache_node_t *node, access_t access, vfs_h
 // Permissions are ONLY checked upon file opening
 // TODO: implement groups
 // TODO: do we want SYSCALL_OPEN_FLAG_EX to actually be a valid flag?
+// TODO: check if the functions in request flags are defined under ops, not just whether permissions are correct
 int vfs_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_create, uid_t uid, vfs_handle_t **out) {
     if (!path) {
         return -EINVAL;

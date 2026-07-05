@@ -56,7 +56,7 @@ static fixed_size_allocator_t _mbr_part_fsa = FSA_DEFAULT(sizeof(partition_t));
 // Another note: do NOT expect drive to have an endpoint or name yet (but read sectors will be populated)
 void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
     if (!drive) {
-        kout(KERNEL_SEVERE_FAULT, "Kernel Programming Error: drive_read_mbr called with NULL drive\n");
+        kout(KERNEL_PANIC, "Kernel Programming Error: drive_read_mbr called with NULL drive\n");
         return;
     }
 
@@ -66,7 +66,7 @@ void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
     }
 
     if (drive->logical_sector_size < sizeof(struct MBR)) {
-        kout(KERNEL_SEVERE_FAULT,
+        kout(KERNEL_EXTERNAL_FAULT,
              "Kernel Programming Error: drive_read_mbr(): drive logical sector size (%x) is smaller than sizeof(struct "
              "MBR) (%x)\n",
              drive->logical_sector_size, (uint32_t)sizeof(struct MBR));

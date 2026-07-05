@@ -31,7 +31,7 @@ int pci_scan_process_serial_bus_controller(pci_device_t *dev) {
 
             int res = uhci_init(uhci_controller, dev);
             if (res != 0) {
-                kout(KERNEL_SEVERE_FAULT, "PCI: ERROR: Failed to initialize UHCI controller (res %d).\n", res);
+                kout(KERNEL_SEVERE_EXTERNAL_FAULT, "PCI: ERROR: Failed to initialize UHCI controller (res %d).\n", res);
                 kfree_heap(uhci_controller);
                 return ERR_NO_DRIVER;
             }

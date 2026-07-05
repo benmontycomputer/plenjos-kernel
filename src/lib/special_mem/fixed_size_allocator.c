@@ -26,7 +26,7 @@ static inline void _fsa_set_page_prev(void *page, void *prev) {
 
 static _fsa_free_slot_t *_fsa_setup_page(void *page, void *next_page_start, fixed_size_allocator_t *fsa) {
     if (!page || !fsa) {
-        kout(KERNEL_SEVERE_FAULT, "_fsa_setup_page(): page or fsa is NULL!");
+        kout(KERNEL_PANIC, "_fsa_setup_page(): page or fsa is NULL!");
     }
 
     uintptr_t upper_bound = ((uintptr_t)page) + (fsa->items_per_page * fsa->item_size);
@@ -47,13 +47,13 @@ static _fsa_free_slot_t *_fsa_setup_page(void *page, void *next_page_start, fixe
 static void _fsa_add_page(fixed_size_allocator_t *fsa) {
 #ifdef _KERNEL_CORRUPTION_CHECK_FSA
     if (!fsa) {
-        kout(KERNEL_SEVERE_FAULT, "_fsa_add_page(): fsa is NULL!");
+        kout(KERNEL_PANIC, "_fsa_add_page(): fsa is NULL!");
     }
     if (((fsa->last_free == NULL) ^ (fsa->first_free == NULL)) || (fsa->last_free < fsa->first_free)) {
-        kout(KERNEL_SEVERE_FAULT, "_fsa_add_page(): invalid state (last_free and first_free don't agree)");
+        kout(KERNEL_PANIC, "_fsa_add_page(): invalid state (last_free and first_free don't agree)");
     }
     if (((fsa->last_page == NULL) ^ (fsa->first_page == NULL)) || (fsa->last_page < fsa->first_page)) {
-        kout(KERNEL_SEVERE_FAULT, "_fsa_add_page(): invalid state (last_page and first_page don't agree)");
+        kout(KERNEL_PANIC, "_fsa_add_page(): invalid state (last_page and first_page don't agree)");
     }
 #endif
 
@@ -87,10 +87,10 @@ static void _fsa_add_page(fixed_size_allocator_t *fsa) {
 static inline uint16_t _fsa_index_in_page(void *page, void *block, fixed_size_allocator_t *fsa) {
 #ifdef _KERNEL_CORRUPTION_CHECK_FSA
     if (!page) {
-        kout(KERNEL_SEVERE_FAULT, "_fsa_index_in_page(): page is NULL!");
+        kout(KERNEL_PANIC, "_fsa_index_in_page(): page is NULL!");
     }
     if (!fsa) {
-        kout(KERNEL_SEVERE_FAULT, "__fsa_index_in_page(): fsa is NULL!");
+        kout(KERNEL_PANIC, "__fsa_index_in_page(): fsa is NULL!");
     }
 #endif
 
@@ -110,7 +110,7 @@ static inline uint16_t _fsa_index_in_page(void *page, void *block, fixed_size_al
     // in the page and should NOT error, but out-of-bounds values may cause issues with this offs alignment check.
 #ifdef _KERNEL_CORRUPTION_CHECK_FSA
     if (offs % fsa->item_size) {
-        kout(KERNEL_SEVERE_FAULT, "_fsa_index_in_page(): offset isn't aligned properly!");
+        kout(KERNEL_PANIC, "_fsa_index_in_page(): offset isn't aligned properly!");
     }
 #endif
     return (uint16_t)res;
@@ -138,7 +138,7 @@ static inline void *_fsa_find_free_predecessor(fixed_size_allocator_t *fsa, void
 
 void *fsa_alloc(fixed_size_allocator_t *fsa) {
     if (fsa == NULL) {
-        kout(KERNEL_SEVERE_FAULT, "fsa_alloc(): fsa is NULL!");
+        kout(KERNEL_PANIC, "fsa_alloc(): fsa is NULL!");
         return NULL;
     }
 
@@ -154,7 +154,7 @@ void *fsa_alloc(fixed_size_allocator_t *fsa) {
 
 #ifdef _KERNEL_CORRUPTION_CHECK_FSA
     if (*(void **)fsa->first_free == NULL && fsa->first_free != fsa->last_free) {
-        kout(KERNEL_SEVERE_FAULT, "fsa_alloc(): first_free says next free is NULL, but last_free != first_free!");
+        kout(KERNEL_PANIC, "fsa_alloc(): first_free says next free is NULL, but last_free != first_free!");
         return NULL;
     }
 #endif
@@ -171,7 +171,7 @@ void *fsa_alloc(fixed_size_allocator_t *fsa) {
 
 #ifdef _KERNEL_CORRUPTION_CHECK_FSA
     if (_fsa_index_in_page(page, res, fsa) != free_ind) {
-        kout(KERNEL_SEVERE_FAULT, "fsa_alloc(): free indices are inconsistent!");
+        kout(KERNEL_PANIC, "fsa_alloc(): free indices are inconsistent!");
         return NULL;
     }
 #endif
@@ -190,7 +190,7 @@ void *fsa_alloc(fixed_size_allocator_t *fsa) {
 
 void fsa_free(fixed_size_allocator_t *fsa, void *block) {
     if (!block || !fsa) {
-        kout(KERNEL_SEVERE_FAULT, "fsa_free(): block or fsa is NULL!");
+        kout(KERNEL_PANIC, "fsa_free(): block or fsa is NULL!");
         return;
     }
 
@@ -204,14 +204,14 @@ void fsa_free(fixed_size_allocator_t *fsa, void *block) {
 
     if (block_index == (uint16_t)FREE_IND_MASK) {
         // Block is not properly aligned in its page
-        kout(KERNEL_SEVERE_FAULT, "fsa_free(): block is not properly located in its page!");
+        kout(KERNEL_PANIC, "fsa_free(): block is not properly located in its page!");
         mutex_unlock(&fsa->mutex);
         return;
     }
 
 #ifdef _KERNEL_CORRUPTION_CHECK_FSA
     if (!page) {
-        kout(KERNEL_SEVERE_FAULT, "fsa_free(): page is NULL!");
+        kout(KERNEL_PANIC, "fsa_free(): page is NULL!");
         mutex_unlock(&fsa->mutex);
         return;
     }
@@ -246,7 +246,7 @@ void fsa_free(fixed_size_allocator_t *fsa, void *block) {
 
 fixed_size_allocator_t *fixed_size_allocator_new(size_t item_size) {
     if (item_size > (PAGE_LEN - sizeof(void *))) {
-        kout(KERNEL_SEVERE_FAULT, "fixed_size_allocator_new(): tried to allocate with item size %p (too big!)",
+        kout(KERNEL_PANIC, "fixed_size_allocator_new(): tried to allocate with item size %p (too big!)",
              item_size);
         return NULL;
     }

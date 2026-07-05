@@ -72,10 +72,10 @@ int usb_control_transfer(usb_device_t *dev,
                          uint8_t *setup_packet /* 8 bytes; physaddr must be sub-4G for some controllers */,
                          uint8_t *data_buffer, size_t data_length, bool data_in, uint32_t timeout_ms) {
     if (!dev) {
-        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_control_transfer: dev is NULL!\n");
+        kout(KERNEL_PANIC, "ERROR: KERNEL FAULT: usb_control_transfer: dev is NULL!\n");
         return -EINVAL;
     } else if (!dev->host_driver) {
-        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_control_transfer: dev->host_driver is NULL!\n");
+        kout(KERNEL_PANIC, "ERROR: KERNEL FAULT: usb_control_transfer: dev->host_driver is NULL!\n");
         return -EIO;
     } else if (!dev->host_driver->control_transfer_func) {
         kout(KERNEL_WARN, "WARN: usb_control_transfer called but the host driver doesn't support it!\n");
@@ -94,13 +94,14 @@ int usb_bulk_transfer(usb_endpoint_t *ep, uint8_t *buffer, size_t length, uint32
         printf("ERROR: usb_bulk_transfer called on a non-bulk-transfer endpoint!\n");
         return -EINVAL;
     } else if (!ep->interface) {
-        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_bulk_transfer: ep->interface is NULL!\n");
+        kout(KERNEL_PANIC, "ERROR: KERNEL FAULT: usb_bulk_transfer: ep->interface is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device) {
-        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_bulk_transfer: ep->interface->device is NULL!\n");
+        kout(KERNEL_PANIC, "ERROR: KERNEL FAULT: usb_bulk_transfer: ep->interface->device is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device->host_driver) {
-        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_bulk_transfer: ep->interface->device->host_driver is NULL!\n");
+        kout(KERNEL_PANIC,
+             "ERROR: KERNEL FAULT: usb_bulk_transfer: ep->interface->device->host_driver is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device->host_driver->bulk_transfer_func) {
         printf("ERROR: usb_bulk_transfer called but the host driver doesn't support it!\n");
@@ -118,13 +119,14 @@ int usb_interrupt_transfer(usb_endpoint_t *ep, uint8_t *buffer, size_t length, u
         printf("ERROR: usb_interrupt_transfer called on a non-interrupt-transfer endpoint!\n");
         return -EINVAL;
     } else if (!ep->interface) {
-        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_interrupt_transfer: ep->interface is NULL!\n");
+        kout(KERNEL_PANIC, "ERROR: KERNEL FAULT: usb_interrupt_transfer: ep->interface is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device) {
-        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_interrupt_transfer: ep->interface->device is NULL!\n");
+        kout(KERNEL_PANIC, "ERROR: KERNEL FAULT: usb_interrupt_transfer: ep->interface->device is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device->host_driver) {
-        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_interrupt_transfer: ep->interface->device->host_driver is NULL!\n");
+        kout(KERNEL_PANIC,
+             "ERROR: KERNEL FAULT: usb_interrupt_transfer: ep->interface->device->host_driver is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device->host_driver->interrupt_transfer_func) {
         printf("ERROR: usb_interrupt_transfer called but the host driver doesn't support it!\n");
@@ -142,13 +144,14 @@ int usb_iso_transfer(usb_endpoint_t *ep, uint8_t *buffer, size_t length, uint32_
         printf("ERROR: usb_iso_transfer called on a non-iso-transfer endpoint!\n");
         return -EINVAL;
     } else if (!ep->interface) {
-        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_iso_transfer: ep->interface is NULL!\n");
+        kout(KERNEL_PANIC, "ERROR: KERNEL FAULT: usb_iso_transfer: ep->interface is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device) {
-        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_iso_transfer: ep->interface->device is NULL!\n");
+        kout(KERNEL_PANIC, "ERROR: KERNEL FAULT: usb_iso_transfer: ep->interface->device is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device->host_driver) {
-        kout(KERNEL_SEVERE_FAULT, "ERROR: KERNEL FAULT: usb_iso_transfer: ep->interface->device->host_driver is NULL!\n");
+        kout(KERNEL_PANIC,
+             "ERROR: KERNEL FAULT: usb_iso_transfer: ep->interface->device->host_driver is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device->host_driver->iso_transfer_func) {
         printf("ERROR: usb_iso_transfer called but the host driver doesn't support it!\n");
@@ -158,7 +161,8 @@ int usb_iso_transfer(usb_endpoint_t *ep, uint8_t *buffer, size_t length, uint32_
     }
 }
 
-struct usb_host_driver usb_populate_host_driver(usb_host_driver_control_transfer_func_t ctrl_transfer, usb_host_driver_bulk_transfer_func_t bulk_transfer) {
+struct usb_host_driver usb_populate_host_driver(usb_host_driver_control_transfer_func_t ctrl_transfer,
+                                                usb_host_driver_bulk_transfer_func_t bulk_transfer) {
     return (struct usb_host_driver) { .control_transfer_func = ctrl_transfer, .bulk_transfer_func = bulk_transfer };
 }
 
@@ -271,7 +275,8 @@ usb_device_t *usb_setup_device(usb_device_t *parent, struct usb_bus *bus, uint8_
     uint8_t cfg_header_full_packet[8];
     usb_generate_setup_packet_get_config_full(cfg_header_full_packet, cfg_header_len);
 
-    res = usb_control_transfer(dev, cfg_header_full_packet, (uint8_t *)dev->config_desc, (size_t)cfg_header_len, true, 0);
+    res = usb_control_transfer(dev, cfg_header_full_packet, (uint8_t *)dev->config_desc, (size_t)cfg_header_len, true,
+                               0);
     if (res != 0) {
         printf("ERROR: usb_setup_device: full get of config header failed (size %d).\n", cfg_header_len);
         goto err_res;
@@ -321,11 +326,11 @@ usb_device_t *usb_setup_device(usb_device_t *parent, struct usb_bus *bus, uint8_
         printf(" - protocol: %.2x\n", iface->i_protocol);
 
         uint8_t ep_no  = 0;
-        desc += iface_desc->b_length;
+        desc          += iface_desc->b_length;
         while (desc + 1 < desc_end && desc[1] != USB_DESC_TYPE_INTERFACE) {
             if (desc[1] == USB_DESC_TYPE_ENDPOINT) {
                 /* TODO: populate endpoint */
-                printf(" - usb: found endpoint under interface %d", i);
+                printf(" - usb: found endpoint under interface %d\n", i);
                 if (desc[0] < 7 || desc + 7 >= desc_end) {
                     printf("WARN: usb: malformed endpoint descriptor under interface %d\n", i);
                     break;

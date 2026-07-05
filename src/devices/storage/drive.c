@@ -62,31 +62,12 @@ void populate_and_register_drive(DRIVE_t *drive, uint64_t numsectors, uint32_t l
         next_free_drive++;
         if (drive_no >= MAX_DRIVES) {
             kout(KERNEL_SEVERE_FAULT, "populate_and_register_drive(): no more free drives! (should never happen)\n");
+            return;
         }
     }
 
     char name[NAME_MAX + 1];
-    strncpy(name, "drive", 5);
-
-    char *name_end     = name + strlen("drive");
-    uint32_t drive_hex = (uint32_t)drive_no;
-    int started        = 0;
-
-    for (int shift = 28; shift >= 0; shift -= 4) {
-        uint32_t nibble = (drive_hex >> shift) & 0xF;
-
-        if (!started) {
-            if (nibble == 0 && shift != 0) {
-                continue;
-            }
-
-            started = 1;
-        }
-
-        *name_end++ = "0123456789abcdef"[nibble];
-    }
-
-    *name_end = '\0';
+    populate_string_hexnum(name, sizeof(name), "drive", (uint32_t)drive_no);
 
     // TODO: sysfs: pass actual physical device here
     drive->endpoint = register_device_endpoint(name, &_drive_endpoint_driver, drive_no << DRIVE_NUM_SHIFT, NULL, drive);
@@ -117,12 +98,12 @@ ssize_t drive_endpoint_read(vfs_handle_t *handle, void *buf, size_t len) {
 
     dev_t rdev = handle->backing_node->stat.rdev;
     if (major(rdev) != ENDPOINT_DRIVE) {
-        kout(KERNEL_SEVERE_FAULT, "drive_endpoint_read(): not a drive!\n");
+        kout(KERNEL_PANIC, "drive_endpoint_read(): not a drive!\n");
         return -EINVAL;
     }
 
-    void *func_args = kernelfs_get_func_args(handle);
-    if (!func_args) {
+    endpoint_t *endpoint = devfs_get_endpoint_from_handle(handle);
+    if (!endpoint->func_args) {
         return -EIO;
     }
 
@@ -133,10 +114,10 @@ ssize_t drive_endpoint_read(vfs_handle_t *handle, void *buf, size_t len) {
     DRIVE_t *drive = NULL;
 
     if (minor(rdev) == 0) {
-        drive = (DRIVE_t *)func_args;
+        drive = (DRIVE_t *)endpoint->func_args;
     } else {
         // TODO: this needs to change once GPT implemented
-        partition_t *part = (partition_t *)func_args;
+        partition_t *part = (partition_t *)endpoint->func_args;
         drive             = part->drive;
         endpoint_offs_lba = (uint64_t)part->lba_act;
     }
@@ -242,7 +223,7 @@ ssize_t drive_endpoint_write(vfs_handle_t *handle, const void *buf, size_t len) 
 
     dev_t rdev = handle->backing_node->stat.rdev;
     if (major(rdev) != ENDPOINT_DRIVE) {
-        kout(KERNEL_SEVERE_FAULT, "drive_endpoint_write(): not a drive!\n");
+        kout(KERNEL_PANIC, "drive_endpoint_write(): not a drive!\n");
         return -EINVAL;
     }
 
@@ -391,7 +372,7 @@ off_t drive_endpoint_seek(vfs_handle_t *handle, off_t offset, vfs_seek_whence_t 
 
     dev_t rdev = handle->backing_node->stat.rdev;
     if (major(rdev) != ENDPOINT_DRIVE) {
-        kout(KERNEL_SEVERE_FAULT, "drive_endpoint_seek(): not a drive!\n");
+        kout(KERNEL_PANIC, "drive_endpoint_seek(): not a drive!\n");
         return -EINVAL;
     }
 

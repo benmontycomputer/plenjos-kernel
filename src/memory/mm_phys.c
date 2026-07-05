@@ -31,7 +31,7 @@ uint32_t phys_mem_unref_frame(phys_mem_free_frame_t *frame) {
     uint32_t refcnt = (frame->flags & ~FRAME_FLAG_USABLE);
 
     if (refcnt == 0) {
-        kout(KERNEL_SEVERE_FAULT, "phys_mem_unref_frame(): frame at phys %p (frame %p) has no references\n", frame_addr_to_phys_addr((uint64_t)frame), frame);
+        kout(KERNEL_PANIC, "phys_mem_unref_frame(): frame at phys %p (frame %p) has no references\n", frame_addr_to_phys_addr((uint64_t)frame), frame);
     }
 
     return --(frame->flags);

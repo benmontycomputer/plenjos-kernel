@@ -1,5 +1,6 @@
 #include "manager.h"
 
+#include "devices/console/tty.h"
 #include "lib/special_mem/fixed_size_allocator.h"
 #include "lib/special_mem/flex_array_hashmap.h"
 #include "lib/stdio.h"
@@ -74,7 +75,7 @@ void mount_devfs() {
     fscache_node_t *node = NULL;
     int res              = fscache_request_node_for_mounting("/dev", 0, &node);
     if (res) {
-        kout(KERNEL_SEVERE_FAULT,
+        kout(KERNEL_PANIC,
              "mount_devfs(): fscache_request_node_for_mounting() failed (errno %d)! Can't mount devfs.\n", res);
     }
 
@@ -115,7 +116,7 @@ endpoint_t *register_device_endpoint(char *name, endpoint_driver_t *driver, uint
         return NULL;
     }
     if (out_old) {
-        kout(KERNEL_SEVERE_FAULT, "register_device_endpoint(): endpoint %s already taken!\n", name);
+        kout(KERNEL_PANIC, "register_device_endpoint(): endpoint %s already taken!\n", name);
     }
 
     kout(KERNEL_INFO, "Registered endpoint %s (rdev=%p)\n", endpoint->name, endpoint->dev);
@@ -131,8 +132,7 @@ const char *endpoint_key_func(void *data) {
 int device_manager_init() {
     _devfs_fah = fah_new(endpoint_key_func, NULL);
 
-    // TODO: make this better, we shouldn't use one global buffer as our entire keyboard layer.
-    init_keyboard();
+    setup_main_tty();
 
     /* PCI must come *before* PS/2, as the USB controllers must be initialized to disable any PS/2 emulation. */
     /* TODO: do we properly disable PS/2 emulation? */
@@ -189,11 +189,11 @@ typedef struct devfs_root_read_each_func_args {
 void devfs_root_read_each_func(void *item, void *func_args) {
     devfs_root_read_each_func_args_t *args = (devfs_root_read_each_func_args_t *)func_args;
 
-    const char *key = (const char *)item;
+    const char *key      = (const char *)item;
     endpoint_t *endpoint = fah_get(_devfs_fah, key);
 
     if (!endpoint) {
-        kout(KERNEL_SEVERE_FAULT, "devfs_root_read_each_func(): endpoint %s not found in fah\n", key);
+        kout(KERNEL_PANIC, "devfs_root_read_each_func(): endpoint %s not found in fah\n", key);
         return;
     }
 
@@ -204,7 +204,8 @@ void devfs_root_read_each_func(void *item, void *func_args) {
     strncpy(dirent.d_name, key, sizeof(dirent.d_name) - 1);
     // Already NULL terminated because dirent is zeroed to start with
 
-    memcpy((uint8_t *)args->buf + (args->prev_dirents * sizeof(struct plenjos_dirent)), (const void *)&dirent, sizeof(struct plenjos_dirent));
+    memcpy((uint8_t *)args->buf + (args->prev_dirents * sizeof(struct plenjos_dirent)), (const void *)&dirent,
+           sizeof(struct plenjos_dirent));
 
     args->prev_dirents++;
 }
@@ -216,17 +217,19 @@ ssize_t devfs_root_read(vfs_handle_t *handle, void *buf, size_t len) {
         return -EINVAL;
     }
 
-    uint64_t pos = handle->instance_data[0];
+    kernelfs_handle_instance_data_t *handle_data = (kernelfs_handle_instance_data_t *)handle->instance_data;
+
+    uint64_t pos = handle_data->pos;
     uint64_t cnt = len / sizeof(struct plenjos_dirent);
 
     devfs_root_read_each_func_args_t args = {
-        .buf            = buf,
-        .prev_dirents   = 0,
+        .buf          = buf,
+        .prev_dirents = 0,
     };
 
     ssize_t res = fah_each(_devfs_fah, pos, cnt, devfs_root_read_each_func, &args);
 
-    handle->instance_data[0] += args.prev_dirents;
+    handle_data->pos += args.prev_dirents;
     return args.prev_dirents * sizeof(struct plenjos_dirent);
 }
 
@@ -236,31 +239,42 @@ off_t devfs_root_seek(vfs_handle_t *handle, off_t offset, vfs_seek_whence_t when
 }
 
 ssize_t devfs_endpoint_read(vfs_handle_t *handle, void *buf, size_t len) {
-    if (!handle || !handle->backing_node) {
-        kout(KERNEL_WARN, "devfs_endpoint_read(): handle or backing node is NULL!\n");
-        return -EINVAL;
+    endpoint_t *endpoint = devfs_get_endpoint_from_handle(handle);
+    if (!endpoint->driver || !endpoint->driver->read) {
+        kout(KERNEL_WARN, "devfs_endpoint_read(): driver or read func is NULL!\n");
+        return -EIO;
     }
-
-    devfs_cache_data_t *data = (devfs_cache_data_t *)handle->backing_node->internal_data;
-    return data->endpoint->driver->read(handle, buf, len);
+    return endpoint->driver->read(handle, buf, len);
 }
 
 ssize_t devfs_endpoint_write(vfs_handle_t *handle, const void *buf, size_t len) {
-    if (!handle || !handle->backing_node) {
-        kout(KERNEL_WARN, "devfs_endpoint_read(): handle or backing node is NULL!\n");
-        return -EINVAL;
+    endpoint_t *endpoint = devfs_get_endpoint_from_handle(handle);
+    if (!endpoint->driver || !endpoint->driver->write) {
+        kout(KERNEL_WARN, "devfs_endpoint_write(): driver or write func is NULL!\n");
+        return -EIO;
     }
-
-    devfs_cache_data_t *data = (devfs_cache_data_t *)handle->backing_node->internal_data;
-    return data->endpoint->driver->write(handle, buf, len);
+    return endpoint->driver->write(handle, buf, len);
 }
 
 off_t devfs_endpoint_seek(vfs_handle_t *handle, off_t offset, vfs_seek_whence_t whence) {
-    if (!handle || !handle->backing_node) {
-        kout(KERNEL_WARN, "devfs_endpoint_read(): handle or backing node is NULL!\n");
-        return -EINVAL;
+    endpoint_t *endpoint = devfs_get_endpoint_from_handle(handle);
+    if (!endpoint->driver || !endpoint->driver->seek) {
+        kout(KERNEL_WARN, "devfs_endpoint_seek(): driver or seek func is NULL!\n");
+        return -EIO;
     }
+    return endpoint->driver->seek(handle, offset, whence);
+}
 
+endpoint_t *devfs_get_endpoint_from_handle(vfs_handle_t *handle) {
+    if (!handle || !handle->backing_node) {
+        kout(KERNEL_PANIC, "devfs_get_endpoint_from_handle(): handle or backing node is NULL!\n");
+        return NULL;
+    }
     devfs_cache_data_t *data = (devfs_cache_data_t *)handle->backing_node->internal_data;
-    return data->endpoint->driver->seek(handle, offset, whence);
+    if (!data->endpoint) {
+        // Don't need to NULL-check data; it is a fixed offset from backing_node
+        kout(KERNEL_PANIC, "devfs_get_endpoint_from_handle(): endpoint is NULL!\n");
+        return NULL;
+    }
+    return data->endpoint;
 }

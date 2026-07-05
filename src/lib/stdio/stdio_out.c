@@ -49,12 +49,7 @@ void scroll_console() {
     console_pos -= CONSOLE_W();
 }
 
-void printf_ch(char ch) {
-    if (debug_serial) {
-        write_serial(ch);
-        return;
-    }
-
+void printf_ch_fb(char ch) {
     if ((int)GET_CONSOLE_Y(console_pos) >= CONSOLE_H()) scroll_console();
 
     if (ch == '\n') {
@@ -68,6 +63,14 @@ void printf_ch(char ch) {
     }
 
     if (cursor) kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0x000000, 0xFFFFFF);
+}
+
+void printf_ch(char ch) {
+    if (debug_serial) {
+        write_serial(ch);
+    } else {
+        printf_ch_fb(ch);
+    }
 }
 
 void printf_str(const char *str, uint16_t max_chars) {

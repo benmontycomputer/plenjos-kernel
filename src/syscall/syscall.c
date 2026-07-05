@@ -19,8 +19,6 @@
 
 #include <stdint.h>
 
-extern kbd_buffer_state_t kbd_buffer_state;
-
 static uint8_t fb_mapped = 0;
 
 uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_t rsi, uint64_t rdi) {
@@ -148,7 +146,7 @@ void syscall_routine(registers_t *regs, void *data) {
         // printf("phys %p %p\n", kernel_pml4, get_physaddr((uint64_t)fb, kernel_pml4));
         // VERY IMPORTANT CRITICAL TODO: don't allow random processes to modify the resulting buffer (some sort of
         // access control is needed)
-        page_t *page = find_page((uint64_t)&kbd_buffer_state, false, current_pml4);
+        /* page_t *page = find_page((uint64_t)&kbd_buffer_state, false, current_pml4);
         if (page && page->present) {
             kout(KERNEL_WARN, "WARN: Something is already mapped at keyboard buffer's address in this process!\n");
             if (get_physaddr((uint64_t)&kbd_buffer_state, current_pml4)
@@ -171,7 +169,8 @@ void syscall_routine(registers_t *regs, void *data) {
                                            PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node,
                                            current_pml4);
             regs->rax = (uint64_t)&kbd_buffer_state;
-        }
+        } */
+        regs->rax = -ENOSYS;
         break;
     }
     case SYSCALL_MEMMAP: {

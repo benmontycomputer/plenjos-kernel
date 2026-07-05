@@ -43,7 +43,7 @@ ssize_t pata_read_sectors_func(DRIVE_t *drive, uint64_t lba, size_t sectors, voi
     struct ide_device *dev = (struct ide_device *)drive->internal_data;
 
     if (!dev) {
-        kout(KERNEL_SEVERE_FAULT, "Error: DRIVE internal_data is NULL in pata_read_sectors_func\n");
+        kout(KERNEL_PANIC, "Error: DRIVE internal_data is NULL in pata_read_sectors_func\n");
         return -1;
     }
 
