@@ -101,6 +101,7 @@ void populate_and_register_drive(DRIVE_t *drive, uint64_t numsectors, uint32_t l
             if (res) {
                 kout(KERNEL_WARN, "Failed to mount root dir (partition %d): res %d\n", partition_no, res);
             }
+            mount_devfs();
         }
     }
 }

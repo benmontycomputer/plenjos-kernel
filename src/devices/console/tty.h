@@ -1,7 +1,7 @@
 #pragma once
 
-#include "stidnt.h"
+#include "stdint.h"
 
 struct tty {
     
-}
+};

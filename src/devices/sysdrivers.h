@@ -2,6 +2,7 @@
 
 #include "stdint.h"
 #include "plenjos/types.h"
+#include "plenjos/sysmacros.h"
 
 // Major number for devices
 typedef enum {
@@ -18,3 +19,5 @@ typedef enum {
     ENDPOINT_MEM_GENERIC = 0x0,
     ENDPOINT_MEM_DEVFS = 0x1,
 } endpoint_mem_minor;
+
+#define DEV_DEVFS full_dev(ENDPOINT_MEM, ENDPOINT_MEM_DEVFS)

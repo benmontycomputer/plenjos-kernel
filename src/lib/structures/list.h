@@ -45,6 +45,7 @@ typedef int (*list_remove_func)(list_t *list, ssize_t idx, void **out);
 typedef int (*list_insert_func)(list_t *list, ssize_t idx, void *new);
 typedef int (*list_append_func)(list_t *list, void *new);
 typedef int (*list_append_or_replace_func)(list_t *list, void *new, compare_func_t cmp, void *cmp_data, void **out_old);
+typedef int (*list_get_by_key_func)(list_t *list, const char *key, key_func_t key_func, void **out);
 typedef ssize_t (*list_count_func)(list_t *list);
 
 struct list_ops_block {
@@ -54,6 +55,7 @@ struct list_ops_block {
     list_insert_func insert;
     list_append_func append;
     list_append_or_replace_func append_or_replace;
+    list_get_by_key_func get_by_key;
     list_count_func count;
 };
 
@@ -80,6 +82,10 @@ inline int list_append(list_t *list, void *new) {
 
 inline int list_append_or_replace(list_t *list, void *new, compare_func_t cmp, void *cmp_data, void **out_old) {
     return list->ops->append_or_replace(list, new, cmp, cmp_data, out_old);
+}
+
+inline int list_get_by_key(list_t *list, const char *key, key_func_t key_func, void **out) {
+    return list->ops->get_by_key(list, key, key_func, out);
 }
 
 // Can't be negative; this is just an ssize_t to be consistent with indexing

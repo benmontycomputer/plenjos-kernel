@@ -2,6 +2,7 @@
 
 #include "lib/special_mem/fixed_size_allocator.h"
 #include "lib/special_mem/flex_array.h"
+#include "lib/string.h"
 
 const slnode_t _slnode_DEL = { 0 };
 const dlnode_t _dlnode_DEL = { 0 };
@@ -222,6 +223,28 @@ cleanup:
     return res;
 }
 
+int _sll_get_by_key(list_t *list, const char *key, key_func_t key_func, void **out) {
+    ll_data_t *data = (ll_data_t *)&list->data;
+    mutex_lock(&data->lock);
+
+    int res = -ENOENT;
+
+    slnode_t *node = data->head;
+
+    while (node) {
+        if (!strncmp(key_func(node->data), key, SIZE_MAX)) {
+            if (out) {
+                *out = node->data;
+            }
+            res = 0;
+            break;
+        }
+    }
+
+    mutex_unlock(&data->lock);
+    return res;
+}
+
 ssize_t _ll_count(list_t *list) {
     ll_data_t *data = (ll_data_t *)&list->data;
     mutex_lock(&data->lock);
@@ -259,6 +282,7 @@ static const list_ops_block_t sll_ops = {
     .insert            = _sll_insert,
     .append            = _sll_append,
     .append_or_replace = _sll_append_or_replace,
+    .get_by_key        = _sll_get_by_key,
     .count             = _ll_count,
 };
 
