@@ -136,7 +136,7 @@ ssize_t iso9660_directory_read_func(vfs_handle_t *handle, void *buf, size_t len)
         return -EINVAL;
     }
 
-    if (len < sizeof(struct plenjos_dirent)) {
+    if (len % sizeof(struct plenjos_dirent)) {
         return -EINVAL;
     }
 
@@ -374,13 +374,14 @@ int iso9660_create_child_func(fscache_node_t *parent, const char *name, struct k
     return -ENOSYS;
 }
 
-int iso9660_setup(struct filesystem_iso9660 *fs, DRIVE_t *drive, uint32_t partition_start_lba,
+int iso9660_setup(struct filesystem_iso9660 *fs, DRIVE_t *drive, partition_t *partition, uint32_t partition_start_lba,
                   fscache_node_t *mount_node) {
     if (!fs || !drive || !(fs->read_status & 0x01)) {
         return -EINVAL;
     }
 
     fs->drive               = drive;
+    fs->partition           = partition;
     fs->partition_start_lba = partition_start_lba;
 
     struct iso9660_primary_volume_descriptor *pvd = &fs->pvd;
@@ -393,7 +394,7 @@ int iso9660_setup(struct filesystem_iso9660 *fs, DRIVE_t *drive, uint32_t partit
         = ((struct iso9660_directory_record *)pvd->root_directory_record)->extent_location_lba_le;
     fs->root_directory_size = ((struct iso9660_directory_record *)pvd->root_directory_record)->data_length_le;
 
-    mount_node->fsops = &iso9660_directory_fsops;
+    mount_node->fsops                        = &iso9660_directory_fsops;
     // TODO: decide if we want to support xattr for ownership
     vfs_iso9660_cache_node_data_t *node_data = (vfs_iso9660_cache_node_data_t *)mount_node->internal_data;
     node_data->fs                            = fs;
@@ -404,8 +405,9 @@ int iso9660_setup(struct filesystem_iso9660 *fs, DRIVE_t *drive, uint32_t partit
     }
     memcpy(node_data->dir_record, pvd->root_directory_record, sizeof(struct iso9660_directory_record));
 
-    kout(KERNEL_INFO, "ISO9660 filesystem mounted: logical block size %d, root directory extent LBA %d, size %d bytes\n",
-           fs->logical_block_size, fs->root_directory_extent_location, fs->root_directory_size);
+    kout(KERNEL_INFO,
+         "ISO9660 filesystem mounted: logical block size %d, root directory extent LBA %d, size %d bytes\n",
+         fs->logical_block_size, fs->root_directory_extent_location, fs->root_directory_size);
 
     return 0;
 }

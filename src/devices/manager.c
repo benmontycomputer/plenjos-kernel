@@ -75,8 +75,8 @@ void mount_devfs() {
     fscache_node_t *node = NULL;
     int res              = fscache_request_node_for_mounting("/dev", 0, &node);
     if (res) {
-        kout(KERNEL_PANIC,
-             "mount_devfs(): fscache_request_node_for_mounting() failed (errno %d)! Can't mount devfs.\n", res);
+        kout(KERNEL_PANIC, "mount_devfs(): fscache_request_node_for_mounting() failed (errno %d)! Can't mount devfs.\n",
+             res);
     }
 
     node->fsops = &devfs_root_ops;

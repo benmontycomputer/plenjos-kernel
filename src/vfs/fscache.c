@@ -145,6 +145,10 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
         return -EINVAL;
     }
 
+    if (path[0] != '/') {
+        kout(KERNEL_PANIC, "fscache_request_node(): path[0] must be '/'!\n");
+    }
+
     size_t path_len = strlen(path);
     if (path_len == 0) {
         return -EINVAL;
@@ -329,6 +333,10 @@ res_downgrade_and_set_and_return:
 // Outputs a write-locked node; if out is NULL, no changes are made; just checks if the node would work for mounting and
 // unlocks the node after.
 int fscache_request_node_for_mounting(const char *path, uid_t uid, fscache_node_t **out) {
+    if (path[0] != '/') {
+        kout(KERNEL_PANIC, "fscache_request_node_for_mounting(): path[0] must be '/'!\n");
+    }
+
     fscache_node_t *out_tmp = NULL;
     int res                 = fscache_request_node(path, uid, &out_tmp);
     if (res) {

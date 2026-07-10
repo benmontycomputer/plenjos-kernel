@@ -34,6 +34,8 @@ typedef enum {
     SYSCALL_UNLINK,
     SYSCALL_SYMLINK,
     SYSCALL_READLINK,
+    SYSCALL_MOUNT,
+    SYSCALL_UNMOUNT,
 
     // Other
     SYSCALL_MEMMAP = 0x40,

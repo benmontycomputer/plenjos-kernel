@@ -123,6 +123,10 @@ void kputchar(
     }
     /* get the glyph for the character. If there's no
        glyph for a given character, we'll display the first glyph. */
+    // TODO: better bounds checking than this
+    if (c > 255) {
+        c = 0;
+    }
     unsigned char *glyph = (unsigned char *)&_binary_src_fonts_ter_v16b_psf_start + 4 + (c)*font->characterSize;
     /* calculate the upper left corner on screen where we want to display.
        we only do this once, and adjust the offset later. This is faster. */

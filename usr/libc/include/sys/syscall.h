@@ -38,4 +38,6 @@ int syscall_chdir(const char *path);
 // Yes, the size parameter should be ssize_t
 ssize_t syscall_getcwd(char *buf, ssize_t size);
 
+int syscall_mount(const char *dev, const char *target);
+
 #endif /* _LIBC_SYSCALL_H */

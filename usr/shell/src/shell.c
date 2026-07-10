@@ -171,6 +171,15 @@ static bool process_cmd(const char *cmd) {
         pwd_cmd(toks_count, toks);
     } else if (!strcmp(toks[0], "lspci")) {
         lspci_cmd(toks_count, toks);
+    } else if (!strcmp(toks[0], "mount")) {
+        if (toks_count < 3) {
+            printf("Usage: mount [dev] [target]\n");
+            return false;
+        }
+        int res = syscall_mount(toks[1], toks[2]);
+        if (res) {
+            printf("mount failed (errno %d)\n", res);
+        }
     } else if (toks[0][0] != 0) {
         printf("Unknown command: %s\n", toks[0]);
     }

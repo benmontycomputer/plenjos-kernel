@@ -140,6 +140,7 @@ struct iso9660_directory_record {
 
 struct filesystem_iso9660 {
     DRIVE_t *drive;
+    partition_t *partition;
     uint32_t partition_start_lba;
 
     uint32_t logical_block_size; // From primary volume descriptor
@@ -155,7 +156,9 @@ struct filesystem_iso9660 {
     uint32_t root_directory_size;
 };
 
-int iso9660_setup(struct filesystem_iso9660 *fs, DRIVE_t *drive, uint32_t partition_start_lba, fscache_node_t *mount_node);
+// Only iso9660 takes in a separate partition_start_lba, because it may be different from partition->lba_act
+int iso9660_setup(struct filesystem_iso9660 *fs, DRIVE_t *drive, partition_t *partition, uint32_t partition_start_lba,
+                  fscache_node_t *mount_node);
 
 typedef struct vfs_iso9660_cache_node_data {
     struct filesystem_iso9660 *fs;

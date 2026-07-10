@@ -84,3 +84,7 @@ int syscall_chdir(const char *path) {
 ssize_t syscall_getcwd(char *buf, ssize_t size) {
     return (ssize_t)syscall(SYSCALL_GETCWD, (uint64_t)buf, (uint64_t)size, 0, 0, 0);
 }
+
+int syscall_mount(const char *dev, const char *target) {
+    return (int)syscall(SYSCALL_MOUNT, (uint64_t)dev, (uint64_t)target, 0, 0, 0);
+}

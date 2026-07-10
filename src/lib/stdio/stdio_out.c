@@ -464,7 +464,9 @@ int kout(kernel_msg_level_t level, const char *format, ...) {
     if (level == KERNEL_PANIC) {
         /* Make sure the message reaches BOTH serial and screen */
         debug_serial = !debug_serial;
+        va_start(list, format);
         _printf_internal(format, list);
+        va_end(list);
 
         panic_nomsg();
     } else {
@@ -490,7 +492,9 @@ int kout_nolock(kernel_msg_level_t level, const char *format, ...) {
     if (level == KERNEL_PANIC) {
         /* Make sure the message reaches BOTH serial and screen */
         debug_serial = !debug_serial;
+        va_start(list, format);
         _printf_internal(format, list);
+        va_end(list);
 
         panic_nomsg();
     } else {
@@ -512,7 +516,9 @@ _Noreturn void panic(const char *format, ...) {
 
     /* Make sure the message reaches BOTH serial and screen */
     debug_serial = !debug_serial;
+    va_start(list, format);
     _printf_internal(format, list);
+    va_end(list);
 
     panic_nomsg();
 }

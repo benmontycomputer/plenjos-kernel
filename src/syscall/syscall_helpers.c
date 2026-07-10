@@ -120,11 +120,18 @@ static ssize_t strnlen_user(pml4_t *pml4, uint64_t user_ptr, size_t max_len) {
 }
 
 int handle_string_arg(pml4_t *current_pml4, uint64_t user_ptr, const char **out) {
+#ifdef _KERNEL_EXTRA_CHECKS_FOR_NULL_ARGS
+    if (!out) {
+        kout(KERNEL_PANIC, "handle_string_arg(): out must not be NULL!\n");
+    }
+#endif
+    *out = NULL;
+
     if (user_ptr == 0) {
         printf("handle_string_arg: null pointer passed from userland\n");
         return -EFAULT;
     }
-    
+
     ssize_t len = strnlen_user(current_pml4, user_ptr, PATH_MAX) + 1;
     if (len < 0) {
         printf("handle_string_arg: bad pointer passed from userland (errno %d)\n", (int)len);
@@ -196,7 +203,7 @@ int collapse_path(const char *path_in, char *path_out) {
     size_t out_idx = 0;
 
     size_t len = strlen(path_in);
-    for (size_t i = 0; i < len; ) {
+    for (size_t i = 0; i < len;) {
         // Skip multiple slashes
         if (path_in[i] == '/') {
             while (i < len && path_in[i] == '/') {
@@ -214,8 +221,7 @@ int collapse_path(const char *path_in, char *path_out) {
                 // Single dot
                 i++;
                 continue;
-            } else if ((i + 1 < len) && (path_in[i + 1] == '.') &&
-                       ((i + 2 == len) || (path_in[i + 2] == '/'))) {
+            } else if ((i + 1 < len) && (path_in[i + 1] == '.') && ((i + 2 == len) || (path_in[i + 2] == '/'))) {
                 // Double dot
                 i += 2;
                 if (out_idx > 1) {

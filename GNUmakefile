@@ -186,13 +186,15 @@ clean:
 	$(MAKE) -C usr/libc clean
 	$(MAKE) -C usr/shell clean
 
-# 		-drive file=../limine_bootable.img,if=ide,format=raw
+#		-drive file=../image.iso,if=ide,media=cdrom
 uefi_run:
 	qemu-system-x86_64 \
 		-m 4096 \
 		-smp cores=4,threads=1,sockets=1,maxcpus=4 \
-		-boot d \
-		-drive file=../image.iso,if=ide,media=cdrom \
+		-drive file=../limine_bootable.img,if=none,format=raw,id=disk0 \
+		-device ide-hd,drive=disk0,bus=ide.0,unit=0 \
+		-drive file=../image.iso,if=none,media=cdrom,id=disk1 \
+		-device ide-cd,drive=disk1,bus=ide.1,unit=0 \
 		-d guest_errors,cpu_reset,invalid_mem,unimp \
 		-vga std \
 		-serial stdio \
@@ -207,8 +209,10 @@ uefi_run_gdb:
 	qemu-system-x86_64 \
 		-m 4096 \
 		-smp cores=4,threads=1,sockets=1,maxcpus=4 \
-		-boot d \
-		-drive file=../image.iso,if=ide,media=cdrom \
+		-drive file=../limine_bootable.img,if=none,format=raw,id=disk0 \
+		-device ide-hd,drive=disk0,bus=ide.0,unit=0 \
+		-drive file=../image.iso,if=none,media=cdrom,id=disk1 \
+		-device ide-cd,drive=disk1,bus=ide.1,unit=0 \
 		-d guest_errors,cpu_reset,invalid_mem,unimp \
 		-vga std \
 		-serial stdio \

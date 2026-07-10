@@ -239,6 +239,7 @@ int _sll_get_by_key(list_t *list, const char *key, key_func_t key_func, void **o
             res = 0;
             break;
         }
+        node = node->next;
     }
 
     mutex_unlock(&data->lock);

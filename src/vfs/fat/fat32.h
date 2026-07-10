@@ -8,6 +8,8 @@
 
 #define FAT_ATTR_LONG_NAME 0x0F
 #define FAT_ATTR_DIRECTORY 0x10
+#define FAT_ATTR_READ_ONLY 0x01
+#define FAT_ATTR_VOLUME_ID 0x08
 
 struct fat32_boot_sector {
     struct fat_boot_sector_generic generic;
@@ -72,6 +74,7 @@ struct fat32_long_directory_entry {
 
 struct filesystem_fat32 {
     DRIVE_t *drive;
+    partition_t *partition;
     uint32_t partition_start_lba;
 
     uint8_t read_status; // Bit 0 = boot sector read, bit 1 = FSInfo read
@@ -86,11 +89,29 @@ struct filesystem_fat32 {
     uint32_t sectors_per_fat;
     uint32_t total_sectors;
     uint32_t total_clusters;
+
+    uid_t mount_uid;
+    gid_t mount_gid;
+    mode_t mount_umask;
+    bool exec;
 };
 
-int fat32_setup(struct filesystem_fat32 *fs, DRIVE_t *drive, uint32_t partition_start_lba);
+typedef struct vfs_fat32_cache_node_data {
+    struct filesystem_fat32 *fs;
+    struct fat32_directory_entry *dir_entry; // This will need to be changed when/if long entry support is added
+    uint64_t unused[2];
+} __attribute__((packed)) vfs_fat32_cache_node_data_t;
+
+typedef struct vfs_fat32_handle_instance_data {
+    uint64_t current_cluster; // Current extent location being read (lba offset)
+    uint64_t pos_in_cluster;              // Offset within current extent
+    uint64_t seek_pos;
+    uint64_t unused;
+} __attribute__((packed)) vfs_fat32_handle_instance_data_t;
+
+int fat32_setup(struct filesystem_fat32 *fs, partition_t *partition);
 
 int fat32_drive_read(struct filesystem_fat32 *fs, uint32_t fat_lba, uint32_t fat_sectors, void *buffer, uint32_t bytes_to_read);
 int fat32_read_entry(struct filesystem_fat32 *fs, uint32_t cluster, void *buffer, uint32_t bytes_to_read);
 int fat32_next_cluster(struct filesystem_fat32 *fs, uint32_t cluster, uint32_t *next);
-int fat32_parse_root(struct filesystem_fat32 *fs);
+int fat32_mount(struct filesystem_fat32 *fs, fscache_node_t *mount_node);

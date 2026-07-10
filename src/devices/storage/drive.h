@@ -41,6 +41,7 @@ struct partition {
     DRIVE_t *drive;
     mbr_partition_type_t partition_type : 8;
     uint32_t lba_act;
+    endpoint_t *endpoint;
     partition_t *next;
 };
 
@@ -69,3 +70,4 @@ void populate_and_register_drive(DRIVE_t *drive, uint64_t numsectors, uint32_t l
                                  uint32_t physical_sector_size, char *model, char *interface,
                                  drive_read_sectors_func_t read_sectors, drive_write_sectors_func_t write_sectors,
                                  uint32_t irq, void *internal_data);
+int drive_mount_from_handle(vfs_handle_t *handle, const char *target);

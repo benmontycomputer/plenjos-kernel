@@ -8,7 +8,7 @@
  */
 
 // Required by C standard
-#define EDOM   33 // Device not managed
+#define EDOM   33 // Domain error
 #define ERANGE 34 // Result too large
 #define EILSEQ 84 // Illegal byte sequence
 
@@ -24,6 +24,7 @@
 #define EIO          5  // I/O error
 #define EBADF        9  // Bad file descriptor
 #define EACCES       13 // Permission denied
+#define ENOTBLK      15 // Not a block device
 #define EBUSY        16
 #define EEXIST       17 // File exists
 #define ENOTDIR      20 // Not a directory

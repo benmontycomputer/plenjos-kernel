@@ -103,7 +103,8 @@ void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
     kout(KERNEL_INFO, "MBR Signature: %x; disk_signature: %x\n", (uint32_t)mbr->signature,
          *(uint32_t *)mbr->disk_signature);
     kout(KERNEL_INFO, "Partitions:\n");
-    drive->partition_count = 4;
+    // No need to set partition count; the drive_t driver does it when creating endpoints
+    // drive->partition_count = 4;
     for (int i = 0; i < 4; i++) {
         struct mbr_partition_entry *part = &mbr->partitions[i];
 
@@ -124,6 +125,7 @@ void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
                 cur = next;
             }
             kout(KERNEL_WARN, "drive_read_mbr(): fsa_alloc() failed (OOM?)\n");
+            break;
         }
 
         if (drive->first_partition) {
@@ -155,6 +157,8 @@ int mbr_mount(struct DRIVE *drive, int partition_no, uid_t uid, const char *path
         kout(KERNEL_SEVERE_EXTERNAL_FAULT, "mbr_mount(): fscache_request_node_for_mounting() failed with res %d\n", res);
         return res;
     }
+
+    // TODO: IMPORTANT: restore proper fsops if mount fails
 
     partition_t *part = drive->first_partition;
     for (int i = 1; i < partition_no; i++) {
@@ -210,7 +214,7 @@ int mbr_mount(struct DRIVE *drive, int partition_no, uid_t uid, const char *path
             memset(fs, 0, sizeof(struct filesystem_iso9660));
             memcpy(&fs->pvd, buf, sizeof(struct iso9660_primary_volume_descriptor));
             fs->read_status |= 0x01; // Mark primary volume descriptor as read
-            res              = iso9660_setup(fs, drive, 0, node);
+            res              = iso9660_setup(fs, drive, part, 0, node);
             if (res == 0) {
                 kout(KERNEL_INFO, "    ISO9660 setup successful on partition %d\n", partition_no);
             } else {
@@ -223,24 +227,31 @@ int mbr_mount(struct DRIVE *drive, int partition_no, uid_t uid, const char *path
         goto cleanup;
     }
 
-    /* switch (part->partition_type) {
+    switch (part->partition_type) {
     case MBR_PARTITION_TYPE_FAT32:
     case MBR_PARTITION_TYPE_FAT32_LBA: {
         struct filesystem_fat32 *fs = kmalloc_heap(sizeof(struct filesystem_fat32));
+        if (!fs) {
+            res = -ENOMEM;
+            kout(KERNEL_WARN, "mbr_mount(): fat32: kmalloc_heap() failed (OOM?)\n");
+            break;
+        }
         memcpy(&fs->boot_sector_raw, (struct fat_boot_sector *)buf, sizeof(struct fat_boot_sector));
         kout(KERNEL_INFO, "    FAT32 boot sector read successfully on partition %d\n", +1);
-        if (fat32_setup(fs, drive, part->lba_act) == 0) {
+        res = fat32_setup(fs, part);
+        if (res == 0) {
             kout(KERNEL_INFO, "    FAT32 filesystem detected on partition %d: Total clusters: %u\n", partition_no,
                  fs->total_clusters);
             // Parse and list root directory for basic validation
-            fat32_parse_root(fs);
+            // fat32_parse_root(fs);
+            fat32_mount(fs, node);
         } else {
             kout(KERNEL_SEVERE_EXTERNAL_FAULT, "    Failed to setup FAT32 filesystem on partition %d\n", partition_no);
         }
 
         break;
     }
-    case MBR_PARTITION_TYPE_FAT16_SMALL:
+    /* case MBR_PARTITION_TYPE_FAT16_SMALL:
     case MBR_PARTITION_TYPE_FAT16_LARGE: {
         break;
     }
@@ -273,8 +284,8 @@ int mbr_mount(struct DRIVE *drive, int partition_no, uid_t uid, const char *path
             struct filesystem_fat32 *fs = kmalloc_heap(sizeof(struct filesystem_fat32));
             memcpy(&fs->boot_sector_raw, (struct fat_boot_sector *)buf, sizeof(struct fat_boot_sector));
             fs->read_status |= 0x01; // Mark boot sector as read
-            if (fat32_setup(fs, drive, part->lba_act) == 0) {
-                fat32_parse_root(fs);
+            if (fat32_setup(fs, part) == 0) {
+                // fat32_parse_root(fs);
             }
             break;
         }
@@ -310,11 +321,12 @@ int mbr_mount(struct DRIVE *drive, int partition_no, uid_t uid, const char *path
                  (uint8_t)buf[0], (uint8_t)buf[1], (uint8_t)buf[2], partition_no);
         }
         break;
-    }
+    } */
     default: {
+        res = -ENOSYS; // TODO: should this be -ENODEV instead?
         break;
     }
-    } */
+    }
 
 cleanup:
     if (res) {

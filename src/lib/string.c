@@ -18,6 +18,23 @@ int strncmp(const char *s1, const char *s2, size_t n) {
     }
 }
 
+int strncmp_case_insensitive(const char *s1, const char *s2, size_t n) {
+    while (n && *s1 && *s2) {
+        if (*s1 != *s2 && tolower(*s1) != tolower(*s2)) {
+            break;
+        }
+
+        ++s1;
+        ++s2;
+        --n;
+    }
+    if (n == 0) {
+        return 0;
+    } else {
+        return ((unsigned char)tolower(*s1) - (unsigned char)tolower(*s2));
+    }
+}
+
 // TODO: is this the fastest implementation?
 size_t strlen(const char *s) {
     const char *adj = s;

@@ -14,6 +14,7 @@
 int next_free_drive = 1; // Reserve drive 0 for boot
 
 #define DRIVE_NUM_SHIFT 8
+#define DRIVE_PART_MASK ((1 << DRIVE_NUM_SHIFT) - 1)
 #define MAX_DRIVES      0x1000
 
 ssize_t drive_endpoint_read(vfs_handle_t *handle, void *buf, size_t len);
@@ -54,7 +55,8 @@ void populate_and_register_drive(DRIVE_t *drive, uint64_t numsectors, uint32_t l
 
     uint32_t mbr_disk_signature = *(uint32_t *)mbr.disk_signature;
 
-    if (mbr_disk_signature && mbr_disk_signature == executable_file_request.response->executable_file->mbr_disk_id) {
+    // TODO: if mbr_disk_signature is 0, use GPT instead
+    if (mbr_disk_signature == executable_file_request.response->executable_file->mbr_disk_id) {
         kout(KERNEL_INFO, "Found boot drive.\n");
     } else {
         // NOT the minor number of the endpoint; have to bitshift to get that
@@ -71,8 +73,23 @@ void populate_and_register_drive(DRIVE_t *drive, uint64_t numsectors, uint32_t l
 
     // TODO: sysfs: pass actual physical device here
     drive->endpoint = register_device_endpoint(name, &_drive_endpoint_driver, drive_no << DRIVE_NUM_SHIFT, NULL, drive);
+    
+    uint8_t old_name_len = strlen(name);
 
-    if (mbr_disk_signature && mbr_disk_signature == executable_file_request.response->executable_file->mbr_disk_id) {
+    int partition_no = 1;
+    partition_t *part = drive->first_partition;
+    while (part) {
+        memset(name + old_name_len, 0, sizeof(name) - old_name_len);
+        populate_string_hexnum(name + old_name_len, sizeof(name) - old_name_len, ".", (uint32_t)partition_no);
+        part->endpoint = register_device_endpoint(name, &_drive_endpoint_driver, (drive_no << DRIVE_NUM_SHIFT) | (dev_t)partition_no, NULL, part);
+
+        partition_no++;
+        part = part->next;
+    }
+
+    drive->partition_count = partition_no - 1;
+
+    if (mbr_disk_signature == executable_file_request.response->executable_file->mbr_disk_id) {
         // TODO: better cmdline parsing
         int partition_no = executable_cmdline_request.response->cmdline[0] - '0';
         if (partition_no < 1 || partition_no > 4) {
@@ -97,8 +114,8 @@ ssize_t drive_endpoint_read(vfs_handle_t *handle, void *buf, size_t len) {
     }
 
     dev_t rdev = handle->backing_node->stat.rdev;
-    if (major(rdev) != ENDPOINT_DRIVE) {
-        kout(KERNEL_PANIC, "drive_endpoint_read(): not a drive!\n");
+    if (_major(rdev) != ENDPOINT_DRIVE) {
+        kout(KERNEL_PANIC, "drive_endpoint_read(): not a drive (rdev %p, major %p)!\n", rdev, _major(rdev));
         return -EINVAL;
     }
 
@@ -113,7 +130,7 @@ ssize_t drive_endpoint_read(vfs_handle_t *handle, void *buf, size_t len) {
 
     DRIVE_t *drive = NULL;
 
-    if (minor(rdev) == 0) {
+    if (_minor(rdev) == 0) {
         drive = (DRIVE_t *)endpoint->func_args;
     } else {
         // TODO: this needs to change once GPT implemented
@@ -222,7 +239,7 @@ ssize_t drive_endpoint_write(vfs_handle_t *handle, const void *buf, size_t len) 
     }
 
     dev_t rdev = handle->backing_node->stat.rdev;
-    if (major(rdev) != ENDPOINT_DRIVE) {
+    if (_major(rdev) != ENDPOINT_DRIVE) {
         kout(KERNEL_PANIC, "drive_endpoint_write(): not a drive!\n");
         return -EINVAL;
     }
@@ -238,7 +255,7 @@ ssize_t drive_endpoint_write(vfs_handle_t *handle, const void *buf, size_t len) 
 
     DRIVE_t *drive = NULL;
 
-    if (minor(rdev) == 0) {
+    if (_minor(rdev) == 0) {
         drive = (DRIVE_t *)func_args;
     } else {
         partition_t *part = (partition_t *)func_args;
@@ -371,7 +388,7 @@ off_t drive_endpoint_seek(vfs_handle_t *handle, off_t offset, vfs_seek_whence_t 
     }
 
     dev_t rdev = handle->backing_node->stat.rdev;
-    if (major(rdev) != ENDPOINT_DRIVE) {
+    if (_major(rdev) != ENDPOINT_DRIVE) {
         kout(KERNEL_PANIC, "drive_endpoint_seek(): not a drive!\n");
         return -EINVAL;
     }
@@ -384,7 +401,7 @@ off_t drive_endpoint_seek(vfs_handle_t *handle, off_t offset, vfs_seek_whence_t 
     kernelfs_handle_instance_data_t *handle_data = (kernelfs_handle_instance_data_t *)handle->instance_data;
 
     DRIVE_t *drive = NULL;
-    if (minor(rdev) == 0) {
+    if (_minor(rdev) == 0) {
         drive = (DRIVE_t *)func_args;
     } else {
         partition_t *part = (partition_t *)func_args;
@@ -419,4 +436,43 @@ off_t drive_endpoint_seek(vfs_handle_t *handle, off_t offset, vfs_seek_whence_t 
 
     handle_data->pos = (uint64_t)new_pos;
     return (off_t)handle_data->pos;
+}
+
+int drive_mount_from_handle(vfs_handle_t *handle, const char *target) {
+    int res = 0;
+    if (handle->backing_node->stat.dev != DEV_DEVFS) {
+        res = -ENOTBLK;
+        goto cleanup;
+    }
+
+    if (!(handle->backing_node->stat.mode & S_IFBLK)) {
+        res = -ENOTBLK;
+        goto cleanup;
+    }
+
+    dev_t rdev = handle->backing_node->stat.rdev;
+
+    if (_major(rdev) != ENDPOINT_DRIVE || !(_minor(rdev) & DRIVE_PART_MASK)) {
+        res = -EINVAL;
+        goto cleanup;
+    }
+
+    endpoint_t *endpoint = devfs_get_endpoint_from_handle(handle);
+    if (!endpoint || endpoint->driver != &_drive_endpoint_driver) {
+        res = -EINVAL;
+        goto cleanup;
+    }
+
+    if (endpoint->dev != rdev) {
+        kout(KERNEL_PANIC, "drive_mount_from_handle(): endpoint->dev != handle->backing_node->stat.rdev!\n");
+    }
+
+    uint32_t part_no = _minor(rdev) & DRIVE_PART_MASK;
+    partition_t *part = endpoint->func_args;
+    DRIVE_t *drive = part->drive;
+
+    res = mbr_mount(drive, part_no, 0, target);
+
+cleanup:
+    return res;
 }

@@ -4,8 +4,8 @@
 #include "plenjos/dirent.h"
 #include "plenjos/stat.h"
 
-#define major(d) ((d) & 0xFFFFFF0000000000)
-#define minor(d) ((d) & 0x000000FFFFFFFFFF)
+#define _major(d) (((d) & 0xFFFFFF0000000000) >> 40)
+#define _minor(d) ((d) & 0x000000FFFFFFFFFF)
 
 #define full_dev(maj, min) ((((maj) & 0xFFFFFF) << 40) | ((min) & 0xFFFFFFFFFF))
 

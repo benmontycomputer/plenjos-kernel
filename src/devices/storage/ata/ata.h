@@ -1,9 +1,9 @@
 #pragma once
 
 #include "atapi.h"
-#include "pata.h"
 #include "devices/storage/drive.h"
 #include "kernel.h"
+#include "pata.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -24,9 +24,9 @@ extern struct ide_device;
 #define ATA_REG_STATUS   7
 #define ATA_REG_COMMAND  7
 
-#define ATA_CMD_IDENTIFY        0xEC
-#define ATA_CMD_IDENTIFY_PACKET 0xA1
-#define ATA_CMD_READ_SECTORS    0x24
+#define ATA_CMD_IDENTIFY         0xEC
+#define ATA_CMD_IDENTIFY_PACKET  0xA1
+#define ATA_CMD_READ_SECTORS_EXT 0x24
 
 #define ATA_CMD_PACKET 0xA0
 
