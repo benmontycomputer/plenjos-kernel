@@ -113,32 +113,44 @@ int bstree_insert_node(bstree_t *tree, bstnode_t *node) {
 /**
  * DO NOT USE THIS FUNCTION; use _bstree_remove_left(), _bstree_remove_right(), and _bstree_remove_root() instead
  */
-static inline bstnode_t *_bstree_unlink_node(bstree_t *tree, bstnode_t *node) {
+static inline bstnode_t *_bstree_unlink_node(bstree_t *tree, bstnode_t *node, bstnode_t **replacement_parent) {
     bstnode_t *left  = node->left;
     bstnode_t *right = node->right;
 
     bstnode_t *new = NULL;
+
+    bool set_parent = false;
 
     if (right) {
         new = right;
 
         if (left) {
             // Replace with the in-order successor
-            bstnode_t *newparent = NULL;
-            while (new->left) {
-                newparent = new;
-                new       = new->left;
+            bstnode_t *newparent = new;
+            while (newparent->left) {
+                newparent = newparent->left;
             }
 
-            if (newparent) {
-                newparent->left    = new->right;
-                new->right->parent = newparent;
-                new->right         = right;
-                right->parent      = new;
+            if (replacement_parent && newparent != right) {
+                set_parent = true;
+                *replacement_parent = newparent->parent;
             }
 
-            new->left    = left;
-            left->parent = new;
+            if (newparent != right) {
+                newparent->parent->left = newparent->right;
+
+                if (newparent->right) {
+                    newparent->right->parent = newparent->parent;
+                }
+
+                newparent->right = right;
+                right->parent    = newparent;
+            }
+
+            newparent->left = left;
+            left->parent    = newparent;
+
+            new = newparent;
         }
     } else {
         if (left) {
@@ -152,6 +164,10 @@ static inline bstnode_t *_bstree_unlink_node(bstree_t *tree, bstnode_t *node) {
         new->parent = node->parent;
     }
 
+    if (!set_parent && replacement_parent) {
+        *replacement_parent = node->parent;
+    }
+
     node->left   = NULL;
     node->right  = NULL;
     node->parent = NULL;
@@ -160,36 +176,42 @@ static inline bstnode_t *_bstree_unlink_node(bstree_t *tree, bstnode_t *node) {
     return new;
 }
 
-static bstnode_t *_bstree_remove_left(bstree_t *tree, bstnode_t *parent) {
+static int _bstree_remove_left(bstree_t *tree, bstnode_t *parent, bstnode_t **replaced_by_out,
+                                      bstnode_t **replacement_parent) {
     bstnode_t *out = parent->left;
-    parent->left   = _bstree_unlink_node(tree, out);
-    return out;
+    parent->left   = _bstree_unlink_node(tree, out, replacement_parent);
+    if (replaced_by_out) *replaced_by_out = parent->left;
+    return 0;
 }
 
-static bstnode_t *_bstree_remove_right(bstree_t *tree, bstnode_t *parent) {
+static int _bstree_remove_right(bstree_t *tree, bstnode_t *parent, bstnode_t **replaced_by_out,
+                                       bstnode_t **replacement_parent) {
     bstnode_t *out = parent->right;
-    parent->right  = _bstree_unlink_node(tree, out);
-    return out;
+    parent->right  = _bstree_unlink_node(tree, out, replacement_parent);
+    if (replaced_by_out) *replaced_by_out = parent->right;
+    return 1;
 }
 
-static bstnode_t *_bstree_remove_root(bstree_t *tree) {
+static int _bstree_remove_root(bstree_t *tree, bstnode_t **replaced_by_out, bstnode_t **replacement_parent) {
     bstnode_t *out = tree->root;
-    tree->root     = _bstree_unlink_node(tree, out);
-    return out;
+    tree->root     = _bstree_unlink_node(tree, out, replacement_parent);
+    if (replaced_by_out) *replaced_by_out = tree->root;
+    return 0;
 }
 
-bstnode_t *bstree_remove_node(bstree_t *tree, bstnode_t *node) {
+int bstree_remove_node(bstree_t *tree, bstnode_t *node, bstnode_t **replaced_by_out,
+                              bstnode_t **replacement_parent) {
     _bstree_arg_validate(tree, node, __func__);
 
     bstnode_t *curr = tree->root;
     int cmp         = 0;
 
     if (!curr) {
-        return NULL;
+        return -1;
     }
 
     if (node == curr) {
-        return _bstree_remove_root(tree);
+        return _bstree_remove_root(tree, replaced_by_out, replacement_parent);
     }
 
     while (curr) {
@@ -197,63 +219,58 @@ bstnode_t *bstree_remove_node(bstree_t *tree, bstnode_t *node) {
 
         if (cmp < 0) {
             if (curr->left == node) {
-                curr = _bstree_remove_left(tree, curr);
-                break;
+                return _bstree_remove_left(tree, curr, replaced_by_out, replacement_parent);
             } else {
                 curr = curr->left;
             }
         } else {
-            if (curr->right == node) {
-                curr = _bstree_remove_right(tree, curr);
-                break;
+            if (curr->left == node) {
+                // Still needed as duplicates can be on either side after rotations
+                return _bstree_remove_left(tree, curr, replaced_by_out, replacement_parent);
+            } else if (curr->right == node) {
+                return _bstree_remove_right(tree, curr, replaced_by_out, replacement_parent);
             } else {
                 curr = curr->right;
             }
         }
     }
 
-    return curr;
+    return -1;
 }
 
-bstnode_t *bstree_remove_first(bstree_t *tree) {
+int bstree_remove_first(bstree_t *tree, bstnode_t **replaced_by_out, bstnode_t **replacement_parent) {
     _bstree_short_arg_validate(tree, __func__);
 
     bstnode_t *curr = tree->root;
     if (curr == NULL) {
-        return NULL;
+        return -1;
     }
-
-    bstnode_t *res = NULL;
 
     if (curr->left) {
         while (curr->left->left) {
             curr = curr->left;
         }
-        return _bstree_remove_left(tree, curr);
+        return _bstree_remove_left(tree, curr, replaced_by_out, replacement_parent);
     } else {
-        return _bstree_remove_root(tree);
+        return _bstree_remove_root(tree, replaced_by_out, replacement_parent);
     }
 }
 
-bstnode_t *bstree_remove_last(bstree_t *tree) {
+int bstree_remove_last(bstree_t *tree, bstnode_t **replaced_by_out, bstnode_t **replacement_parent) {
     _bstree_short_arg_validate(tree, __func__);
 
     bstnode_t *curr = tree->root;
     if (curr == NULL) {
-        return NULL;
+        return -1;
     }
-
-    bstnode_t *res = NULL;
 
     if (curr->right) {
         while (curr->right->right) {
             curr = curr->right;
         }
-        bstnode_t *res = _bstree_remove_right(tree, curr);
-        return res;
+        return _bstree_remove_right(tree, curr, replaced_by_out, replacement_parent);
     } else {
-        bstnode_t *res = _bstree_remove_root(tree);
-        return res;
+        return _bstree_remove_root(tree, replaced_by_out, replacement_parent);
     }
 }
 
@@ -280,8 +297,9 @@ void bstree_left_rotate(bstree_t *tree, bstnode_t *node) {
         return;
     }
 
-    node->right       = new->left;
-    new->left->parent = node;
+    node->right = new->left;
+
+    if (new->left) new->left->parent = node;
 
     new->left = node;
 
@@ -294,11 +312,12 @@ void bstree_left_rotate(bstree_t *tree, bstnode_t *node) {
     } else {
         tree->root = new;
     }
+    new->parent = node->parent;
 
     node->parent = new;
 }
 
-bstree_right_rotate(bstree_t *tree, bstnode_t *node) {
+void bstree_right_rotate(bstree_t *tree, bstnode_t *node) {
     /**
      *       X
      *      / \
@@ -321,8 +340,9 @@ bstree_right_rotate(bstree_t *tree, bstnode_t *node) {
         return;
     }
 
-    node->left         = new->right;
-    new->right->parent = node;
+    node->left = new->right;
+
+    if (new->right) new->right->parent = node;
 
     new->right = node;
 
@@ -335,6 +355,7 @@ bstree_right_rotate(bstree_t *tree, bstnode_t *node) {
     } else {
         tree->root = new;
     }
+    new->parent = node->parent;
 
     node->parent = new;
 }
