@@ -20,7 +20,7 @@ range_node_t *_range_node_insert(range_node_t *node, range_item_t *item) {
             if (item->end > slot_end) {
                 // Spills over into the next range
                 rw_lock_write_unlock(&node->lock);
-                return -1UL; // Out of range
+                return (range_node_t *)-1UL; // Out of range
             }
 
             // In range
@@ -28,7 +28,7 @@ range_node_t *_range_node_insert(range_node_t *node, range_item_t *item) {
             if (is_leaf) {
                 if (node->children[i]) {
                     rw_lock_write_unlock(&node->lock);
-                    return -2UL; // Slot occupied
+                    return (range_node_t *)-2UL; // Slot occupied
                 }
                 if (item->start == slot_start) {
                     // Don't need a padding block before

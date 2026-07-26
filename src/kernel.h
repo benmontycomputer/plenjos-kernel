@@ -38,6 +38,18 @@
 #define CANONICAL_CHECK_BIT      0x0000800000000000
 
 /**
+ * This file contains various kernel-wide definitions and structures, as well as config options.
+ */
+
+#include "devices/manager.h"
+
+typedef unsigned long ptr_t;
+
+// For easier code readability
+typedef ptr_t physptr_t;
+typedef ptr_t frame_t; // Specifically for addresses that are bitshifted
+
+/**
  * phys and virt will need separate functions if we ever implement physical or virtual addressing >48bit
  */
 inline ptr_t frame_to_addr(frame_t frame) {
@@ -59,18 +71,6 @@ inline physptr_t addr_to_frame(frame_t frame) {
     }
     return res;
 }
-
-/**
- * This file contains various kernel-wide definitions and structures, as well as config options.
- */
-
-#include "devices/manager.h"
-
-typedef unsigned long ptr_t;
-
-// For easier code readability
-typedef ptr_t physptr_t;
-typedef ptr_t frame_t; // Specifically for addresses that are bitshifted
 
 extern bool debug_serial;
 

@@ -4,7 +4,7 @@
 #define is_red(node)   (node && (node->color == RED)) // This also serves as a NULL check, as NULL nodes are BLACK
 #define is_black(node) (!node || (node->color == BLACK))
 
-void rbtree_init(rbtree_t *tree, int (*cmp)(rbnode_t *a, rbnode_t *b)) {
+void rbtree_init(rbtree_t *tree, int (*cmp)(const rbnode_t *a, const rbnode_t *b)) {
     memset(tree, 0, sizeof(rbtree_t));
 
     tree->cmp  = cmp;
