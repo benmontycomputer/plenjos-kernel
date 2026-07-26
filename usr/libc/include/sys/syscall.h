@@ -40,4 +40,6 @@ ssize_t syscall_getcwd(char *buf, ssize_t size);
 
 int syscall_mount(const char *dev, const char *target);
 
+pid_t syscall_spawn(const char *path, char *const argv[], char *const envp[], size_t argc, size_t envc);
+
 #endif /* _LIBC_SYSCALL_H */

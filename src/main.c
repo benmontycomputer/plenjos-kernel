@@ -156,7 +156,7 @@ _Noreturn void panic_nomsg() {
     hcf();
 }
 
-#define LINKER_OFFS 0x7fff80000000ULL
+void *linker_elf_buf = NULL;
 
 // The following will be our kernel's entry point.
 // If renaming kmain() to something else, make sure to change the
@@ -222,7 +222,6 @@ void kmain(void) {
 
     vfs_handle_t *ld_handle = NULL;
     int res                 = vfs_open("/lib/ld.so", SYSCALL_OPEN_FLAG_READ, 0, 0, &ld_handle);
-    void *linker_elf_buf    = NULL;
     ssize_t linker_read_bytes;
     if (res == 0) {
         kout(KERNEL_INFO, "Loading ld.so...\n\n");

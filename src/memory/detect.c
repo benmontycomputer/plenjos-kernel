@@ -76,9 +76,11 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
                 phys_mem_frame_map = (phys_mem_free_frame_t *)phys_to_virt(base);
                 memset(phys_mem_frame_map, 0, phys_mem_frame_map_size);
 
-                for (uint64_t j                                                      = phys_addr_to_frame_addr(base);
-                     j < phys_addr_to_frame_addr(base + phys_mem_frame_map_size); j += sizeof(phys_mem_free_frame_t)) {
-                    ((phys_mem_free_frame_t *)j)->flags = FRAME_FLAG_USABLE | 0x1;
+                phys_mem_free_frame_t *frame = phys_addr_to_frame_struct(base);
+                phys_mem_free_frame_t *end   = phys_addr_to_frame_struct(base + phys_mem_frame_map_size);
+                while (frame < end) {
+                    frame->flags = FRAME_FLAG_USABLE | 0x1;
+                    frame++;
                 }
 
                 break;
@@ -106,18 +108,16 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
             map_virtual_memory_using_alloc(base, phys_to_virt(base), length, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,
                                            test_alloc, kernel_pml4);
 
-            // TODO: i think the code might break if frame 0 is actually valid.
-            for (uint64_t j = phys_addr_to_frame_addr(base);
-                 j < phys_addr_to_frame_addr(base + length) - sizeof(phys_mem_free_frame_t);
-                 j += sizeof(phys_mem_free_frame_t)) {
-                frame = (phys_mem_free_frame_t *)j;
-
+            // TODO: why do we stop one short?
+            phys_mem_free_frame_t *frame = phys_addr_to_frame_struct(base);
+            phys_mem_free_frame_t *end   = phys_addr_to_frame_struct(base + length) - 1;
+            while (frame < end) {
                 if (frame->flags == 0) {
                     frame->flags = FRAME_FLAG_USABLE;
 
                     if (prev_free_frame) {
-                        frame->prev_free           = encode_struct_frame_ptr((uint64_t)prev_free_frame);
-                        prev_free_frame->next_free = encode_struct_frame_ptr((uint64_t)frame);
+                        frame->prev_free           = encode_struct_frame_ptr(prev_free_frame);
+                        prev_free_frame->next_free = encode_struct_frame_ptr(frame);
                     } else {
                         printf("Next frame %p, prev: %p\n", frame, frame->prev_free);
                         if (!phys_mem_frame_map_next_free) phys_mem_frame_map_next_free = frame;
@@ -125,6 +125,7 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
 
                     prev_free_frame = frame;
                 }
+                frame++;
             }
         }
     }

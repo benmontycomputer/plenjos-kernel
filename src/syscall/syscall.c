@@ -21,6 +21,8 @@
 
 static uint8_t fb_mapped = 0;
 
+extern void *linker_elf_buf;
+
 uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_t rsi, uint64_t rdi) {
     uint64_t out;
 
@@ -256,7 +258,17 @@ void syscall_routine(registers_t *regs, void *data) {
         break;
     }
     case SYSCALL_SPAWN: {
-        
+        const char *path = NULL;
+        regs->rax = handle_string_arg(current_pml4, regs->rbx, &path);
+
+        if (!path) {
+            break;
+        }
+
+        // TODO: argc, argv, envp and envc
+
+        // loadelf(linker_elf_buf, shell_proc->pml4, &linker_entry, LINKER_OFFS);
+
         break;
     }
     default:

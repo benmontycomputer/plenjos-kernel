@@ -29,8 +29,8 @@ extern uint64_t PHYS_MEM_USEABLE_END;
 
 // prev_free and next_free are indices in the frame table
 struct phys_mem_free_frame {
-    uint64_t prev_free : 36;
-    uint64_t next_free : 36;
+    frame_t prev_free : PHYS_FRAME_BITS;
+    frame_t next_free : PHYS_FRAME_BITS;
 
     // most significant bit is useable; all others are refcnt
     uint32_t flags : 24;
@@ -40,22 +40,22 @@ typedef struct phys_mem_free_frame phys_mem_free_frame_t;
 extern phys_mem_free_frame_t *phys_mem_frame_map;
 extern phys_mem_free_frame_t *phys_mem_frame_map_next_free;
 
-static inline uint64_t encode_struct_frame_ptr(uint64_t ptr) {
-    return (ptr - (uint64_t)phys_mem_frame_map) / sizeof(phys_mem_free_frame_t);
+static inline frame_t encode_struct_frame_ptr(phys_mem_free_frame_t *frame) {
+    return ((ptr_t)frame - (ptr_t)phys_mem_frame_map) / sizeof(phys_mem_free_frame_t);
 }
 
-static inline uint64_t decode_struct_frame_ptr(uint64_t ptr) {
-    return (ptr * sizeof(phys_mem_free_frame_t)) + (uint64_t)phys_mem_frame_map;
+static inline phys_mem_free_frame_t *decode_struct_frame_ptr(frame_t frame) {
+    return (phys_mem_free_frame_t *)((frame * sizeof(phys_mem_free_frame_t)) + (ptr_t)phys_mem_frame_map);
 }
 
 // Converts the virtual address of a phys_mem_free_frame_t to the physical address of its corresponding frame
-static inline uint64_t frame_addr_to_phys_addr(uint64_t frame_addr) {
-    return encode_struct_frame_ptr(frame_addr) << 12;
+static inline physptr_t frame_struct_to_phys_addr(phys_mem_free_frame_t *frame) {
+    return encode_struct_frame_ptr(frame) << PAGE_ALIGN_BITS;
 }
 
 // Converts a physical address to the virtual address of its corresponding phys_mem_free_frame_t
-static inline uint64_t phys_addr_to_frame_addr(uint64_t phys) {
-    return decode_struct_frame_ptr(phys >> 12);
+static inline phys_mem_free_frame_t *phys_addr_to_frame_struct(physptr_t phys) {
+    return decode_struct_frame_ptr(phys >> PAGE_ALIGN_BITS);
 }
 
 /* struct phys_mem_frame {

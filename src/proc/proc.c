@@ -93,7 +93,7 @@ proc_t *create_proc(const char *name, proc_t *parent) {
     proc->pml4 = (pml4_t *)phys_to_virt(find_next_free_frame());
     if (!proc->pml4) {
         kout(KERNEL_WARN, "Error allocating page table for proc %s (%lu) (OOM?)\n", proc->name, proc->pid);
-        phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(cwd_frame));
+        phys_mem_unref_frame(phys_addr_to_frame_struct(cwd_frame));
         fsa_free(&_proc_fsa, proc);
         return NULL;
     }
@@ -183,12 +183,12 @@ void process_exit(proc_t *proc) {
             for (uint64_t i = 0; i < THREAD_MAX_STACK_SIZE; i += PAGE_LEN) {
                 uint64_t phys = get_physaddr((uint64_t)thread->stack_top - i, proc->pml4);
                 if (phys) {
-                    phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(phys));
+                    phys_mem_unref_frame(phys_addr_to_frame_struct(phys));
                 }
             }
         }
-        phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(virt_to_phys((uint64_t)thread->base)));
-        phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(virt_to_phys((uint64_t)thread)));
+        phys_mem_unref_frame(phys_addr_to_frame_struct(virt_to_phys((uint64_t)thread->base)));
+        phys_mem_unref_frame(phys_addr_to_frame_struct(virt_to_phys((uint64_t)thread)));
 
         thread = next_thread;
     }
@@ -220,7 +220,7 @@ void process_exit(proc_t *proc) {
                proc->name);
     }
 
-    phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(virt_to_phys((uint64_t)proc)));
+    phys_mem_unref_frame(phys_addr_to_frame_struct(virt_to_phys((uint64_t)proc)));
 }
 
 vfs_handle_t *proc_get_fd(proc_t *proc, int fd) {

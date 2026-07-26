@@ -31,7 +31,7 @@ uint32_t phys_mem_unref_frame(phys_mem_free_frame_t *frame) {
     uint32_t refcnt = (frame->flags & ~FRAME_FLAG_USABLE);
 
     if (refcnt == 0) {
-        kout(KERNEL_PANIC, "phys_mem_unref_frame(): frame at phys %p (frame %p) has no references\n", frame_addr_to_phys_addr((uint64_t)frame), frame);
+        kout(KERNEL_PANIC, "phys_mem_unref_frame(): frame at phys %p (frame %p) has no references\n", frame_struct_to_phys_addr(frame), frame);
     }
 
     return --(frame->flags);
@@ -70,7 +70,7 @@ uint64_t find_next_free_frame() {
 
     phys_mem_ref_frame(frame);
 
-    phys_mem_frame_map_next_free = (phys_mem_free_frame_t *)decode_struct_frame_ptr(frame->next_free);
+    phys_mem_frame_map_next_free = decode_struct_frame_ptr(frame->next_free);
     if (!frame->next_free) {
         phys_mem_frame_map_next_free = NULL;
     }
@@ -82,15 +82,10 @@ uint64_t find_next_free_frame() {
     if (phys_mem_frame_map_next_free) phys_mem_frame_map_next_free->prev_free = 0;
 
     if (frame->prev_free) {
-        printf("The first free frame has prev_free set. This shouldn't happen! Frame: %p, "
+        kout(KERNEL_PANIC, "The first free frame has prev_free set. This shouldn't happen! Frame: %p, "
                "prev: %p, undecoded prev %p, next %p, undecoded next %p\n",
                frame, decode_struct_frame_ptr(frame->prev_free), frame->prev_free,
                decode_struct_frame_ptr(frame->next_free), frame->next_free);
-        panic("The first free frame has prev_free set!");
-        ((phys_mem_free_frame_t *)decode_struct_frame_ptr(frame->prev_free))->next_free
-            = encode_struct_frame_ptr((uint64_t)phys_mem_frame_map_next_free);
-        if (phys_mem_frame_map_next_free)
-            phys_mem_frame_map_next_free->prev_free = encode_struct_frame_ptr(frame->prev_free);
     }
 
     // These are kept at zero for non-free frames so we don't have to manage them.
@@ -99,7 +94,7 @@ uint64_t find_next_free_frame() {
 
     mutex_unlock(&phys_mem_lock);
 
-    return frame_addr_to_phys_addr((uint64_t)frame);
+    return frame_struct_to_phys_addr(frame);
 }
 
 void alloc_page_frame(page_t *page, int user, int writeable) {

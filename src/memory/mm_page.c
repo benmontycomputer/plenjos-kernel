@@ -226,7 +226,7 @@ void map_virtual_memory(uint64_t phys_start, size_t len, uint64_t flags, pml4_t 
     map_virtual_memory_using_alloc(phys_start, phys_to_virt(phys_start), len, flags, alloc_paging_node, pml4);
 }
 
-uint64_t get_physaddr(uint64_t virt, pml4_t *pml4) {
+physptr_t get_physaddr(uint64_t virt, pml4_t *pml4) {
     uint32_t pml4_index, pdpt_index, pd_index, pt_index;
 
     addr_split(virt, &pml4_index, &pdpt_index, &pd_index, &pt_index);
@@ -312,17 +312,14 @@ void free_page_table(pml4_t *pml4_virt) {
                     uint64_t pte = pt[pt_i];
                     if (!(pte & PAGE_FLAG_PRESENT)) continue;
 
-                    phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(PTE_ADDR(pte)));
+                    phys_mem_unref_frame(phys_addr_to_frame_struct(PTE_ADDR(pte)));
                     pt[pt_i] = 0;
                 }
-                phys_mem_unref_frame(
-                    (phys_mem_free_frame_t *)phys_addr_to_frame_addr(PTE_ADDR(pde))); // free page table
+                phys_mem_unref_frame(phys_addr_to_frame_struct(PTE_ADDR(pde))); // free page table
             }
-            phys_mem_unref_frame(
-                (phys_mem_free_frame_t *)phys_addr_to_frame_addr(PTE_ADDR(pdpte))); // free page directory
+            phys_mem_unref_frame(phys_addr_to_frame_struct(PTE_ADDR(pdpte))); // free page directory
         }
-        phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(PTE_ADDR(pml4e))); // free pdpt
+        phys_mem_unref_frame(phys_addr_to_frame_struct(PTE_ADDR(pml4e))); // free pdpt
     }
-    phys_mem_unref_frame(
-        (phys_mem_free_frame_t *)phys_addr_to_frame_addr(virt_to_phys((uint64_t)pml4_virt))); // free pml4
+    phys_mem_unref_frame(phys_addr_to_frame_struct(virt_to_phys((uint64_t)pml4_virt))); // free pml4
 }

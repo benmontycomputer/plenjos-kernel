@@ -27,7 +27,7 @@ inline int is_userspace(uint64_t virt) {
 page_t *find_page_using_alloc(uint64_t virt, bool autocreate, uint64_t *alloc_func(), int user, pml4_t *pml4);
 page_t *find_page(uint64_t virt, bool autocreate, pml4_t *pml4);
 
-uint64_t get_physaddr(uint64_t virt, pml4_t *pml4);
+physptr_t get_physaddr(uint64_t virt, pml4_t *pml4);
 uint32_t get_physaddr32(uint64_t virt, pml4_t *pml4);
 
 void free_page_table(pml4_t *pml4_virt);
@@ -44,8 +44,13 @@ void alloc_page_frame(page_t *page, int user, int writeable);
 // Virtual memory manager
 
 // NOTE: these don't actually search the page tables; they're just for addresses mapped w/ the fixed offset
-uint64_t phys_to_virt(uint64_t phys);
-uint64_t virt_to_phys(uint64_t virt);
+inline uint64_t phys_to_virt(uint64_t phys) {
+    return phys + HHDM_OFFSET;
+}
+
+inline uint64_t virt_to_phys(uint64_t virt) {
+    return virt - HHDM_OFFSET;
+}
 
 uint64_t *alloc_paging_node();
 

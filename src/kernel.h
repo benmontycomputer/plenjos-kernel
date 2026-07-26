@@ -1,11 +1,11 @@
 #ifndef _KERNEL_H
 #define _KERNEL_H
 
-#define _KERNEL_CORRUPTION_CHECK_FSA 1
-#define _KERNEL_FSCACHE_CHECK_LOCKS 1
+#define _KERNEL_CORRUPTION_CHECK_FSA          1
+#define _KERNEL_FSCACHE_CHECK_LOCKS           1
 #define _KERNEL_TTY_BUFFER_CORRECTNESS_CHECKS 1
-#define _KERNEL_EXTRA_CHECKS_FOR_NULL_ARGS 1
-#define _KERNEL_ALWAYS_CHECK_DEVICE_TYPE 1
+#define _KERNEL_EXTRA_CHECKS_FOR_NULL_ARGS    1
+#define _KERNEL_ALWAYS_CHECK_DEVICE_TYPE      1
 
 #include "plenjos/types.h"
 
@@ -15,13 +15,62 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define LINKER_OFFS 0x7fff80000000ULL
+
+/**
+ * Conventions:
+ *  - frames are used when describing *regions* in memory
+ *  - pages are used when actually mapping memory
+ *  - they are functionally interchangeable, however.
+ */
+
+#define PAGE_ALIGN_BITS 12
+#define PAGE_LEN        (1 << PAGE_ALIGN_BITS)
+
+/**
+ * We only implement 4-level paging, so the 16 most-significant bits are all the same as the 17th most-significant bit.
+ * Thus, we only need 36 bits to represent both physical and virtual frames.
+ */
+#define VIRT_FRAME_BITS 36
+#define PHYS_FRAME_BITS 36
+
+#define CANONICAL_UNIFORM_REGION 0xFFFF000000000000
+#define CANONICAL_CHECK_BIT      0x0000800000000000
+
+/**
+ * phys and virt will need separate functions if we ever implement physical or virtual addressing >48bit
+ */
+inline ptr_t frame_to_addr(frame_t frame) {
+    ptr_t res = (frame << PAGE_ALIGN_BITS);
+    if (res & CANONICAL_CHECK_BIT) {
+        res |= CANONICAL_UNIFORM_REGION;
+    } else {
+        res &= ~CANONICAL_UNIFORM_REGION;
+    }
+    return res;
+}
+
+inline physptr_t addr_to_frame(frame_t frame) {
+    physptr_t res = (frame << PAGE_ALIGN_BITS);
+    if (res & CANONICAL_CHECK_BIT) {
+        res |= CANONICAL_UNIFORM_REGION;
+    } else {
+        res &= ~CANONICAL_UNIFORM_REGION;
+    }
+    return res;
+}
+
 /**
  * This file contains various kernel-wide definitions and structures, as well as config options.
  */
 
 #include "devices/manager.h"
 
-typedef uintptr_t physptr_t;
+typedef unsigned long ptr_t;
+
+// For easier code readability
+typedef ptr_t physptr_t;
+typedef ptr_t frame_t; // Specifically for addresses that are bitshifted
 
 extern bool debug_serial;
 

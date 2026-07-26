@@ -13,7 +13,7 @@ void *_flex_array_alloc(size_t n, size_t item_size) {
             while (start) {
                 frame = virt_to_phys((uint64_t)start);
                 start = *FLEX_ARRAY_NEXT_PTR(start);
-                phys_mem_unref_frame((phys_mem_free_frame_t *)phys_addr_to_frame_addr(frame));
+                phys_mem_unref_frame(phys_addr_to_frame_struct(frame));
             }
             return NULL;
         }
