@@ -40,7 +40,7 @@ thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), vo
     thread->parent          = proc;
     // thread->regs = {0};
     thread->state           = ASLEEP;
-    thread->tid             = next_tid++;
+    thread->tid             = __atomic_fetch_add(&next_tid, 1, __ATOMIC_SEQ_CST);
     thread->index_in_parent = atomic_fetch_add(&(proc->next_thread_index), 1);
 
     uint64_t p = 0;
@@ -49,7 +49,7 @@ thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), vo
     // Skip guard page
     for (uint64_t i = 0; i < THREAD_STACK_SIZE; i += PAGE_LEN) {
         p = alloc_virtual_memory((uint64_t)thread->stack_top - i - PAGE_LEN, ALLOCATE_VM_USER, proc->pml4);
-        if (!p) {
+        if (p < PAGE_LEN) {
             kout(KERNEL_WARN, "create_thread(): couldn't allocate stack for thread (OOM?)\n");
             for (uint64_t j = 0; j < i; j += PAGE_LEN) {
                 free_virtual_memory((uint64_t)thread->stack_top - j - PAGE_LEN, proc->pml4);
@@ -84,7 +84,16 @@ thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), vo
     // Set the page table
     thread->regs.cr3 = virt_to_phys((uint64_t)proc->pml4) & ~0xFFF;
 
-    thread->base = (gsbase_t *)phys_to_virt(find_next_free_frame());
+    uint64_t base_frame = find_next_free_frame();
+    if (!base_frame) {
+        kout(KERNEL_WARN, "create_thread(): couldn't allocate gsbase page (OOM?)\n");
+        for (uint64_t j = 0; j < THREAD_STACK_SIZE; j += PAGE_LEN) {
+            free_virtual_memory((uint64_t)thread->stack_top - j - PAGE_LEN, proc->pml4);
+        }
+        fsa_free(&_thread_fsa, thread);
+        return NULL;
+    }
+    thread->base = (gsbase_t *)phys_to_virt(base_frame);
     memset(thread->base, 0, PAGE_LEN);
 
     // These values will be set when the thread is assigned to a CPU
