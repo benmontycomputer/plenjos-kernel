@@ -55,7 +55,7 @@ void setup_bs_gs_base() {
 
     kout(KERNEL_INFO, "base: %p %p\n", gs_bases[0], cpu_cores[0].kernel_gs_base);
 
-    write_msr(IA32_GS_BASE, (uint64_t)cpu_cores[0].kernel_gs_base);
+    write_msr(IA32_GS_BASE, 0); // no thread yet; the scheduler sets this to the thread's gsbase page
     write_msr(IA32_KERNEL_GS_BASE, (uint64_t)cpu_cores[0].kernel_gs_base);
 }
 
@@ -109,10 +109,9 @@ void setup_other_core(struct limine_mp_info *mp_info) {
     cpu_cores[mp_info->processor_id].kernel_gs_base = new_kernel_gs_base(mp_info->processor_id);
     gs_bases[mp_info->processor_id]                 = (uint64_t)cpu_cores[mp_info->processor_id].kernel_gs_base;
 
-    write_msr(IA32_GS_BASE, (uint64_t)cpu_cores[mp_info->processor_id].kernel_gs_base);
+    write_msr(IA32_GS_BASE, 0); // no thread yet; the scheduler sets this to the thread's gsbase page
     write_msr(IA32_KERNEL_GS_BASE, (uint64_t)cpu_cores[mp_info->processor_id].kernel_gs_base);
 
-    write_msr(IA32_GS_BASE, (uint64_t)cpu_cores[mp_info->processor_id].kernel_gs_base);
 
     kout(KERNEL_INFO, "Useable memory on detected core %d: %p\n\n", (int)get_curr_core(), PHYS_MEM_USEABLE_LENGTH);
 
