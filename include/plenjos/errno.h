@@ -15,6 +15,7 @@
 // General errors
 #define ENOMEM    12 // Out of memory
 #define EFAULT    14 // Bad address
+#define ENOEXEC   8  // Exec format error
 #define EINVAL    22 // Invalid argument
 #define ENOSYS    38 // Function not implemented
 #define EOVERFLOW 75 // Value too large for defined data type
