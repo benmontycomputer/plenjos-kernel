@@ -83,6 +83,7 @@
 isr_stub_%+%1:
     cli
 
+
                         ; Do not need to push dummy error code 
     push %1             ; Interrupt number
 
@@ -94,8 +95,8 @@ isr_stub_%+%1:
 
     isr_restore_ctx
 
-    ; TODO: should this be 8 or 16?
-    add rsp, 8           ; Remove the pushed interrupt number only
+    add rsp, 16          ; Remove the interrupt number and the CPU-pushed error code (iretq expects RIP on top)
+
 
     iretq                ; Return from the interrupt using IRETQ
 %endmacro
@@ -103,6 +104,7 @@ isr_stub_%+%1:
 %macro isr_no_err_stub 1
 isr_stub_%+%1:
     cli;
+
 
     push 0          ; Dummy error code
     push %1         ; Interrupt number
@@ -117,6 +119,7 @@ isr_stub_%+%1:
     
     add rsp, 16         ; Clean up interrupt no and dummy error code
 
+
     iretq               ; Return from the interrupt using IRETQ (iret values remain intact)
 %endmacro
 
@@ -124,6 +127,7 @@ isr_stub_%+%1:
 %macro IRQ 2
 isr_stub_%+%2:
     cli
+
 
     ; Stack already has 5*8=40 bytes data
     push 0               ; Dummy error code
@@ -134,22 +138,23 @@ isr_stub_%+%2:
     mov rdi, rsp                    ; Pass the current stack pointer to `pic_irq_handler`
     cld
 
+    ; Read from kernel GSBASE inside the swapgs
     push rax
-    mov rax, [gs:0x20]
+    swapgs
+    mov rax, [gs:0x20]               ; kernel pml4 (physical address)
+    swapgs
     mov cr3, rax
     pop rax
 
     call irq_handler
 
-    push rax
-    mov rax, [gs:0x10]
-    mov cr3, rax
-    pop rax
+    ; isr_restore_ctx reloads the cr3 that was active when we were interrupted
 
     isr_restore_ctx
 
     add rsp, 16 ; Clean up interrupt no and dummy error code
-    
+
+
     iretq                    ; Return from Interrupt
 %endmacro
 

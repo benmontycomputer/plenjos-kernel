@@ -56,32 +56,26 @@
 global _finalize_task_switch
 _finalize_task_switch:
     cli
-    ; First, save the current location of the kernel stack pointer to the kernel gsbase:
-    swapgs
-    mov [gs:0], rsp
-    swapgs
-    ; Next, load the registers_t struct into r15:
-    mov r15, rdi
-    mov rdi, [r15 + CR_REG_CR3]   ; Prepare for page table loading
-    mov rsp, [r15 + REG_IRET_RSP] ; Load new thread's stack
-
-    ; After loading the new thread's page table, we are still in ring 0, so we can access
-    ; kernel data structures that are mapped into the process's address space.
-    mov cr3, rdi ; Load new thread's page tables
+    ; GS_BASE always holds the user-level GS base (the thread's own gsbase page, written by the caller); the core's gsbase page lives in
+    ; IA32_KERNEL_GS_BASE and is only reached through a swapgs pair, so no swapgs is needed before the iretq.
+    ;
+    ; The iretq frame is built on the per-core kernel stack (the one we are already running on, mapped in every
+    ; process), NOT on the thread's user stack: a frame on the user stack could be rewritten by another thread of the
+    ; process before the iretq, and would corrupt the red zone. The user rsp is only loaded by the iretq itself.
+    mov r15, rdi                  ; the thread's registers_t
+    mov rdi, [r15 + CR_REG_CR3]
+    mov cr3, rdi                  ; load the new thread's page tables (the kernel and the kernel stacks stay mapped)
     mov rbp, [r15 + GEN_REG_RBP]
-    mov r14, [r15 + REG_IRET_RIP]
-    xor rax, rax ; zeroes out the entire rax register; otherwise the topmost bits might be wrong when we push it to stack
-    mov ax, 0x23        ; user data segment; 0x20 | 0x3
+    xor rax, rax
+    mov ax, 0x23                  ; user data segment; 0x20 | 0x3
     mov ds, ax
     mov es, ax
-    push rax            ; push user data segment
-    lea rax, [rsp + 0x08] ; the offset is needed because we have already pushed user data segment to the stack
-    push rax            ; push user stack
+    push qword 0x23               ; SS
+    push qword [r15 + REG_IRET_RSP]
     push qword [r15 + REG_IRET_RFLAGS]
-    push 0x1B           ; user code segment; 0x18 | 0x3
-    push r14            ; push user instruction pointer
+    push qword 0x1B               ; CS: user code segment; 0x18 | 0x3
+    push qword [r15 + REG_IRET_RIP]
     load_task_general_registers
-    .end:
     iretq
 
 global cpu_scheduler_task
@@ -90,10 +84,11 @@ extern tss_obj
 cpu_scheduler_task:
     cli
 
-    ; Load the current core ID from the per-core GS base and switch to that core's TSS rsp0.
+    ; Load the current core ID and switch to that core's TSS rsp0.
     swapgs
-    mov ecx, dword [gs:0x18] ; read processor id from gsbase (zero-extend clears upper bits as well)
+    mov ecx, dword [gs:0x18] ; read processor id from this core's gsbase page (in KERNEL_GS_BASE)
     swapgs
+    mov edi, ecx ; first argument of cpu_scheduler_task_c(uint32_t curr_core)
     lea rdx, [rel tss_obj] ; load address of tss_obj into rdx
     imul rcx, rcx, 0x68 ; multiplies processor_id by size of tss_obj
     mov rsp, [rdx + rcx + 0x4]
