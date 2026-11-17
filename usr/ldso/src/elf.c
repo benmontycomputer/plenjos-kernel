@@ -124,6 +124,7 @@ int load_library_from_disk(const char *path, uint64_t *out_index) {
 
         if (res < 0) {
             syscall_print("load_library_from_disk: failed to map PT_LOAD segment from buffer\n");
+            syscall_print_ptr((uint64_t)res);
             // TODO: unmap previously mapped segments
             return res;
         }

@@ -2,6 +2,7 @@
 
 #include "arch/x86_64/apic/apic.h"
 #include "arch/x86_64/apic/ioapic.h"
+#include "arch/x86_64/common.h"
 #include "arch/x86_64/cpuid/cpuid.h"
 #include "arch/x86_64/gdt/tss.h"
 #include "arch/x86_64/idt.h"
@@ -246,13 +247,19 @@ int execute(const char *path, proc_t *proc) {
         thread->regs.rsi = LINKER_OFFS; // Linker base addr
         thread->regs.rdx = 0x400000ULL; // Shell binary base addr
 
-        asm volatile("cli");
+        bool interrupts = are_interrupts_enabled();
+        
+        if (interrupts) {
+            asm volatile("cli");
+        }
         lock_thread_rq();
 
         thread_ready(thread);
 
         unlock_thread_rq();
-        asm volatile("sti");
+        if (interrupts) {
+            asm volatile("sti");
+        }
 
         return 0;
     }
@@ -281,23 +288,22 @@ void process_exit(proc_t *proc) {
     while (thread) {
         next_thread = thread->next;
 
-        // Free stack
-        if (thread->stack_top) {
-            for (uint64_t i = 0; i < THREAD_MAX_STACK_SIZE; i += PAGE_LEN) {
-                uint64_t phys = get_physaddr((uint64_t)thread->stack_top - i, proc->pml4);
-                if (phys) {
-                    phys_mem_unref_frame(phys_addr_to_frame_struct(phys));
-                }
-            }
-        }
-        phys_mem_unref_frame(phys_addr_to_frame_struct(virt_to_phys((uint64_t)thread->base)));
-        phys_mem_unref_frame(phys_addr_to_frame_struct(virt_to_phys((uint64_t)thread)));
+        release_thread(thread);
 
         thread = next_thread;
     }
 
+    // TODO: IMPORTANT: free virtual memory
+
+    for (size_t i = 0; i < proc->fds_max; i++) {
+        if (proc->fds[i]) {
+            vfs_close(proc->fds[i]);
+        }
+    }
+
     // Unref page table
     free_page_table((pml4_t *)proc->pml4);
+    phys_mem_unref_frame(phys_addr_to_frame_struct(virt_to_phys((uint64_t)proc->cwd)));
 
     proc_t **link = proc->parent ? &proc->parent->first_child : NULL;
 

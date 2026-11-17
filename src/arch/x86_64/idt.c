@@ -30,6 +30,7 @@ __attribute__((aligned(0x10))) static idt_entry_t idt[256]; // Create an array o
 idtr_t idtr;
 
 extern void release_console();
+extern void request_console();
 extern int _printf_internal(const char *format, va_list list);
 
 static int kout_panic(kernel_msg_level_t msg_level, const char *format, ...) {
@@ -89,36 +90,6 @@ void gpf_handler(registers_t *regs) {
     kout_panic(KERNEL_PANIC, "Error Code: %p\n", regs->err_code);
     kout_panic(KERNEL_PANIC, "CS: %p, RIP : %p\n", regs->iret_cs, regs->iret_rip);
 
-    if ((regs->iret_cs & CS_MASK) == KERNEL_CS) {
-        kout_panic(KERNEL_PANIC, "Kernel mode GPF occurred at RIP: %p\n", regs->iret_rip);
-
-        uint64_t *rsp = (uint64_t *)regs->iret_rsp;
-        kout_panic(KERNEL_PANIC, "Stack (rsp = %p) Contents(First 26) :\n", (uint64_t)rsp);
-
-        for (int i = 0; i < 26; i++) {
-            kout_panic(KERNEL_PANIC, "  [%p] = %p\n", (uint64_t)(rsp + i), rsp[i]);
-        }
-    } else if ((regs->iret_cs & CS_MASK) == USER_CS) {
-        pml4_t *pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
-
-        kout_panic(KERNEL_PANIC, "User mode GPF occurred at RIP: %p\n", regs->iret_rip);
-
-        uint64_t *rsp = (uint64_t *)regs->iret_rsp;
-        kout_panic(KERNEL_PANIC, "Stack (rsp = %p) Contents(First 26) :\n", (uint64_t)rsp);
-
-        for (int i = 0; i < 26; i++) {
-            uint64_t stack_phys_addr = get_physaddr((uint64_t)(rsp + i), pml4);
-            if (stack_phys_addr == 0) {
-                kout_panic(KERNEL_PANIC, "  [%p] = Invalid Address\n", (uint64_t)(rsp + i));
-            } else {
-                kout_panic(KERNEL_PANIC, "  [%p] = %p\n", (uint64_t)(rsp + i),
-                     *(uint64_t *)phys_to_virt(stack_phys_addr));
-            }
-        }
-    } else {
-        kout_panic(KERNEL_PANIC, "GPF occurred in unknown segment: CS: %p\n", regs->iret_cs);
-    }
-
     // debug_error_code(regs->err_code);
     // kout_panic(KERNEL_PANIC, "System Halted!\n");
     // hcf();
@@ -169,7 +140,8 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
 
     uint64_t cr3 = get_cr3_addr();
 
-    kernel_msg_level_t msg_level = (regs->iret_cs == KERNEL_CS) ? KERNEL_PANIC : USER_FAULT;
+    bool is_user = (regs->iret_cs & CS_MASK) == USER_CS;
+    kernel_msg_level_t msg_level = (regs->iret_cs != USER_CS) ? KERNEL_PANIC : USER_FAULT;
 
     if (cr3 != kernel_pml4_phys) {
         set_cr3_addr(kernel_pml4_phys);
@@ -178,7 +150,22 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
         regs               = (registers_t *)phys_to_virt(regs_phys);
     }
 
-    release_console();
+    // release_console();
+
+    if (!is_user) {
+        stop_scheduler();
+    }
+
+    uint32_t curr_core = get_curr_core();
+
+    kout_panic(msg_level, "\nCORE %d", curr_core);
+
+    if (is_user && cores_threads[curr_core] && cores_threads[curr_core]->parent) {
+        kout_panic(msg_level, ", TID %d, PID %d", cores_threads[curr_core]->tid, cores_threads[curr_core]->parent->pid);
+    }
+
+    kout_panic(msg_level, ", CS %x", regs->iret_cs);
+    kout_panic(msg_level, ", CR3 %p:", cr3);
 
     if (regs->int_no == 14) {
         kout_panic(msg_level, "\nPAGE FAULT\n");
@@ -197,7 +184,35 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
         kout_panic(msg_level, "\nEXCEPTION %p\n", regs->int_no);
     }
 
-    if (regs->iret_cs == KERNEL_CS) {
+    if (!is_user) {
+        kout_panic(msg_level, "Kernel mode exception occurred at RIP: %p\n", regs->iret_rip);
+
+        uint64_t *rsp = (uint64_t *)regs->iret_rsp;
+        kout_panic(msg_level, "Stack (rsp = %p) Contents(First 26) :\n", (uint64_t)rsp);
+
+        for (int i = 0; i < 26; i++) {
+            kout_panic(msg_level, "  [%p] = %p\n", (uint64_t)(rsp + i), rsp[i]);
+        }
+    } else {
+        pml4_t *pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
+
+        kout_panic(msg_level, "User mode exception occurred at RIP: %p\n", regs->iret_rip);
+
+        uint64_t *rsp = (uint64_t *)regs->iret_rsp;
+        kout_panic(msg_level, "Stack (rsp = %p) Contents(First 26) :\n", (uint64_t)rsp);
+
+        for (int i = 0; i < 26; i++) {
+            uint64_t stack_phys_addr = get_physaddr((uint64_t)(rsp + i), pml4);
+            if (stack_phys_addr == 0) {
+                kout_panic(msg_level, "  [%p] = Invalid Address\n", (uint64_t)(rsp + i));
+            } else {
+                kout_panic(msg_level, "  [%p] = %p\n", (uint64_t)(rsp + i),
+                     *(uint64_t *)phys_to_virt(stack_phys_addr));
+            }
+        }
+    }
+
+    if (!is_user) {
         panic("Unrecoverable kernel exception! System halted!\n");
     } else {
         thread_t *thread = cores_threads[get_curr_core()];

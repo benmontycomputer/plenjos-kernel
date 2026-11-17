@@ -52,7 +52,7 @@ thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), vo
         if (!p) {
             kout(KERNEL_WARN, "create_thread(): couldn't allocate stack for thread (OOM?)\n");
             for (uint64_t j = 0; j < i; j += PAGE_LEN) {
-                free_virtual_memory((uint64_t)thread->stack_top - i - PAGE_LEN, proc->pml4);
+                free_virtual_memory((uint64_t)thread->stack_top - j - PAGE_LEN, proc->pml4);
             }
             fsa_free(&_thread_fsa, thread);
             return NULL;
@@ -120,4 +120,17 @@ void set_thread_state(thread_t *thread, proc_thread_state_t state) {
 
 void release_thread(thread_t *thread) {
     if (!thread) return;
+
+    // Free stack
+    if (thread->stack_top) {
+        for (uint64_t i = 0; i < THREAD_MAX_STACK_SIZE; i += PAGE_LEN) {
+            uint64_t phys = get_physaddr((uint64_t)thread->stack_top - i, thread->parent->pml4);
+            if (phys) {
+                phys_mem_unref_frame(phys_addr_to_frame_struct(phys));
+            }
+        }
+    }
+    phys_mem_unref_frame(phys_addr_to_frame_struct(virt_to_phys((uint64_t)thread->base)));
+
+    fsa_free(&_thread_fsa, thread);
 }

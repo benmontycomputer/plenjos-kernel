@@ -287,8 +287,8 @@ void syscall_routine(registers_t *regs, void *data) {
             kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stderr\n", res);
         }
 
-        // execute(path, proc);
-        process_exit(proc);
+        execute(path, proc);
+        regs->rax = proc->pid;
 
         break;
     }

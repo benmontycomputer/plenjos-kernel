@@ -91,7 +91,9 @@ cpu_scheduler_task:
     cli
 
     ; Load the current core ID from the per-core GS base and switch to that core's TSS rsp0.
+    swapgs
     mov ecx, dword [gs:0x18] ; read processor id from gsbase (zero-extend clears upper bits as well)
+    swapgs
     lea rdx, [rel tss_obj] ; load address of tss_obj into rdx
     imul rcx, rcx, 0x68 ; multiplies processor_id by size of tss_obj
     mov rsp, [rdx + rcx + 0x4]

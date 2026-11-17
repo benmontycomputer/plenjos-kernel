@@ -131,6 +131,10 @@ void thread_rq_add(thread_t *thread) {
 }
 
 void kill_process_threads(proc_t *proc) {
+    uint32_t cores_to_kill[MAX_CORES];
+    size_t cores_to_kill_count = 0;
+
+    lock_cores_threads();
     lock_thread_rq();
 
     thread_t *thread = proc->threads;
@@ -144,27 +148,35 @@ void kill_process_threads(proc_t *proc) {
 
     unlock_thread_rq();
 
-    lock_cores_threads();
-
     for (size_t i = 0; i < MAX_CORES; i++) {
         if (cores_threads[i] && (cores_threads[i]->parent == proc)) {
             cores_threads[i]->state = DEAD;
             cores_threads[i]        = NULL;
-            // We're currently running on this core, we need to switch to another thread
-            printf("Process exit called on core %d, switching to another thread...\n", i);
-
-            send_ipi(cpu_cores[i].lapic_id, IPI_WAKEUP_IRQ + 32); // IPI for kill
+            cores_to_kill[cores_to_kill_count++] = i;
         }
     }
 
     unlock_cores_threads();
+
+    for (size_t i = 0; i < cores_to_kill_count; i++) {
+        // The target core must be able to acquire cores_threads_lock in its IPI handler.
+        printf("Process exit called on core %d, switching to another thread...\n", cores_to_kill[i]);
+        send_ipi(cpu_cores[cores_to_kill[i]].lapic_id, IPI_KILL_IRQ + 32);
+    }
 }
 
 // NOTE: this just forces a schedule call; it does NOT update thread state
 void ipi_kill_routine(registers_t *regs, void *data) {
     uint32_t curr_core = get_curr_core();
-    kout(KERNEL_INFO, "Received kill IPI on core %d, halting...\n", curr_core);
+
     apic_send_eoi();
+
+    if (!cpu_cores[curr_core].online) {
+        asm volatile("cli");
+        hcf();
+    }
+
+    kout(KERNEL_INFO, "Received kill IPI on core %d, halting...\n", curr_core);
 
     lock_cores_threads();
 
@@ -195,6 +207,9 @@ void ipi_wakeup_routine(registers_t *regs, void *data) {
     if (cores_threads[curr_core]) {
         if (cores_threads[curr_core]->state == RUNNING) {
             cores_threads[curr_core]->state = READY;
+
+            memcpy(&cores_threads[curr_core]->regs, regs, sizeof(*regs));
+
             lock_thread_rq();
             thread_rq_add(cores_threads[curr_core]);
             unlock_thread_rq();
@@ -258,7 +273,11 @@ void cpu_scheduler_task_c() {
         kernel_task_func_t func = ktask_rq->func;
         void *arg               = ktask_rq->arg;
 
+
+        kernel_task_t *old = ktask_rq;
         ktask_rq = ktask_rq->rq_next;
+
+        fsa_free(&_ktask_fsa, old);
 
         unlock_ktask_rq();
 
