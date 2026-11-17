@@ -178,8 +178,8 @@ IRQ  16,    48      ; APIC Timer Interrupt
 IRQ  17,    49      ; HPET Timer Interrupt
 IRQ  18,    50      ; IPI (tlb shootdown)
 IRQ  19,    51      ; IPI (flush tlb)
-IRQ  20,    52      ; IPI (kill)
-IRQ  21,    53
+IRQ  20,    52      ; IPI (wakeup)
+IRQ  21,    53      ; IPI (kill)
 IRQ  22,    54
 IRQ  23,    55
 IRQ  24,    56
