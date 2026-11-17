@@ -233,6 +233,12 @@ void ipi_wakeup_routine(registers_t *regs, void *data) {
     }
 
     if (cores_threads[curr_core]) {
+        // Don't preempt kernel code
+        if ((regs->iret_cs & 3) == 0) {
+            unlock_cores_threads();
+            return;
+        }
+
         if (cores_threads[curr_core]->state == RUNNING) {
             cores_threads[curr_core]->state = READY;
 
