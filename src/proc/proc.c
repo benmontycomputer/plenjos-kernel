@@ -20,6 +20,14 @@
 
 #include <stdint.h>
 
+extern char __kernel_start[];
+extern char __kernel_end[];
+
+// Largest executable (or dynamic linker) we are willing to read into memory
+#define EXEC_MAX_FILE_SIZE (64ULL << 20)
+// Longest path we'll copy onto the new process's stack (it has to fit in the top stack page with the argv block)
+#define EXEC_MAX_PATH 2048
+
 volatile proc_t *pid_zero = NULL;
 
 volatile pid_t next_pid = 0;
@@ -27,7 +35,7 @@ volatile pid_t next_pid = 0;
 static fixed_size_allocator_t _proc_fsa = FSA_DEFAULT(sizeof(proc_t));
 
 proc_t *_get_proc_kernel() {
-    gsbase_t *gsbase = (gsbase_t *)read_msr(IA32_GS_BASE);
+    gsbase_t *gsbase = (gsbase_t *)read_msr(IA32_KERNEL_GS_BASE);
 
     if (!gsbase) {
         printf("Error: gsbase is NULL in _get_proc_kernel!\n");
@@ -83,21 +91,17 @@ proc_t *create_proc(const char *name, proc_t *parent) {
         proc->cwd[PATH_MAX - 1] = '\0';
     }
 
-    proc->pid = next_pid++;
-    if (proc->pid == 0) {
-        pid_zero = proc;
-    }
     proc->state   = READY;
     proc->threads = NULL;
 
-    // TODO: page table
-    proc->pml4 = (pml4_t *)phys_to_virt(find_next_free_frame());
-    if (!proc->pml4) {
-        kout(KERNEL_WARN, "Error allocating page table for proc %s (%lu) (OOM?)\n", proc->name, proc->pid);
+    uint64_t pml4_frame = find_next_free_frame();
+    if (!pml4_frame) {
+        kout(KERNEL_WARN, "Error allocating page table for proc %s (OOM?)\n", proc->name);
         phys_mem_unref_frame(phys_addr_to_frame_struct(cwd_frame));
         fsa_free(&_proc_fsa, proc);
         return NULL;
     }
+    proc->pml4 = (pml4_t *)phys_to_virt(pml4_frame);
     memset(proc->pml4, 0, PAGE_LEN);
 
     printf("proc pml4 virt: %p\n", proc->pml4);
@@ -110,7 +114,9 @@ proc_t *create_proc(const char *name, proc_t *parent) {
     }
 
     // TODO: only map the necessary regions (interrupt tables + stubs only?)
-    map_virtual_memory_using_alloc(kernel_load_phys, kernel_load_virt, 1 << 20 /* 2 MiB */,
+    map_virtual_memory_using_alloc(kernel_load_phys, kernel_load_virt,
+                                   ((uint64_t)__kernel_end - (uint64_t)__kernel_start + PAGE_LEN - 1)
+                                       & ~(uint64_t)(PAGE_LEN - 1),
                                    PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
     map_virtual_memory_using_alloc(virt_to_phys(IOAPIC_ADDR), IOAPIC_ADDR, 4096, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,
                                    alloc_paging_node, proc->pml4);
@@ -128,7 +134,19 @@ proc_t *create_proc(const char *name, proc_t *parent) {
     size_t fds_size = sizeof(vfs_handle_t *) * proc->fds_max;
 
     proc->fds = kmalloc_heap(fds_size);
+    if (!proc->fds) {
+        kout(KERNEL_WARN, "Error allocating fd table for proc %s (OOM?)\n", proc->name);
+        free_page_table((pml4_t *)proc->pml4);
+        phys_mem_unref_frame(phys_addr_to_frame_struct(cwd_frame));
+        fsa_free(&_proc_fsa, proc);
+        return NULL;
+    }
     memset((void *)proc->fds, 0, fds_size);
+
+    proc->pid = __atomic_fetch_add(&next_pid, 1, __ATOMIC_SEQ_CST);
+    if (proc->pid == 0) {
+        pid_zero = proc;
+    }
 
     if (parent) {
         // Insert this proc into the list
@@ -142,7 +160,8 @@ proc_t *create_proc(const char *name, proc_t *parent) {
     return proc;
 }
 
-void *linker_elf_buf = NULL;
+void *linker_elf_buf    = NULL;
+size_t linker_elf_size  = 0;
 
 void load_linker() {
     vfs_handle_t *ld_handle = NULL;
@@ -156,6 +175,7 @@ void load_linker() {
         if (!linker_elf_buf) {
             panic("OOM error allocating memory for elf buffer\n");
         }
+        linker_elf_size = file_size;
 
         linker_read_bytes = vfs_read(ld_handle, linker_elf_buf, file_size);
         vfs_close(ld_handle);
@@ -175,6 +195,14 @@ void stack_push_qword(uint64_t qword, uint64_t **rsp) {
 }
 
 int execute(const char *path, proc_t *proc) {
+    if (!proc || !path) {
+        return -EINVAL;
+    }
+
+    if (strlen(path) > EXEC_MAX_PATH) {
+        return -EINVAL;
+    }
+
     if (!linker_elf_buf) {
         load_linker();
     }
@@ -182,89 +210,106 @@ int execute(const char *path, proc_t *proc) {
     vfs_handle_t *ld_handle = NULL;
 
     int res = vfs_open(path, SYSCALL_OPEN_FLAG_READ, 0, 0, &ld_handle);
-    if (res == 0) {
-        uint64_t file_size = ld_handle->backing_node->stat.size;
-
-        uint64_t entry;
-        void *elf_buf = kmalloc_heap(file_size);
-        if (!elf_buf) {
-            return -ENOMEM;
-        }
-
-        ssize_t read_bytes = vfs_read(ld_handle, elf_buf, file_size);
-        vfs_close(ld_handle);
-        if (read_bytes < 0) {
-            return (int)read_bytes;
-        } else if ((uint64_t)read_bytes != file_size) {
-            return -EIO;
-        }
-
-        // Load the linker first
-        uint64_t linker_entry;
-        loadelf(linker_elf_buf, proc->pml4, &linker_entry, LINKER_OFFS);
-        // kfree_heap(linker_elf_buf);
-
-        // 0x7fff80000000ULL
-        loadelf(elf_buf, proc->pml4, &entry, 0x400000ULL);
-        kfree_heap(elf_buf);
-
-        thread_t *thread = create_thread(proc, path, (void *)linker_entry, NULL);
-
-        // Everything we are about to do fits in the top page of the stack.
-        uint64_t *rsp_og
-            = (uint64_t *)(phys_to_virt(get_physaddr((uint64_t)thread->stack_top - PAGE_LEN, proc->pml4)) + 0x1000);
-        uint64_t *rsp = rsp_og;
-
-        // First, setup the stack
-        const char *argv0 = path;
-        const char *argv1 = NULL;
-
-        const char *envp0 = NULL;
-
-        const uint64_t argc = 1;
-
-        size_t argv0_len = strlen(argv0) + 1;
-
-        // Push argv0 onto the stack (getting address aligned to 8 bytes)
-        uint64_t argv0_addr = ((uint64_t)(rsp)-argv0_len) & ~0x7ULL;
-        rsp                 = (uint64_t *)argv0_addr;
-        memcpy((void *)argv0_addr, argv0, argv0_len);
-
-        uint64_t str_usr_addr = (uint64_t)thread->stack_top - ((uint64_t)rsp_og - argv0_addr);
-
-        // Align the rsp to 16-bytes (we have even number of values left to push after this)
-        rsp = (uint64_t *)((uint64_t)(rsp) & ~0xF);
-
-        // Push envp0, argv1, argv0, argc onto the stack
-        stack_push_qword(0, &rsp);
-        stack_push_qword(0, &rsp);
-        stack_push_qword((uint64_t)str_usr_addr, &rsp);
-        stack_push_qword((uint64_t)argc, &rsp);
-
-        thread->regs.iret_rsp -= (uint64_t)rsp_og - (uint64_t)rsp;
-
-        thread->regs.rdi = thread->regs.iret_rsp;
-        thread->regs.rsi = LINKER_OFFS; // Linker base addr
-        thread->regs.rdx = 0x400000ULL; // Shell binary base addr
-
-        bool interrupts = are_interrupts_enabled();
-        
-        if (interrupts) {
-            asm volatile("cli");
-        }
-        lock_thread_rq();
-
-        thread_ready(thread);
-
-        unlock_thread_rq();
-        if (interrupts) {
-            asm volatile("sti");
-        }
-
-        return 0;
+    if (res != 0) {
+        return res;
     }
 
-    return res;
+    uint64_t file_size = ld_handle->backing_node->stat.size;
+    if (file_size < sizeof(ELF_header_t) || file_size > EXEC_MAX_FILE_SIZE) {
+        vfs_close(ld_handle);
+        return -ENOEXEC;
+    }
+
+    void *elf_buf = kmalloc_heap(file_size);
+    if (!elf_buf) {
+        vfs_close(ld_handle);
+        return -ENOMEM;
+    }
+
+    ssize_t read_bytes = vfs_read(ld_handle, elf_buf, file_size);
+    vfs_close(ld_handle);
+    if (read_bytes < 0) {
+        kfree_heap(elf_buf);
+        return (int)read_bytes;
+    } else if ((uint64_t)read_bytes != file_size) {
+        kfree_heap(elf_buf);
+        return -EIO;
+    }
+
+    // Load the linker first
+    uint64_t linker_entry;
+    res = loadelf(linker_elf_buf, linker_elf_size, proc->pml4, &linker_entry, LINKER_OFFS);
+    if (res) {
+        kfree_heap(elf_buf);
+        return res;
+    }
+
+    uint64_t entry;
+    res = loadelf(elf_buf, file_size, proc->pml4, &entry, 0x400000ULL);
+    kfree_heap(elf_buf);
+    if (res) {
+        return res;
+    }
+    thread_t *thread = create_thread(proc, path, (void *)linker_entry, NULL);
+    if (!thread) {
+        return -ENOMEM;
+    }
+
+    // Everything we are about to do fits in the top page of the stack.
+    uint64_t stack_top_phys = get_physaddr((uint64_t)thread->stack_top - PAGE_LEN, proc->pml4);
+    if (!stack_top_phys) {
+        return -ENOMEM;
+    }
+    uint64_t *rsp_og = (uint64_t *)(phys_to_virt(stack_top_phys) + 0x1000);
+    uint64_t *rsp = rsp_og;
+
+    // First, setup the stack
+    const char *argv0 = path;
+    const char *argv1 = NULL;
+
+    const char *envp0 = NULL;
+
+    const uint64_t argc = 1;
+
+    size_t argv0_len = strlen(argv0) + 1;
+
+    // Push argv0 onto the stack (getting address aligned to 8 bytes)
+    uint64_t argv0_addr = ((uint64_t)(rsp)-argv0_len) & ~0x7ULL;
+    rsp                 = (uint64_t *)argv0_addr;
+    memcpy((void *)argv0_addr, argv0, argv0_len);
+
+    uint64_t str_usr_addr = (uint64_t)thread->stack_top - ((uint64_t)rsp_og - argv0_addr);
+
+    // Align the rsp to 16-bytes (we have even number of values left to push after this)
+    rsp = (uint64_t *)((uint64_t)(rsp) & ~0xF);
+
+    // Push envp0, argv1, argv0, argc onto the stack
+    stack_push_qword(0, &rsp);
+    stack_push_qword(0, &rsp);
+    stack_push_qword((uint64_t)str_usr_addr, &rsp);
+    stack_push_qword((uint64_t)argc, &rsp);
+
+    thread->regs.iret_rsp -= (uint64_t)rsp_og - (uint64_t)rsp;
+
+    thread->regs.rdi = thread->regs.iret_rsp;
+    thread->regs.rsi = LINKER_OFFS; // Linker base addr
+    thread->regs.rdx = 0x400000ULL; // Shell binary base addr
+
+    bool interrupts = are_interrupts_enabled();
+    
+    if (interrupts) {
+        asm volatile("cli");
+    }
+    lock_thread_rq();
+
+    thread_ready(thread);
+
+    unlock_thread_rq();
+    if (interrupts) {
+        asm volatile("sti");
+    }
+
+    return 0;
 }
 
 void process_exit(proc_t *proc) {
@@ -300,6 +345,8 @@ void process_exit(proc_t *proc) {
             vfs_close(proc->fds[i]);
         }
     }
+    kfree_heap((void *)proc->fds);
+    proc->fds = NULL;
 
     // Unref page table
     free_page_table((pml4_t *)proc->pml4);
