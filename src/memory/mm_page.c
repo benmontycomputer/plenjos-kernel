@@ -97,7 +97,7 @@ page_t *find_page_using_alloc(uint64_t virt, bool autocreate, uint64_t *alloc_fu
 
     // int user = is_userspace(virt);
 
-    uint64_t flags = PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE | (user && PAGE_FLAG_USER);
+    uint64_t flags = PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE | (user ? PAGE_FLAG_USER : 0);
     // printf("%p %p\n", pml4_table, i_pml4);
 
     // Search for a page directory pointer table; create if not found
