@@ -271,24 +271,34 @@ void syscall_routine(registers_t *regs, void *data) {
         // loadelf(linker_elf_buf, shell_proc->pml4, &linker_entry, LINKER_OFFS);
 
         proc_t *proc = create_proc("spawn", init_proc);
+        if (!proc) {
+            kfree_heap((void *)path);
+            regs->rax = (uint64_t)(int64_t)-ENOMEM;
+            break;
+        }
 
         int res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_READ, 0, 0, &proc->fds[0]);
-        if (res) {
-            kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stdin\n", res);
+        if (!res) {
+            res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &proc->fds[1]);
+        }
+        if (!res) {
+            res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &proc->fds[2]);
+        }
+        if (!res) {
+            // The child may run and exit before execute() returns, so don't touch proc afterwards.
+            pid_t child_pid = proc->pid;
+            res             = execute(path, proc);
+            if (!res) {
+                kfree_heap((void *)path);
+                regs->rax = (uint64_t)child_pid;
+                break;
+            }
         }
 
-        res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &proc->fds[1]);
-        if (res) {
-            kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stdout\n", res);
-        }
-
-        res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &proc->fds[2]);
-        if (res) {
-            kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stderr\n", res);
-        }
-
-        execute(path, proc);
-        regs->rax = proc->pid;
+        kout(KERNEL_WARN, "spawn: failed to start %s (%d)\n", path, res);
+        process_exit(proc);
+        kfree_heap((void *)path);
+        regs->rax = (uint64_t)(int64_t)res;
 
         break;
     }
