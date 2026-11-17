@@ -49,6 +49,12 @@ static atomic_flag cores_threads_lock = ATOMIC_FLAG_INIT;
 static atomic_flag thread_rq_lock     = ATOMIC_FLAG_INIT;
 static atomic_flag ktask_rq_lock      = ATOMIC_FLAG_INIT;
 
+// Set by kill_process_threads() for a remote core that is still running
+static _Atomic bool kill_pending[MAX_CORES];
+
+// How long kill_process_threads() waits for a remote core to acknowledge before giving up and warning
+#define KILL_ACK_SPIN_LIMIT 200000000ULL
+
 void lock_cores_threads() {
     while (atomic_flag_test_and_set_explicit(&cores_threads_lock, __ATOMIC_ACQUIRE)) {
         // Wait
@@ -130,9 +136,12 @@ void thread_rq_add(thread_t *thread) {
     *link = thread;
 }
 
+// NOTE: caller must still call cpu_scheduler_task(); this function does not IPI the current core as the IPI would be received later on and interrupt something else.
 void kill_process_threads(proc_t *proc) {
     uint32_t cores_to_kill[MAX_CORES];
     size_t cores_to_kill_count = 0;
+
+    uint32_t curr_core = get_curr_core();
 
     lock_cores_threads();
     lock_thread_rq();
@@ -152,7 +161,11 @@ void kill_process_threads(proc_t *proc) {
         if (cores_threads[i] && (cores_threads[i]->parent == proc)) {
             cores_threads[i]->state = DEAD;
             cores_threads[i]        = NULL;
-            cores_to_kill[cores_to_kill_count++] = i;
+
+            if (i != curr_core) {
+                atomic_store_explicit(&kill_pending[i], true, __ATOMIC_RELEASE);
+                cores_to_kill[cores_to_kill_count++] = i;
+            }
         }
     }
 
@@ -160,40 +173,55 @@ void kill_process_threads(proc_t *proc) {
 
     for (size_t i = 0; i < cores_to_kill_count; i++) {
         // The target core must be able to acquire cores_threads_lock in its IPI handler.
-        printf("Process exit called on core %d, switching to another thread...\n", cores_to_kill[i]);
+        printf("Process exit called on core %d, switching core %d to another thread...\n", curr_core,
+               cores_to_kill[i]);
         send_ipi(cpu_cores[cores_to_kill[i]].lapic_id, IPI_KILL_IRQ + 32);
+    }
+
+    // Wait for the targeted cores to leave the dying threads
+    for (size_t i = 0; i < cores_to_kill_count; i++) {
+        uint64_t spins = 0;
+
+        while (atomic_load_explicit(&kill_pending[cores_to_kill[i]], __ATOMIC_ACQUIRE)) {
+            if (++spins > KILL_ACK_SPIN_LIMIT) {
+                printf("WARN: kill_process_threads(): core %d did not acknowledge the kill IPI in time; continuing "
+                       "anyway.\n",
+                       cores_to_kill[i]);
+                break;
+            }
+            __builtin_ia32_pause();
+        }
     }
 }
 
 // NOTE: this just forces a schedule call; it does NOT update thread state
+// It only does anything if kill_process_threads() flagged this core; otherwise it keeps running
 void ipi_kill_routine(registers_t *regs, void *data) {
     uint32_t curr_core = get_curr_core();
 
-    apic_send_eoi();
-
     if (!cpu_cores[curr_core].online) {
+        apic_send_eoi();
         asm volatile("cli");
         hcf();
     }
 
-    kout(KERNEL_INFO, "Received kill IPI on core %d, halting...\n", curr_core);
-
-    lock_cores_threads();
-
-    if (cores_threads[curr_core] == &ktask_thread_placeholder) {
-        unlock_cores_threads();
+    if (!atomic_load_explicit(&kill_pending[curr_core], __ATOMIC_ACQUIRE)) {
+        // irq_handler() sends the EOI when we return
         return;
     }
 
-    unlock_cores_threads();
+    kout(KERNEL_INFO, "Received kill IPI on core %d, switching to another thread...\n", curr_core);
 
+    // At this point, we won't ever return, so this must be sent.
+    apic_send_eoi();
+
+    // cpu_scheduler_task_c() resets this core's GS base and acknowledges the kill.
     cpu_scheduler_task();
 }
 
 // TODO: differentiate between wakeup and preempt? or change wakeup to preempt?
 void ipi_wakeup_routine(registers_t *regs, void *data) {
     // kout(KERNEL_INFO, "Received IPI wakeup on core %d\n", get_curr_core());
-    apic_send_eoi();
 
     lock_cores_threads();
 
@@ -218,6 +246,9 @@ void ipi_wakeup_routine(registers_t *regs, void *data) {
     }
 
     unlock_cores_threads();
+
+    // Won't return; have to send this
+    apic_send_eoi();
 
     cpu_scheduler_task();
 }
@@ -260,8 +291,10 @@ __attribute__((noreturn)) //
 extern void _finalize_task_switch(registers_t *regs);
 
 __attribute__((noreturn)) //
-void cpu_scheduler_task_c() {
-    uint32_t curr_core = get_curr_core();
+void cpu_scheduler_task_c(uint32_t curr_core) {
+    // Clear the core's current process and tell kill_process_threads() that this core has left the old thread.
+    cpu_cores[curr_core].kernel_gs_base->proc = 0;
+    atomic_store_explicit(&kill_pending[curr_core], false, __ATOMIC_RELEASE);
 
     if (!cpu_cores[curr_core].online) {
         hcf();
@@ -303,17 +336,20 @@ void cpu_scheduler_task_c() {
         unlock_ktask_rq();
     }
 
+    // Pick the thread and mark it RUNNING under the lock, and keep using the local copy afterwards. Otherwise a
+    // concurrent kill_process_threads() could mark it DEAD and clear cores_threads[] between the unlock and our
+    // write, and we would overwrite DEAD with RUNNING and resume a thread that is being freed.
     lock_cores_threads();
     lock_thread_rq();
-    cores_threads[curr_core] = thread_rq_pop();
+    thread_t *thread         = thread_rq_pop();
+    cores_threads[curr_core] = thread;
+    if (thread) {
+        thread->state = RUNNING;
+    }
     unlock_thread_rq();
     unlock_cores_threads();
 
-    thread_t *thread = cores_threads[curr_core];
-
     if (thread) {
-        thread->state = RUNNING;
-
         printf("Starting thread %p on core %d\n", thread->tid, curr_core);
         // The thread's regs are the first item in the struct
         // Check if kernel page table needs to be flushed
@@ -321,19 +357,20 @@ void cpu_scheduler_task_c() {
             ipi_tlb_flush_routine(NULL, NULL);
         }
 
-        thread->base->processor_id     = get_curr_core();
+        thread->base->processor_id     = curr_core;
         thread->base->stack            = (uint64_t)thread->regs.iret_rsp;
         thread->base->cr3              = virt_to_phys((uint64_t)thread->parent->pml4) & ~0xFFF;
         thread->base->proc             = (uint64_t)thread->parent;
         thread->base->kernel_pml4_phys = (uint64_t)kernel_pml4_phys;
 
-        // The thread's regs are the first item in the struct
-        printf("Thread info: regs addr %p, regs phys addr %p %p, stack %p, base %p, base proc %p\n", &thread->regs,
-               get_physaddr((uint64_t)&thread->regs, thread->parent->pml4),
-               get_physaddr((uint64_t)&thread->regs, kernel_pml4), thread->regs.iret_rsp, thread->base,
-               thread->base->proc);
+        // For syscalls
+        cpu_cores[curr_core].kernel_gs_base->proc = (uint64_t)thread->parent;
 
-        // write_msr(IA32_KERNEL_GS_BASE, (uint64_t)thread->base);
+        // The thread's regs are the first item in the struct
+        printf("Thread info: regs addr %p, regs phys addr %p %p, stack %p, proc %p\n", &thread->regs,
+               get_physaddr((uint64_t)&thread->regs, thread->parent->pml4),
+               get_physaddr((uint64_t)&thread->regs, kernel_pml4), thread->regs.iret_rsp, thread->parent);
+
         write_msr(IA32_GS_BASE, (uint64_t)thread->base);
 
         _finalize_task_switch((registers_t *)&thread->regs);
