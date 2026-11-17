@@ -1,9 +1,11 @@
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "memory/mm_common.h"
 
+#define PT_LOAD    1
 #define PT_DYNAMIC 2
 
 typedef struct ELF_dyn {
@@ -57,4 +59,4 @@ struct ELF_program_header {
 typedef struct ELF_header ELF_header_t;
 typedef struct ELF_program_header ELF_program_header_t;
 
-void loadelf(void *elf_base, pml4_t *pml4, uint64_t *entry_out, uint64_t voffs_if_pic);
+int loadelf(void *elf_base, size_t elf_size, pml4_t *pml4, uint64_t *entry_out, uint64_t voffs_if_pic);
