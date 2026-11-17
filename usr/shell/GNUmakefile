@@ -3,7 +3,6 @@ FILE_NAME = user_shell
 
 override OUTPUT = init
 
-
 # ====== Compiler & Linker ======
 # GCC = /usr/local/x86_64-elf/bin/x86_64-elf-gcc
 CC = $(TOOLCHAIN_PREFIX)gcc
@@ -37,12 +36,14 @@ override CFILES := $(filter %.c,$(SRCFILES))
 override ASFILES := $(filter %.S,$(SRCFILES))
 override NASMFILES := $(filter %.asm,$(SRCFILES))
 override PSFFILES := $(filter %.psf,$(SRCFILES))
+override TETRIS_CFILES := apps/tetris/tetris.c apps/tetris/main.c
+override TETRIS_OBJ := $(addprefix obj/,$(TETRIS_CFILES:.c=.c.o))
 override OBJ := $(addprefix obj/,$(CFILES:.c=.c.o) $(ASFILES:.S=.S.o) $(NASMFILES:.asm=.asm.o) $(PSFFILES:.psf=.psf.o))
 override HEADER_DEPS := $(addprefix obj/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d))
 
 # Default target. This must come first, before header dependencies.
 .PHONY: all
-all: bin/$(OUTPUT)
+all: bin/$(OUTPUT) bin/tetris
 
 # Include header dependencies.
 -include $(HEADER_DEPS)
@@ -51,6 +52,10 @@ all: bin/$(OUTPUT)
 bin/$(OUTPUT): GNUmakefile linker.lds $(OBJ)
 	mkdir -p "$$(dirname $@)"
 	$(CC) $(OBJ) $(CFLAGS) $(LDFLAGS) -o $@
+
+bin/tetris: GNUmakefile linker.lds $(TETRIS_OBJ)
+	mkdir -p "$$(dirname $@)"
+	$(CC) $(TETRIS_OBJ) $(CFLAGS) $(LDFLAGS) -o $@
 
 # Compilation rules for *.c files.
 obj/%.c.o: %.c GNUmakefile

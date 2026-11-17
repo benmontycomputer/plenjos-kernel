@@ -642,6 +642,11 @@ ssize_t fat32_file_read_func(vfs_handle_t *handle, void *buf, size_t buf_len) {
         cluster = handle_data->current_cluster;
     }
 
+    if (handle_data->seek_pos > node_data->dir_entry->file_size) {
+        // Prevent underflow on subtraction later
+        return 0;
+    }
+
     size_t len = buf_len;
     if (len + handle_data->seek_pos > node_data->dir_entry->file_size) {
         len = node_data->dir_entry->file_size - handle_data->seek_pos;
@@ -693,12 +698,12 @@ ssize_t fat32_file_read_func(vfs_handle_t *handle, void *buf, size_t buf_len) {
             size_t to_copy = bytes_per_cluster;
             if (res + to_copy > len) {
                 to_copy = len - res;
-                memcpy(buf + res, cluster_buf, to_copy);
+                memcpy((uint8_t *)buf + res, cluster_buf, to_copy);
                 handle_data->pos_in_cluster += to_copy;
                 res = len;
                 goto cleanup;
             }
-            memcpy(buf + res, cluster_buf, to_copy);
+            memcpy((uint8_t *)buf + res, cluster_buf, to_copy);
             res += to_copy;
         }
 

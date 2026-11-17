@@ -3,11 +3,11 @@
 #include "arch/x86_64/apic/apic.h"
 #include "arch/x86_64/apic/ioapic.h"
 #include "arch/x86_64/cpuid/cpuid.h"
-#include "arch/x86_64/gdt/gdt.h"
 #include "arch/x86_64/gdt/tss.h"
 #include "arch/x86_64/idt.h"
 #include "arch/x86_64/irq.h"
 #include "cpu/cpu.h"
+#include "exec/elf.h"
 #include "lib/special_mem/fixed_size_allocator.h"
 #include "lib/stdio.h"
 #include "lib/string.h"
@@ -15,6 +15,7 @@
 #include "memory/mm.h"
 #include "proc/scheduler.h"
 #include "proc/thread.h"
+#include "vfs/fscache.h"
 
 #include <stdint.h>
 
@@ -68,7 +69,6 @@ proc_t *create_proc(const char *name, proc_t *parent) {
     }
 
     proc->first_child  = NULL;
-    proc->prev_sibling = NULL;
     proc->next_sibling = NULL;
     proc->parent       = parent;
 
@@ -132,14 +132,132 @@ proc_t *create_proc(const char *name, proc_t *parent) {
     if (parent) {
         // Insert this proc into the list
         if (parent->first_child) {
-            proc->next_sibling                = parent->first_child;
-            parent->first_child->prev_sibling = proc;
+            proc->next_sibling = parent->first_child;
         }
 
         parent->first_child = proc;
     }
 
     return proc;
+}
+
+void *linker_elf_buf = NULL;
+
+void load_linker() {
+    vfs_handle_t *ld_handle = NULL;
+    int res                 = vfs_open("/lib/ld.so", SYSCALL_OPEN_FLAG_READ, 0, 0, &ld_handle);
+    ssize_t linker_read_bytes;
+    if (res == 0) {
+        kout(KERNEL_INFO, "Loading ld.so...\n\n");
+        uint64_t file_size = ld_handle->backing_node->stat.size;
+
+        linker_elf_buf = kmalloc_heap(file_size);
+        if (!linker_elf_buf) {
+            panic("OOM error allocating memory for elf buffer\n");
+        }
+
+        linker_read_bytes = vfs_read(ld_handle, linker_elf_buf, file_size);
+        vfs_close(ld_handle);
+        if (linker_read_bytes < 0) {
+            panic("Error reading /lib/ld.so: %d\n", (int)linker_read_bytes);
+        } else if ((uint64_t)linker_read_bytes != file_size) {
+            panic("Short read reading /lib/ld.so: expected %p, got %p\n", (void *)file_size, (void *)linker_read_bytes);
+        }
+    } else {
+        panic("Error opening /lib/ld.so: %d\n", res);
+    }
+}
+
+void stack_push_qword(uint64_t qword, uint64_t **rsp) {
+    *rsp  = (uint64_t *)((uint8_t *)(*rsp) - sizeof(uint64_t));
+    **rsp = qword;
+}
+
+int execute(const char *path, proc_t *proc) {
+    if (!linker_elf_buf) {
+        load_linker();
+    }
+
+    vfs_handle_t *ld_handle = NULL;
+
+    int res = vfs_open(path, SYSCALL_OPEN_FLAG_READ, 0, 0, &ld_handle);
+    if (res == 0) {
+        uint64_t file_size = ld_handle->backing_node->stat.size;
+
+        uint64_t entry;
+        void *elf_buf = kmalloc_heap(file_size);
+        if (!elf_buf) {
+            return -ENOMEM;
+        }
+
+        ssize_t read_bytes = vfs_read(ld_handle, elf_buf, file_size);
+        vfs_close(ld_handle);
+        if (read_bytes < 0) {
+            return (int)read_bytes;
+        } else if ((uint64_t)read_bytes != file_size) {
+            return -EIO;
+        }
+
+        // Load the linker first
+        uint64_t linker_entry;
+        loadelf(linker_elf_buf, proc->pml4, &linker_entry, LINKER_OFFS);
+        // kfree_heap(linker_elf_buf);
+
+        // 0x7fff80000000ULL
+        loadelf(elf_buf, proc->pml4, &entry, 0x400000ULL);
+        kfree_heap(elf_buf);
+
+        thread_t *thread = create_thread(proc, path, (void *)linker_entry, NULL);
+
+        // Everything we are about to do fits in the top page of the stack.
+        uint64_t *rsp_og
+            = (uint64_t *)(phys_to_virt(get_physaddr((uint64_t)thread->stack_top - PAGE_LEN, proc->pml4)) + 0x1000);
+        uint64_t *rsp = rsp_og;
+
+        // First, setup the stack
+        const char *argv0 = path;
+        const char *argv1 = NULL;
+
+        const char *envp0 = NULL;
+
+        const uint64_t argc = 1;
+
+        size_t argv0_len = strlen(argv0) + 1;
+
+        // Push argv0 onto the stack (getting address aligned to 8 bytes)
+        uint64_t argv0_addr = ((uint64_t)(rsp)-argv0_len) & ~0x7ULL;
+        rsp                 = (uint64_t *)argv0_addr;
+        memcpy((void *)argv0_addr, argv0, argv0_len);
+
+        uint64_t str_usr_addr = (uint64_t)thread->stack_top - ((uint64_t)rsp_og - argv0_addr);
+
+        // Align the rsp to 16-bytes (we have even number of values left to push after this)
+        rsp = (uint64_t *)((uint64_t)(rsp) & ~0xF);
+
+        // Push envp0, argv1, argv0, argc onto the stack
+        stack_push_qword(0, &rsp);
+        stack_push_qword(0, &rsp);
+        stack_push_qword((uint64_t)str_usr_addr, &rsp);
+        stack_push_qword((uint64_t)argc, &rsp);
+
+        thread->regs.iret_rsp -= (uint64_t)rsp_og - (uint64_t)rsp;
+
+        thread->regs.rdi = thread->regs.iret_rsp;
+        thread->regs.rsi = LINKER_OFFS; // Linker base addr
+        thread->regs.rdx = 0x400000ULL; // Shell binary base addr
+
+        asm volatile("cli");
+        lock_thread_rq();
+
+        thread_ready(thread);
+
+        unlock_thread_rq();
+        asm volatile("sti");
+
+        return 0;
+    }
+
+    return res;
 }
 
 void process_exit(proc_t *proc) {
@@ -154,22 +272,7 @@ void process_exit(proc_t *proc) {
         process_exit(proc->first_child);
     }
 
-    lock_ready_threads();
-
-    for (size_t i = 0; i < MAX_CORES; i++) {
-        if (cores_threads[i] && (cores_threads[i]->parent == proc)) {
-            if (cores_threads[i]->state == RUNNING) {
-                // We're currently running on this core, we need to switch to another thread
-                printf("Process exit called on core %d, switching to another thread...\n", i);
-                send_ipi(cpu_cores[i].lapic_id, IPI_KILL_IRQ + 32); // IPI for kill
-            }
-
-            // This core is running a thread from this process, stop it
-            cores_threads[i]->state  = ASLEEP;
-            cores_threads[i]         = NULL;
-            cpu_cores[i].status     &= ~1;
-        }
-    }
+    kill_process_threads(proc);
 
     // Free all threads
     thread_t *thread = (thread_t *)proc->threads;
@@ -193,34 +296,23 @@ void process_exit(proc_t *proc) {
         thread = next_thread;
     }
 
-    unlock_ready_threads();
-
     // Unref page table
     free_page_table((pml4_t *)proc->pml4);
 
-    proc_t *tmp = proc->parent ? proc->parent->first_child : NULL;
+    proc_t **link = proc->parent ? &proc->parent->first_child : NULL;
 
-    while (tmp) {
-        if (tmp == proc) {
-            if (tmp->prev_sibling) {
-                tmp->prev_sibling->next_sibling = tmp->next_sibling;
-            }
-
-            if (tmp->next_sibling) {
-                tmp->next_sibling->prev_sibling = tmp->prev_sibling;
-            }
-
-            break;
-        }
-        tmp = tmp->next_sibling;
+    while (*link && *link != proc) {
+        link = &((*link)->next_sibling);
     }
 
-    if (!tmp) {
-        printf("ERROR: when destroying process %lu (%s), we couldn't find it in it's parent's processes!\n", proc->pid,
-               proc->name);
+    if (!*link) {
+        kout(KERNEL_PANIC, "ERROR: when destroying process %lu (%s), we couldn't find it in it's parent's processes!\n",
+             proc->pid, proc->name);
+    } else {
+        *link = proc->next_sibling;
     }
 
-    phys_mem_unref_frame(phys_addr_to_frame_struct(virt_to_phys((uint64_t)proc)));
+    fsa_free(&_proc_fsa, proc);
 }
 
 vfs_handle_t *proc_get_fd(proc_t *proc, int fd) {

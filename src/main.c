@@ -138,11 +138,6 @@ int memcmp(const void *s1, const void *s2, size_t n) {
     return 0;
 }
 
-void stack_push_qword(uint64_t qword, uint64_t **rsp) {
-    *rsp  = (uint64_t *)((uint8_t *)(*rsp) - sizeof(uint64_t));
-    **rsp = qword;
-}
-
 // Halt and catch fire function.
 __attribute__((noreturn)) //
 void hcf(void) {
@@ -153,10 +148,11 @@ void hcf(void) {
 
 _Noreturn void panic_nomsg() {
     /* TODO: halt all threads */
+    stop_scheduler();
     hcf();
 }
 
-void *linker_elf_buf = NULL;
+proc_t *init_proc;
 
 // The following will be our kernel's entry point.
 // If renaming kmain() to something else, make sure to change the
@@ -220,7 +216,7 @@ void kmain(void) {
 
     clear();
 
-    vfs_handle_t *ld_handle = NULL;
+    /* vfs_handle_t *ld_handle = NULL;
     int res                 = vfs_open("/lib/ld.so", SYSCALL_OPEN_FLAG_READ, 0, 0, &ld_handle);
     ssize_t linker_read_bytes;
     if (res == 0) {
@@ -244,6 +240,9 @@ void kmain(void) {
     }
 
     // ld_handle has already been closed
+
+    asm volatile("cli");
+    lock_thread_rq();
 
     res = vfs_open("/bin/init", SYSCALL_OPEN_FLAG_READ, 0, 0, &ld_handle);
     if (res == 0) {
@@ -355,6 +354,28 @@ void kmain(void) {
             thread_ready(shell_thread);
         }
     }
+
+    unlock_thread_rq();
+    asm volatile("sti"); */
+
+    init_proc = create_proc("init", NULL);
+
+    int res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_READ, 0, 0, &init_proc->fds[0]);
+    if (res) {
+        kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stdin\n", res);
+    }
+
+    res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &init_proc->fds[1]);
+    if (res) {
+        kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stdout\n", res);
+    }
+
+    res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &init_proc->fds[2]);
+    if (res) {
+        kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stderr\n", res);
+    }
+
+    execute("/bin/init", init_proc);
 
     start_scheduler();
 

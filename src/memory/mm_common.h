@@ -113,10 +113,9 @@ typedef struct mm {
 typedef struct vm_area vm_area_t;
 
 struct vm_area {
-    void *start;
-    void *end;
+    ptr_t start;
+    ptr_t end;
 
-    vm_area_t *prev, *next;
     rbnode_t node;
 
     mm_t *mm;

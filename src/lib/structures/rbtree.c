@@ -239,3 +239,19 @@ int rbtree_remove(rbtree_t *tree, rbnode_t *remove) {
 
     return 0;
 }
+
+rbnode_t *rbtree_find(rbtree_t *tree, rbnode_t *comparable_node) {
+    return (rbnode_t *)bstree_find_comparable((bstree_t *)tree, (bstnode_t *)comparable_node);
+}
+
+rbnode_t *rbtree_find_or_closest_predecessor(rbtree_t *tree, rbnode_t *comparable_node) {
+    return (rbnode_t *)bstree_find_comparable_or_closest_predecessor((bstree_t *)tree, (bstnode_t *)comparable_node);
+}
+
+rbnode_t *rbtree_find_min(rbtree_t *tree) {
+    return (rbnode_t *)bstree_find_min((bstree_t *)tree);
+}
+
+rbnode_t *rbtree_find_max(rbtree_t *tree) {
+    return (rbnode_t *)bstree_find_max((bstree_t *)tree);
+}

@@ -41,9 +41,8 @@ struct proc {
     int fds_max;
     vfs_handle_t **fds;
 
-    volatile proc_t *first_child;
-    volatile proc_t *prev_sibling;
-    volatile proc_t *next_sibling;
+    proc_t *first_child;
+    proc_t *next_sibling;
 
     _Atomic(pid_t) next_thread_index;
 
@@ -62,3 +61,5 @@ proc_t *_get_proc_kernel();
 vfs_handle_t *proc_get_fd(proc_t *proc, int fd);
 int proc_alloc_fd(proc_t *proc, vfs_handle_t *handle);
 void proc_free_fd(proc_t *proc, int fd);
+
+int execute(const char *path, proc_t *proc);

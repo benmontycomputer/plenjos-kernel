@@ -38,7 +38,11 @@ static gsbase_t *new_kernel_gs_base(uint32_t processor_id) {
 
     base->proc             = (uint64_t)NULL;
     base->cr3              = kernel_pml4_phys;
-    base->stack            = TSS_STACK_ADDR;
+
+    // This should NEVER be read from the kernel gs_base; the stack field is only for threads' gs_base.
+    // If rsp is set to 0, any push will lead to a GPF and a pop would page fault as 0 is unmapped.
+    base->stack            = 0;
+
     base->processor_id     = processor_id;
     base->kernel_pml4_phys = (uint64_t)kernel_pml4_phys;
 
@@ -78,27 +82,6 @@ void ipi_tlb_flush_routine(registers_t *regs, void *data) {
     // Write the value of CR3 back to itself, which will flush the TLB
     asm volatile("mov %0, %%cr3" : : "r"(cr3) : "memory");
     // apic_send_eoi();
-}
-
-void ipi_kill_routine(registers_t *regs, void *data) {
-    kout(KERNEL_INFO, "Received kill IPI on core %d, halting...\n", get_curr_core());
-
-    // TODO: actually kill the thread and go to the right address
-    /* regs->iret_rip = (uint64_t)cpu_scheduler_task;
-    regs->iret_cs = KERNEL_CS;
-    regs->iret_ss = KERNEL_DS;
-    regs->ds = KERNEL_DS;
-    regs->es = KERNEL_DS;
-    regs->fs = KERNEL_DS;
-    regs->gs = KERNEL_DS;
-    regs->iret_rsp = TSS_STACK_ADDR; */
-    apic_send_eoi();
-    cpu_scheduler_task();
-}
-
-void ipi_wakeup_routine(registers_t *regs, void *data) {
-    // kout(KERNEL_INFO, "Received IPI wakeup on core %d\n", get_curr_core());
-    apic_send_eoi();
 }
 
 void setup_other_core(struct limine_mp_info *mp_info) {

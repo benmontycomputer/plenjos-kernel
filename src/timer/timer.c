@@ -1,7 +1,10 @@
 #include "timer.h"
 
+#include "arch/x86_64/apic/ioapic.h"
+#include "arch/x86_64/common.h"
 #include "hpet.h"
 #include "lib/stdio.h"
+#include "memory/kmalloc.h"
 #include "pit.h"
 
 #include <stdatomic.h>
@@ -13,8 +16,8 @@ int set_core_wakeup_timeout(uint64_t milliseconds, uint32_t core_id, uint64_t *s
         uint64_t expected = 0;
         if (atomic_compare_exchange_strong(&(timer_timeouts[i].milliseconds), &expected, UINT64_MAX)) {
             timer_timeouts[i].start_time = pit_count;
-            timer_timeouts[i].callback = NULL;
-            timer_timeouts[i].core_id  = core_id;
+            timer_timeouts[i].callback   = NULL;
+            timer_timeouts[i].core_id    = core_id;
             atomic_store(&(timer_timeouts[i].milliseconds), milliseconds);
             if (started_at_out) {
                 *started_at_out = timer_timeouts[i].start_time;
@@ -57,16 +60,40 @@ uint64_t ksleep_nonblocking_ms(uint64_t milliseconds, uint32_t priority) {
         return milliseconds;
     } else {
         uint64_t end = 0;
-        int res = set_core_wakeup_timeout(milliseconds, curr_core, &end);
+        int res      = set_core_wakeup_timeout(milliseconds, curr_core, &end);
         if (res < 0) {
-            printf("WARN: ksleep_nonblocking_ms: couldn't set core wakeup timeout! Falling back to power-intensive sleeping methods.\n");
+            printf("WARN: ksleep_nonblocking_ms: couldn't set core wakeup timeout! Falling back to power-intensive "
+                   "sleeping methods.\n");
             pit_sleep_nohlt(milliseconds);
             return milliseconds;
         }
         end += milliseconds;
+
+        /* bool interrupts_were_enabled = are_interrupts_enabled();
+        uint32_t *prev_low_dwords    = NULL;
+        if (!interrupts_were_enabled) {
+            prev_low_dwords = (uint32_t *)kmalloc_heap(sizeof(uint32_t) * 128);
+            if (!prev_low_dwords) {
+                kout(KERNEL_SEVERE_FAULT, "OOM Error: unable to allocate memory for timer masks backup\n");
+                return -1;
+            }
+            ioapic_mask_all_except(2, prev_low_dwords, 128);
+
+            asm volatile("sti");
+        } */
+
         while (pit_count < end) {
             asm volatile("hlt");
         }
+
+        /* if (interrupts_were_enabled == 0) {
+            asm volatile("cli");
+        }
+
+        if (prev_low_dwords) {
+            ioapic_restore_masks(prev_low_dwords, 128);
+            kfree_heap(prev_low_dwords);
+        } */
 
         return (pit_count - end + milliseconds);
     }

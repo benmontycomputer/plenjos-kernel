@@ -91,8 +91,6 @@ void draw_terminal_window() {
     // kputs("Terminal", win_x + 80, win_y + 8);
 }
 
-extern void tetris_main();
-
 void add_to_cmd_history(const char *cmd) {
     // Update cmd history
     if (cmd_history_count < 40) {
@@ -127,7 +125,8 @@ static bool process_cmd(const char *cmd) {
         printf("  help           - Show this help message\n");
         printf("  exit           - Exit the shell\n");
     } else if (!strcmp(toks[0], "tetris")) {
-        tetris_main();
+        char *argv[] = {"/bin/tetris", NULL};
+        syscall_spawn("/bin/tetris", argv, NULL, 1, 0);
         clear();
     } else if (!strcmp(toks[0], "exit")) {
         printf("Exiting shell...\n");

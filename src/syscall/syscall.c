@@ -12,6 +12,7 @@
 #include "plenjos/errno.h"
 #include "plenjos/syscall.h"
 #include "proc/proc.h"
+#include "proc/scheduler.h"
 #include "syscall/fs/syscall_fs.h"
 #include "syscall/mem/memmap.h"
 #include "syscall/syscall_helpers.h"
@@ -259,7 +260,7 @@ void syscall_routine(registers_t *regs, void *data) {
     }
     case SYSCALL_SPAWN: {
         const char *path = NULL;
-        regs->rax = handle_string_arg(current_pml4, regs->rbx, &path);
+        regs->rax        = handle_string_arg(current_pml4, regs->rbx, &path);
 
         if (!path) {
             break;
@@ -268,6 +269,26 @@ void syscall_routine(registers_t *regs, void *data) {
         // TODO: argc, argv, envp and envc
 
         // loadelf(linker_elf_buf, shell_proc->pml4, &linker_entry, LINKER_OFFS);
+
+        proc_t *proc = create_proc("spawn", init_proc);
+
+        int res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_READ, 0, 0, &proc->fds[0]);
+        if (res) {
+            kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stdin\n", res);
+        }
+
+        res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &proc->fds[1]);
+        if (res) {
+            kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stdout\n", res);
+        }
+
+        res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &proc->fds[2]);
+        if (res) {
+            kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stderr\n", res);
+        }
+
+        // execute(path, proc);
+        process_exit(proc);
 
         break;
     }

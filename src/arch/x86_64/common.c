@@ -11,6 +11,7 @@
 #include "cpu/cpu.h"
 #include "lib/stdio.h"
 #include "memory/detect.h"
+#include "proc/scheduler.h"
 #include "timer/hpet.h"
 #include "timer/pit.h"
 

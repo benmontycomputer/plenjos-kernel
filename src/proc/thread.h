@@ -32,6 +32,8 @@ struct thread {
     
     rbnode_t scheduler_node;
     uint64_t scheduler_prio;
+
+    thread_t *rq_next;
 } __attribute__((packed));
 
 thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), void *arg);

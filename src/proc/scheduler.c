@@ -1,10 +1,12 @@
 #include "proc/scheduler.h"
 
 #include "arch/x86_64/apic/apic.h"
+#include "arch/x86_64/apic/ioapic.h"
 #include "arch/x86_64/common.h"
 #include "arch/x86_64/cpuid/cpuid.h"
 #include "arch/x86_64/irq.h"
 #include "cpu/cpu.h"
+#include "lib/special_mem/fixed_size_allocator.h"
 #include "lib/stdio.h"
 #include "memory/mm.h"
 #include "proc/proc.h"
@@ -21,56 +23,191 @@
  * leading to corruption as RSP is switched but push/pop could interfere with the other process' stack. Each kernel task
  * should have its own stack if it can alternate time with another. */
 
-typedef struct {
+/**
+ * Note: most of these function should not be called with interrupts enabled.
+ */
+
+typedef struct kernel_task kernel_task_t;
+
+struct kernel_task {
     _Atomic(kernel_task_func_t) func;
     void *arg;
-} kernel_task_t;
 
-volatile thread_t *volatile ready_threads      = NULL;
-volatile thread_t *volatile ready_threads_last = NULL;
+    kernel_task_t *rq_next;
+};
 
-volatile thread_t *volatile cores_threads[MAX_CORES] = { 0 };
+fixed_size_allocator_t _ktask_fsa = FSA_DEFAULT(sizeof(kernel_task_t));
 
-volatile kernel_task_t volatile ready_kernel_tasks[MAX_KERNEL_TASKS] = { 0 };
+thread_t *cores_threads[MAX_CORES] = { 0 };
 
-// TODO: make this a ring buffer
-static volatile size_t ready_kernel_tasks_head = 0ULL;
-static volatile size_t ready_kernel_tasks_tail = 0ULL;
-static atomic_flag kernel_tasks_lock_atomic    = ATOMIC_FLAG_INIT;
+static thread_t ktask_thread_placeholder = { 0 };
 
-// static _Atomic(uint32_t) ready_threads_lock = (uint32_t)-1;
-static atomic_flag ready_threads_locked_atomic = ATOMIC_FLAG_INIT;
+thread_t *thread_rq     = NULL;
+kernel_task_t *ktask_rq = NULL;
 
-uint32_t lock_ready_threads() {
-    /* for (;;) {
-        atomic
-        if (ready_threads_lock == (uint32_t)-1) {
-            ready_threads_lock = get_curr_core();
-            return ready_threads_lock;
+static atomic_flag cores_threads_lock = ATOMIC_FLAG_INIT;
+static atomic_flag thread_rq_lock     = ATOMIC_FLAG_INIT;
+static atomic_flag ktask_rq_lock      = ATOMIC_FLAG_INIT;
+
+void lock_cores_threads() {
+    while (atomic_flag_test_and_set_explicit(&cores_threads_lock, __ATOMIC_ACQUIRE)) {
+        // Wait
+        __builtin_ia32_pause();
+    }
+}
+
+void unlock_cores_threads() {
+    atomic_flag_clear_explicit(&cores_threads_lock, __ATOMIC_RELEASE);
+}
+
+void lock_thread_rq() {
+    while (atomic_flag_test_and_set_explicit(&thread_rq_lock, __ATOMIC_ACQUIRE)) {
+        // Wait
+        __builtin_ia32_pause();
+    }
+}
+
+void unlock_thread_rq() {
+    atomic_flag_clear_explicit(&thread_rq_lock, __ATOMIC_RELEASE);
+}
+
+void lock_ktask_rq() {
+    while (atomic_flag_test_and_set_explicit(&ktask_rq_lock, __ATOMIC_ACQUIRE)) {
+        // Wait
+        __builtin_ia32_pause();
+    }
+}
+
+void unlock_ktask_rq() {
+    atomic_flag_clear_explicit(&ktask_rq_lock, __ATOMIC_RELEASE);
+}
+
+thread_t *thread_rq_pop() {
+    if (!thread_rq) {
+        return NULL;
+    }
+
+    thread_t *res = thread_rq;
+
+    thread_rq    = thread_rq->rq_next;
+    res->rq_next = NULL;
+
+    return res;
+}
+
+thread_t *thread_rq_remove(thread_t *thread) {
+    if (!thread_rq) {
+        return NULL;
+    }
+
+    thread_t **link = &thread_rq;
+
+    while (*link && *link != thread) {
+        link = &((*link)->rq_next);
+    }
+
+    if (*link) {
+        *link = (*link)->rq_next;
+
+        thread->rq_next = NULL;
+
+        return thread;
+    } else {
+        // Shouldn't happen
+        return NULL;
+    }
+}
+
+void thread_rq_add(thread_t *thread) {
+    thread->rq_next = NULL;
+
+    thread_t **link = &thread_rq;
+
+    while (*link) {
+        link = &((*link)->rq_next);
+    }
+
+    *link = thread;
+}
+
+void kill_process_threads(proc_t *proc) {
+    lock_thread_rq();
+
+    thread_t *thread = proc->threads;
+    while (thread) {
+        thread_rq_remove(thread);
+        thread->state = DEAD;
+        thread        = thread->next;
+    }
+
+    // TODO: how to eliminate any other references to this thread (scheduled I/O, wakeups, etc.)?
+
+    unlock_thread_rq();
+
+    lock_cores_threads();
+
+    for (size_t i = 0; i < MAX_CORES; i++) {
+        if (cores_threads[i] && (cores_threads[i]->parent == proc)) {
+            cores_threads[i]->state = DEAD;
+            cores_threads[i]        = NULL;
+            // We're currently running on this core, we need to switch to another thread
+            printf("Process exit called on core %d, switching to another thread...\n", i);
+
+            send_ipi(cpu_cores[i].lapic_id, IPI_WAKEUP_IRQ + 32); // IPI for kill
         }
-    } */
-    while (atomic_flag_test_and_set_explicit(&ready_threads_locked_atomic, __ATOMIC_ACQUIRE)) {
-        // Wait
-        __builtin_ia32_pause();
     }
+
+    unlock_cores_threads();
 }
 
-void unlock_ready_threads() {
-    // ready_threads_lock = (uint32_t)-1;
-    atomic_flag_clear_explicit(&ready_threads_locked_atomic, __ATOMIC_RELEASE);
-}
+// NOTE: this just forces a schedule call; it does NOT update thread state
+void ipi_kill_routine(registers_t *regs, void *data) {
+    uint32_t curr_core = get_curr_core();
+    kout(KERNEL_INFO, "Received kill IPI on core %d, halting...\n", curr_core);
+    apic_send_eoi();
 
-void lock_kernel_tasks() {
-    while (atomic_flag_test_and_set_explicit(&kernel_tasks_lock_atomic, __ATOMIC_ACQUIRE)) {
-        // Wait
-        __builtin_ia32_pause();
+    lock_cores_threads();
+
+    if (cores_threads[curr_core] == &ktask_thread_placeholder) {
+        unlock_cores_threads();
+        return;
     }
+
+    unlock_cores_threads();
+
+    cpu_scheduler_task();
 }
 
-void unlock_kernel_tasks() {
-    atomic_flag_clear_explicit(&kernel_tasks_lock_atomic, __ATOMIC_RELEASE);
+// TODO: differentiate between wakeup and preempt? or change wakeup to preempt?
+void ipi_wakeup_routine(registers_t *regs, void *data) {
+    // kout(KERNEL_INFO, "Received IPI wakeup on core %d\n", get_curr_core());
+    apic_send_eoi();
+
+    lock_cores_threads();
+
+    uint32_t curr_core = get_curr_core();
+
+    if (cores_threads[curr_core] == &ktask_thread_placeholder) {
+        unlock_cores_threads();
+        return;
+    }
+
+    if (cores_threads[curr_core]) {
+        if (cores_threads[curr_core]->state == RUNNING) {
+            cores_threads[curr_core]->state = READY;
+            lock_thread_rq();
+            thread_rq_add(cores_threads[curr_core]);
+            unlock_thread_rq();
+        }
+        cores_threads[curr_core] = NULL;
+    }
+
+    unlock_cores_threads();
+
+    cpu_scheduler_task();
 }
 
+// TODO: more efficient way to wakeup than just sending to all cores
 void send_wakeup_ipi() {
     uint32_t curr_core = get_curr_core();
 
@@ -83,178 +220,110 @@ void send_wakeup_ipi() {
     }
 }
 
-static void thread_unready_nolock(thread_t *thread) {
-    if (!ready_threads) {
-        return;
-    }
-
-    thread->state = ASLEEP;
-
-    thread_t *cur = ready_threads;
-
-    if (cur == thread) {
-        ready_threads = thread->next;
-        if (!ready_threads) {
-            ready_threads_last = NULL;
-        }
-        return;
-    }
-
-    while (cur->next) {
-        if (cur->next == thread) {
-            cur->next = thread->next;
-            break;
-        }
-        cur = cur->next;
-    }
-}
-
-void thread_unready(thread_t *thread) {
-    lock_ready_threads();
-
-    thread_unready_nolock(thread);
-
-    unlock_ready_threads();
-}
-
 void thread_ready(thread_t *thread) {
-    asm volatile("cli");
-    lock_ready_threads();
-
     thread->state = READY;
+    thread_rq_add(thread);
 
-    if (!ready_threads) {
-        ready_threads      = thread;
-        ready_threads_last = thread;
-    } else {
-        ready_threads_last->next = thread;
-        ready_threads_last       = thread;
-    }
-
-    /* for (size_t i = 0; i < get_n_cores(); i++) {
-        if (cpu_cores[i].online && !cores_threads[i]) {
-            // There's a core without a thread assigned, wake it up
-            printf("Waking up core %d for thread %p\n", i, ready_threads->tid);
-            // send_ipi(i, IPI_TLB_FLUSH_IRQ + 32); // IPI for tlb flush
-            // pit_sleep(100);
-            cores_threads[i] = ready_threads;
-            thread_unready_nolock(ready_threads);
-            send_ipi(cpu_cores[i].lapic_id, IPI_TLB_FLUSH_IRQ + 32); // IPI for tlb flush
-            break;
-        }
-    } */
-
-    unlock_ready_threads();
-    asm volatile("sti");
-
+    // TODO: should this be part of scheduler tick or something?
     send_wakeup_ipi();
 }
 
-__attribute__((noreturn)) void start_scheduler() {
-    /* uint32_t curr_core = lock_ready_threads();
-    printf("Starting scheduler on core %d\n", curr_core);
-
-    for (size_t i = 0; i < get_n_cores(); i++) {
-        if (!ready_threads) {
-            printf("No more ready threads to assign to core %d\n", i);
-            ready_threads_last = NULL;
-            break;
-        }
-
-        printf("Assigning thread to core %d\n", i);
-
-        cores_threads[i] = ready_threads;
-
-        ready_threads = ready_threads->next;
-    }
-
-    unlock_ready_threads(); */
-
+__attribute__((noreturn)) //
+void start_scheduler() {
     cpu_cores[0].online = true;
     cpu_scheduler_task();
 }
 
-extern void restore_cpu_state(registers_t *regs);
-
-extern void _finalize_task_switch(registers_t *regs);
-
-__attribute__((noreturn)) void cpu_scheduler_task_c() {
-    asm volatile("sti");
-
-    uint32_t curr_core = get_curr_core();
-
-    for (;;) {
-        asm volatile("cli");
-
-        lock_kernel_tasks();
-        if (ready_kernel_tasks_head != ready_kernel_tasks_tail) {
-            // There's a kernel task to run
-            kernel_task_func_t func = ready_kernel_tasks[ready_kernel_tasks_tail].func;
-            void *arg               = ready_kernel_tasks[ready_kernel_tasks_tail].arg;
-            ready_kernel_tasks_tail = (ready_kernel_tasks_tail + 1) % MAX_KERNEL_TASKS;
-            unlock_kernel_tasks();
-            asm volatile("sti");
-            // Execute the kernel task
-            func(arg);
-            continue;
-        }
-        unlock_kernel_tasks();
-
-        lock_ready_threads();
-        if (cores_threads[curr_core]) {
-            cores_threads[curr_core]->state = RUNNING;
-            unlock_ready_threads();
-            cpu_cores[curr_core].status |= 1;
-            // There's a thread assigned to this core, start executing it
-            printf("Starting thread %p on core %d\n", cores_threads[curr_core]->tid, curr_core);
-            // The thread's regs are the first item in the struct
-            assign_thread_to_cpu(cores_threads[curr_core]);
-            cores_threads[curr_core]->state  = ASLEEP;
-            cores_threads[curr_core]         = NULL;
-            cpu_cores[curr_core].status     &= ~1;
-        } else {
-            unlock_ready_threads();
-        }
-
-        lock_ready_threads();
-
-        if (ready_threads) {
-            cores_threads[curr_core] = ready_threads;
-            thread_unready_nolock(ready_threads);
-            printf("Assigned thread %p to core %d\n", cores_threads[curr_core]->tid, curr_core);
-            unlock_ready_threads();
-            continue;
-        }
-
-        unlock_ready_threads();
-
-        asm volatile("sti");
-        asm volatile("hlt");
+void stop_scheduler() {
+    for (uint32_t i = 0; i < get_n_cores(); i++) {
+        cpu_cores[i].online = false;
+        send_ipi(cpu_cores[i].lapic_id, IPI_KILL_IRQ + 32);
     }
 }
 
-void assign_thread_to_cpu(thread_t *thread) {
-    asm volatile("cli");
-    // Check if kernel page table needs to be flushed
-    if (get_physaddr((uint64_t)&thread->regs, kernel_pml4) == 0x0) {
-        ipi_tlb_flush_routine(NULL, NULL);
+__attribute__((noreturn)) //
+extern void _finalize_task_switch(registers_t *regs);
+
+__attribute__((noreturn)) //
+void cpu_scheduler_task_c() {
+    uint32_t curr_core = get_curr_core();
+
+    if (!cpu_cores[curr_core].online) {
+        hcf();
     }
 
-    thread->base->processor_id     = get_curr_core();
-    thread->base->stack            = (uint64_t)thread->regs.iret_rsp;
-    thread->base->cr3              = virt_to_phys((uint64_t)thread->parent->pml4) & ~0xFFF;
-    thread->base->proc             = (uint64_t)thread->parent;
-    thread->base->kernel_pml4_phys = (uint64_t)kernel_pml4_phys;
+    lock_ktask_rq();
+    if (ktask_rq) {
+        // There's a kernel task to run
+        kernel_task_func_t func = ktask_rq->func;
+        void *arg               = ktask_rq->arg;
 
-    // The thread's regs are the first item in the struct
-    printf("Thread info: regs addr %p, regs phys addr %p %p, stack %p, base %p, base proc %p\n", &thread->regs,
-           get_physaddr((uint64_t)&thread->regs, thread->parent->pml4),
-           get_physaddr((uint64_t)&thread->regs, kernel_pml4), thread->regs.iret_rsp, thread->base, thread->base->proc);
+        ktask_rq = ktask_rq->rq_next;
 
-    // write_msr(IA32_KERNEL_GS_BASE, (uint64_t)thread->base);
-    write_msr(IA32_GS_BASE, (uint64_t)thread->base);
+        unlock_ktask_rq();
 
-    _finalize_task_switch((registers_t *)&thread->regs);
+        lock_cores_threads();
+
+        cores_threads[curr_core] = &ktask_thread_placeholder;
+
+        unlock_cores_threads();
+
+        asm volatile("sti");
+
+        // Execute the kernel task
+        func(arg);
+
+        asm volatile("cli");
+
+        lock_cores_threads();
+
+        cores_threads[curr_core] = NULL;
+
+        unlock_cores_threads();
+    } else {
+        unlock_ktask_rq();
+    }
+
+    lock_cores_threads();
+    lock_thread_rq();
+    cores_threads[curr_core] = thread_rq_pop();
+    unlock_thread_rq();
+    unlock_cores_threads();
+
+    thread_t *thread = cores_threads[curr_core];
+
+    if (thread) {
+        thread->state = RUNNING;
+
+        printf("Starting thread %p on core %d\n", thread->tid, curr_core);
+        // The thread's regs are the first item in the struct
+        // Check if kernel page table needs to be flushed
+        if (get_physaddr((uint64_t)&thread->regs, kernel_pml4) == 0x0) {
+            ipi_tlb_flush_routine(NULL, NULL);
+        }
+
+        thread->base->processor_id     = get_curr_core();
+        thread->base->stack            = (uint64_t)thread->regs.iret_rsp;
+        thread->base->cr3              = virt_to_phys((uint64_t)thread->parent->pml4) & ~0xFFF;
+        thread->base->proc             = (uint64_t)thread->parent;
+        thread->base->kernel_pml4_phys = (uint64_t)kernel_pml4_phys;
+
+        // The thread's regs are the first item in the struct
+        printf("Thread info: regs addr %p, regs phys addr %p %p, stack %p, base %p, base proc %p\n", &thread->regs,
+               get_physaddr((uint64_t)&thread->regs, thread->parent->pml4),
+               get_physaddr((uint64_t)&thread->regs, kernel_pml4), thread->regs.iret_rsp, thread->base,
+               thread->base->proc);
+
+        // write_msr(IA32_KERNEL_GS_BASE, (uint64_t)thread->base);
+        write_msr(IA32_GS_BASE, (uint64_t)thread->base);
+
+        _finalize_task_switch((registers_t *)&thread->regs);
+    }
+
+    asm volatile("sti");
+    asm volatile("hlt");
+
+    cpu_scheduler_task();
 }
 
 int delegate_kernel_task(kernel_task_func_t func, void *arg) {
@@ -265,23 +334,31 @@ int delegate_kernel_task(kernel_task_func_t func, void *arg) {
         asm volatile("cli");
     }
 
-    int res = 0;
+    int res             = 0;
+    kernel_task_t *task = (kernel_task_t *)fsa_alloc(&_ktask_fsa);
 
-    lock_kernel_tasks();
-
-    size_t next_head = (ready_kernel_tasks_head + 1) % MAX_KERNEL_TASKS;
-    if (next_head == ready_kernel_tasks_tail) {
-        // No space
-        res = -1;
+    if (!task) {
+        res = -ENOMEM;
         goto cleanup;
     }
 
-    ready_kernel_tasks[ready_kernel_tasks_head].func = func;
-    ready_kernel_tasks[ready_kernel_tasks_head].arg  = arg;
-    ready_kernel_tasks_head                          = next_head;
+    task->rq_next = NULL;
+    task->func    = func;
+    task->arg     = arg;
+
+    lock_ktask_rq();
+
+    kernel_task_t **link = &ktask_rq;
+
+    while (*link) {
+        link = &((*link)->rq_next);
+    }
+
+    *link = task;
+
+    unlock_ktask_rq();
 
 cleanup:
-    unlock_kernel_tasks();
     if (ints) {
         asm volatile("sti");
     }

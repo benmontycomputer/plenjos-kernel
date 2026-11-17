@@ -49,7 +49,9 @@ typedef struct bstree {
 } bstree_t;
 
 bstnode_t *bstree_find_comparable(bstree_t *tree, bstnode_t *comparable_node);
-bstnode_t *bstree_find_closest_predecessor(bstree_t *tree, bstnode_t *comparable_node);
+bstnode_t *bstree_find_comparable_or_closest_predecessor(bstree_t *tree, bstnode_t *comparable_node);
+bstnode_t *bstree_find_min(bstree_t *tree);
+bstnode_t *bstree_find_max(bstree_t *tree);
 
 int bstree_insert_node(bstree_t *tree, bstnode_t *node);
 
