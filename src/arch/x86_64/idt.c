@@ -41,7 +41,7 @@ static int kout_panic(kernel_msg_level_t msg_level, const char *format, ...) {
 
     va_end(list);
 
-    if (msg_level = KERNEL_PANIC) {
+    if (msg_level == KERNEL_PANIC) {
         debug_serial = !debug_serial;
 
         va_start(list, format);
@@ -228,6 +228,8 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
             cpu_scheduler_task();
         }
     }
+
+    cpu_scheduler_task();
 }
 
 void idt_set_descriptor(uint8_t vector, void *isr, uint8_t flags) {
