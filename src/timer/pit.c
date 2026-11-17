@@ -41,7 +41,9 @@ void pit_irq(registers_t *regs, void *data) {
                 atomic_store(&(timer->milliseconds), UINT64_MAX);
                 if (timer->callback == NULL) {
                     // IPI wakeup
-                    send_ipi((uint32_t)(timer->core_id), IPI_WAKEUP_IRQ + 32);
+                    if (timer->core_id < MAX_CORES) {
+                        send_ipi(cpu_cores[timer->core_id].lapic_id, IPI_WAKEUP_IRQ + 32);
+                    }
                     atomic_store(&(timer->milliseconds), 0);
                 } else {
                     delegate_kernel_task(pit_timer_callback, timer);
