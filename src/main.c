@@ -212,8 +212,6 @@ void kmain(void) {
 
     device_manager_init();
 
-    syscalls_init();
-
     clear();
 
     /* vfs_handle_t *ld_handle = NULL;
