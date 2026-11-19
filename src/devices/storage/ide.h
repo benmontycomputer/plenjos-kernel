@@ -21,6 +21,7 @@
 
 # include "drive.h"
 # include "lib/lock.h"
+# include "lib/sync.h"
 
 # include <stdatomic.h>
 # include <stdint.h>
@@ -51,13 +52,12 @@ struct ide_channel {
     uint16_t ctrl_base;
     uint8_t irq_no;
 
-    // How many IRQs have been fired for this channel and are being processed
-    atomic_int irq_cnt;
-
-    // Last read status register value (from IRQ handler)
+    // Last read status register value (from IRQ handler). Note: drivers SHOULD NOT read the status register directly in
+    // most cases, as that can clear another pending IRQ.
     atomic_uchar last_status;
 
     mutex lock;
+    completion_t irq_done;
     int selected; // -1 = none, 0 = master, 1 = slave
 };
 

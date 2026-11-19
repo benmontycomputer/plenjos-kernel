@@ -23,7 +23,7 @@ struct thread {
     proc_t *parent;
     volatile thread_t *volatile next;
 
-    gsbase_t *base;
+    // gsbase_t *base;
 
     // Always points to the top of the allocation for the thread's stack; this does NOT change on push/pop (look at
     // registers for that). This is not a valid memory address; this is directly on top of the stack, not inside its

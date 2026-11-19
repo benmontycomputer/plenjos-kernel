@@ -40,35 +40,39 @@ static ELF_addr_t _ldso_self_resolve_symbol(const char *name, ELF_sym_t *symtab,
     return 0;
 }
 
-static uint64_t _prereloc_syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_t rsi, uint64_t rdi) {
+static uint64_t _prereloc_syscall(uint64_t rax, uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t r10, uint64_t r8,
+                                  uint64_t r9) {
     uint64_t out;
 
     asm volatile("mov %[_rax], %%rax\n"
-                 "mov %[_rbx], %%rbx\n"
-                 "mov %[_rcx], %%rcx\n"
-                 "mov %[_rdx], %%rdx\n"
-                 "mov %[_rsi], %%rsi\n"
                  "mov %[_rdi], %%rdi\n"
+                 "mov %[_rsi], %%rsi\n"
+                 "mov %[_rdx], %%rdx\n"
+                 "mov %[_r10], %%r10\n"
+                 "mov %[_r8], %%r8\n"
+                 "mov %[_r9], %%r9\n"
                  "int $0x80\n"
                  "mov %%rax, %[_out]\n"
                  : [_out] "=r"(out)
-                 : [_rax] "r"(rax), [_rbx] "r"(rbx), [_rcx] "r"(rcx), [_rdx] "r"(rdx), [_rsi] "r"(rsi), [_rdi] "r"(rdi)
-                 : "rax", "rbx", "rcx", "rdx", "rsi", "rdi" // Clobbered registers
+                 : [_rax] "r"(rax), [_rdi] "r"(rdi), [_rsi] "r"(rsi), [_rdx] "r"(rdx), [_r10] "r"(r10), [_r8] "r"(r8),
+                   [_r9] "r"(r9)
+                 : "rax", "rdi", "rsi", "rdx", "r10", "r8", "r9" // Clobbered registers
     );
 
     return out;
 }
 
 static int _prereloc_syscall_print(const char *str) {
-    return (int)_prereloc_syscall(SYSCALL_PRINT, (uint64_t)str, 0, 0, 0, 0);
+    return (int)_prereloc_syscall(SYSCALL_PRINT, (uint64_t)str, 0, 0, 0, 0, 0);
 }
 
 static int _prereloc_syscall_print_ptr(uint64_t val) {
-    return (int)_prereloc_syscall(SYSCALL_PRINT_PTR, (uint64_t)val, 0, 0, 0, 0);
+    return (int)_prereloc_syscall(SYSCALL_PRINT_PTR, (uint64_t)val, 0, 0, 0, 0, 0);
 }
 
 // This is for both the main executable and shared libraries. This should happen AFTER it's loaded into memory.
-static int _apply_relocations(ELF_addr_t base, ELF_sym_t *symtab, const char *strtab, size_t relaent, uint64_t pltgot, ELF_rela_t *rela, size_t rela_sz, int is_jmprel, int use_linker_resolve_symbol) {
+static int _apply_relocations(ELF_addr_t base, ELF_sym_t *symtab, const char *strtab, size_t relaent, uint64_t pltgot,
+                              ELF_rela_t *rela, size_t rela_sz, int is_jmprel, int use_linker_resolve_symbol) {
     // _prereloc_syscall_print("apply_relocations: applying relocations\n");
 
     if (!rela || rela_sz == 0) {
@@ -97,7 +101,8 @@ static int _apply_relocations(ELF_addr_t base, ELF_sym_t *symtab, const char *st
             _prereloc_syscall_print(name);
             _prereloc_syscall_print("\n"); */
 
-            ELF_addr_t addr = use_linker_resolve_symbol ? _ldso_self_resolve_symbol(name, symtab, strtab, base) : resolve_symbol(name);
+            ELF_addr_t addr = use_linker_resolve_symbol ? _ldso_self_resolve_symbol(name, symtab, strtab, base)
+                                                        : resolve_symbol(name);
 
             if (addr == 0) {
                 _prereloc_syscall_print("ERROR: Couldn't resolve symbol ");
@@ -122,7 +127,8 @@ static int _apply_relocations(ELF_addr_t base, ELF_sym_t *symtab, const char *st
             _prereloc_syscall_print(name);
             _prereloc_syscall_print("\n"); */
 
-            ELF_addr_t addr = use_linker_resolve_symbol ? _ldso_self_resolve_symbol(name, symtab, strtab, base) : resolve_symbol(name);
+            ELF_addr_t addr = use_linker_resolve_symbol ? _ldso_self_resolve_symbol(name, symtab, strtab, base)
+                                                        : resolve_symbol(name);
 
             if (addr == 0) {
                 _prereloc_syscall_print("ERROR: Couldn't resolve symbol ");
@@ -178,7 +184,8 @@ static int _apply_relocations(ELF_addr_t base, ELF_sym_t *symtab, const char *st
 }
 
 int apply_relocations(struct elf_object *obj, ELF_rela_t *rela, size_t rela_sz, int is_jmprel) {
-    return _apply_relocations(obj->base, obj->symtab, obj->strtab, obj->relaent, obj->pltgot, rela, rela_sz, is_jmprel, 0);
+    return _apply_relocations(obj->base, obj->symtab, obj->strtab, obj->relaent, obj->pltgot, rela, rela_sz, is_jmprel,
+                              0);
 }
 
 void _start(uint64_t stack, uint64_t linker_ehdr, uint64_t target_ehdr) {

@@ -34,16 +34,16 @@ struct ide_channel legacy_ide_channels[2] = {
     { .cmd_base    = IDE_PRIMARY_CMD_BASE,
      .ctrl_base   = IDE_PRIMARY_CTRL_BASE,
      .irq_no      = 14,
-     .irq_cnt     = ATOMIC_VAR_INIT(0),
      .last_status = ATOMIC_VAR_INIT(0),
      .lock        = MUTEX_INIT,
+     .irq_done    = COMPLETION_INIT,
      .selected    = -1 },
     { .cmd_base    = IDE_SECONDARY_CMD_BASE,
      .ctrl_base   = IDE_SECONDARY_CTRL_BASE,
      .irq_no      = 15,
-     .irq_cnt     = ATOMIC_VAR_INIT(0),
      .last_status = ATOMIC_VAR_INIT(0),
      .lock        = MUTEX_INIT,
+     .irq_done    = COMPLETION_INIT,
      .selected    = -1 },
 };
 
@@ -262,14 +262,15 @@ void ide_irq_routine(registers_t *regs, void *data) {
 
     // Acknowledge IRQ by reading status register
     atomic_store(&channel->last_status, inb(channel->cmd_base + ATA_REG_STATUS));
+    complete(&channel->irq_done);
 
     // Increment IRQ processing count
-    if (atomic_fetch_add_explicit(&channel->irq_cnt, 1, memory_order_acq_rel) > 0) {
+    if (channel->irq_done.cnt > 1) {
         kout_nolock(
             KERNEL_WARN,
             "KERNEL ERROR/WARN: IDE bus w/ IRQ %d has multiple (%d) IRQs being processed simultaneously. IRQs may be "
             "lost. Are we moving too slowly?\n",
-            (int)channel->irq_no, (int)atomic_load_explicit(&channel->irq_cnt, memory_order_acquire));
+            (int)channel->irq_no, (int)channel->irq_done.cnt);
     }
 }
 

@@ -144,13 +144,15 @@ typedef struct regs registers_t;
 
 struct gsbase {
     // This must point to the TOP of the stack
-    uint64_t stack;            // 0x00
+    uint64_t stack;            // 0x00; UNUSED
     uint64_t proc;             // 0x08
-    uint64_t cr3;              // 0x10
+    uint64_t syscall_stack;    // 0x10; stores the KERNEL stack for the current USER thread's syscalls
     uint32_t processor_id;     // 0x18
     uint32_t reserved0;        // 0x1C
     uint64_t kernel_pml4_phys; // 0x20
-    uint64_t reserved[3];      // 0x20 - 0x38
+    uint64_t scratch_rax;      // 0x28
+    uint64_t scratch_rsp;      // 0x30
+    uint64_t scratch_cr3;      // 0x38
 } __attribute__((packed));
 typedef struct gsbase gsbase_t;
 

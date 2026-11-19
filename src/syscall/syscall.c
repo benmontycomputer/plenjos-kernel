@@ -1,6 +1,6 @@
 #include "syscall/syscall.h"
 
-#include "arch/x86_64/irq.h"
+#include "arch/x86_64/gdt/gdt.h"
 #include "devices/input/keyboard/keyboard.h"
 #include "kernel.h"
 #include "lib/stdio.h"
@@ -25,20 +25,23 @@ static uint8_t fb_mapped = 0;
 
 extern void *linker_elf_buf;
 
-/* uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_t rsi, uint64_t rdi) {
+/* uint64_t syscall(uint64_t rax, uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t r10, uint64_t r8,
+                                  uint64_t r9) {
     uint64_t out;
 
     asm volatile("mov %[_rax], %%rax\n"
-                 "mov %[_rbx], %%rbx\n"
-                 "mov %[_rcx], %%rcx\n"
-                 "mov %[_rdx], %%rdx\n"
-                 "mov %[_rsi], %%rsi\n"
                  "mov %[_rdi], %%rdi\n"
+                 "mov %[_rsi], %%rsi\n"
+                 "mov %[_rdx], %%rdx\n"
+                 "mov %[_r10], %%r10\n"
+                 "mov %[_r8], %%r8\n"
+                 "mov %[_r9], %%r9\n"
                  "int $0x80\n"
                  "mov %%rax, %[_out]\n"
                  : [_out] "=r"(out)
-                 : [_rax] "r"(rax), [_rbx] "r"(rbx), [_rcx] "r"(rcx), [_rdx] "r"(rdx), [_rsi] "r"(rsi), [_rdi] "r"(rdi)
-                 : "rax", "rbx", "rcx", "rdx", "rsi", "rdi" // Clobbered registers
+                 : [_rax] "r"(rax), [_rdi] "r"(rdi), [_rsi] "r"(rsi), [_rdx] "r"(rdx), [_r10] "r"(r10), [_r8] "r"(r8),
+                   [_r9] "r"(r9)
+                 : "rax", "rdi", "rsi", "rdx", "r10", "r8", "r9" // Clobbered registers
     );
 
     return out;
@@ -76,25 +79,10 @@ void syscall_sleep_finish(struct timer_timeout *timeout) {
     thread_ready_safe((thread_t *)timeout->data);
 }
 
-void syscall(thread_t *thread) {
-    registers_t *regs = &thread->regs;
-
-    uint64_t call = regs->rax;
-    // printf("syscall %d\n", (int)call);
-
-    // TODO: would we rather use this or the one from the proc struct? They should ALWAYS be the same, right?
-    pml4_t *current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
-
+void syscall(registers_t *regs, thread_t *thread, pml4_t *current_pml4) {
     proc_t *proc = thread->parent;
 
-    if (!proc) {
-        printf("syscall: failed to get current process!\n");
-
-        // TODO: handle this more gracefully (we might actually want to panic; this indicates a serious kernel issue)
-        // TODO: is this the correct errno?
-        regs->rax = (uint64_t)-1;
-        goto ret;
-    }
+    uint64_t call = CALL(regs);
 
     if (call >= SYSCALL_FS_FIRST && call <= SYSCALL_FS_LAST) {
         syscall_handle_fs_call(regs, proc, current_pml4);
@@ -103,7 +91,7 @@ void syscall(thread_t *thread) {
 
     switch (call) {
     case SYSCALL_GET_FB: {
-        // rbx: pointer to struct for framebuffer data
+        // arg1: pointer to struct for framebuffer data
         // Map the framebuffer into the currently loaded page table
         // TODO: check if framebuffer is in use
         map_virtual_memory_using_alloc(
@@ -112,27 +100,27 @@ void syscall(thread_t *thread) {
 
         bool valid = true;
 
-        uint64_t rbx = regs->rbx;
+        uint64_t arg1 = ARG1(regs);
 
-        if (rbx & 0xFFF) {
+        if (arg1 & 0xFFF) {
             printf("The fb_info pointer must be page aligned!\n");
             valid = false;
         } else {
-            page_t *page = find_page(rbx, false, current_pml4);
+            page_t *page = find_page(arg1, false, current_pml4);
             if (!page) {
-                printf("Page at %p not mapped, can't write fb value.\n", rbx);
+                printf("Page at %p not mapped, can't write fb value.\n", arg1);
                 valid = false;
             } else if (!page->user) {
-                printf("Page at %p not user accessible, can't write fb value.\n", rbx);
+                printf("Page at %p not user accessible, can't write fb value.\n", arg1);
                 valid = false;
             } else if (!page->rw) {
-                printf("Page at %p not writeable, can't write fb value.\n", rbx);
+                printf("Page at %p not writeable, can't write fb value.\n", arg1);
                 valid = false;
             }
         }
 
         if (valid) {
-            fb_info_t *out = (fb_info_t *)phys_to_virt(get_physaddr(rbx, current_pml4));
+            fb_info_t *out = (fb_info_t *)phys_to_virt(get_physaddr(arg1, current_pml4));
 
             memset(out, 0, sizeof(fb_info_t));
 
@@ -146,7 +134,7 @@ void syscall(thread_t *thread) {
 
             // fb_mapped++;
 
-            regs->rax = rbx;
+            regs->rax = arg1;
         } else {
             regs->rax = 0;
         }
@@ -188,9 +176,9 @@ void syscall(thread_t *thread) {
         // TODO: we also need a way of unmapping this
 
         // (syscall) virtaddr size flags
-        uint64_t virt                = regs->rbx;
-        uint64_t size                = regs->rcx;
-        syscall_memmap_flags_t flags = regs->rdx;
+        uint64_t virt                = ARG1(regs);
+        uint64_t size                = ARG2(regs);
+        syscall_memmap_flags_t flags = ARG3(regs);
 
         regs->rax = (uint64_t)syscall_routine_memmap((void *)virt, (size_t)size, flags, current_pml4);
 
@@ -198,11 +186,11 @@ void syscall(thread_t *thread) {
     }
     case SYSCALL_MEMMAP_FROM_BUFFER: {
         // (syscall) virtaddr memsize flags bufptr bufsize
-        uint64_t virt                = regs->rbx;
-        uint64_t size                = regs->rcx;
-        syscall_memmap_flags_t flags = regs->rdx;
-        void *buffer                 = (void *)regs->rsi;
-        size_t buffer_size           = (size_t)regs->rdi;
+        uint64_t virt                = ARG1(regs);
+        uint64_t size                = ARG2(regs);
+        syscall_memmap_flags_t flags = ARG3(regs);
+        void *buffer                 = (void *)ARG4(regs);
+        size_t buffer_size           = (size_t)ARG5(regs);
 
         void *buf_tmp = kmalloc_heap(buffer_size);
         if (!buf_tmp) {
@@ -229,7 +217,7 @@ void syscall(thread_t *thread) {
     // case SYSCALL_MEMMAP_FILE:
     case SYSCALL_PRINT: {
         const char *str_ptr = NULL;
-        regs->rax           = handle_string_arg(current_pml4, regs->rbx, &str_ptr);
+        regs->rax           = handle_string_arg(current_pml4, ARG1(regs), &str_ptr);
 
         if (str_ptr) {
             printf("%s", str_ptr);
@@ -239,7 +227,7 @@ void syscall(thread_t *thread) {
         break;
     }
     case SYSCALL_PRINT_PTR: {
-        printf("%p", regs->rbx);
+        printf("%p", ARG1(regs));
         break;
     }
     case SYSCALL_KB_READ: {
@@ -260,12 +248,12 @@ void syscall(thread_t *thread) {
         break;
     }
     case SYSCALL_SLEEP: {
-        set_timeout(regs->rbx, syscall_sleep_finish, thread);
-        return;
+        kthread_sleep_ms(ARG1(regs));
+        break;
     }
     case SYSCALL_SPAWN: {
         const char *path = NULL;
-        regs->rax        = handle_string_arg(current_pml4, regs->rbx, &path);
+        regs->rax        = handle_string_arg(current_pml4, ARG1(regs), &path);
 
         if (!path) {
             break;
@@ -328,9 +316,27 @@ void syscall(thread_t *thread) {
     }
 
 ret:
-    thread_ready_safe(thread);
+    asm volatile("cli");
 }
 
-void syscalls_init() {
-    irq_register_routine(SYSCALL_IRQ, &syscall_routine_sched, NULL);
+#define IA32_EFER  0xC0000080
+#define IA32_STAR  0xC0000081
+#define IA32_LSTAR 0xC0000082
+#define IA32_FMASK 0xC0000084
+#define EFER_SCE   (1ULL << 0)
+
+#define SYSRET_BASE 0x10 // only used by sysretq, not iretq
+
+extern void syscall_entry(void);
+
+void syscall_init_cpu() {
+    write_msr(IA32_EFER, read_msr(IA32_EFER) | EFER_SCE);
+
+    // STAR[47:32] = kernel CS (SS = CS + 8); STAR[63:48] = sysret base
+    write_msr(IA32_STAR, ((uint64_t)SYSRET_BASE << 48) | ((uint64_t)KERNEL_CS << 32));
+
+    write_msr(IA32_LSTAR, (uint64_t)syscall_entry);
+
+    // RFLAGS bits cleared on entry: IF (0x200), DF (0x400), TF (0x100), AC (0x40000)
+    write_msr(IA32_FMASK, 0x200 | 0x400 | 0x100 | 0x40000);
 }

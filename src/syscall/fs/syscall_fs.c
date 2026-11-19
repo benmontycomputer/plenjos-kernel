@@ -8,89 +8,89 @@
 #include "stdint.h"
 
 void syscall_handle_fs_call(registers_t *regs, proc_t *proc, pml4_t *current_pml4) {
-    uint64_t call = regs->rax;
+    uint64_t call = CALL(regs);
 
     switch (call) {
     case SYSCALL_READ: {
-        regs->rax = (uint64_t)syscall_routine_read(regs->rbx, (void *)regs->rcx, (size_t)regs->rdx, proc, current_pml4);
+        regs->rax = (uint64_t)syscall_routine_read(ARG1(regs), (void *)ARG2(regs), (size_t)ARG3(regs), proc, current_pml4);
         break;
     }
     case SYSCALL_WRITE: {
-        if (regs->rdx == 0) {
+        if (ARG3(regs) == 0) {
             regs->rax = 0;
             break;
         }
-        void *kbuf = kmalloc_heap((size_t)regs->rdx);
+        void *kbuf = kmalloc_heap((size_t)ARG3(regs));
         if (!kbuf) {
             printf("syscall_routine: failed to allocate kernel buffer for write syscall of %p bytes\n",
-                   (size_t)regs->rdx);
+                   (size_t)ARG3(regs));
             regs->rax = (uint64_t)-ENOMEM;
             break;
         }
 
-        int check = copy_to_kernel_buf(kbuf, (void *)regs->rcx, (size_t)regs->rdx, current_pml4);
+        int check = copy_to_kernel_buf(kbuf, (void *)ARG2(regs), (size_t)ARG3(regs), current_pml4);
         if (check < 0) {
             printf("syscall_routine: failed to copy data from user buffer %p for process %s (pid %p), errno %d\n",
-                   (void *)regs->rcx, proc->name, proc->pid, check);
+                   (void *)ARG2(regs), proc->name, proc->pid, check);
             kfree_heap(kbuf);
             regs->rax = (uint64_t)check;
             break;
         }
 
-        regs->rax = (uint64_t)syscall_routine_write(regs->rbx, (const void *)kbuf, (size_t)regs->rdx, proc);
+        regs->rax = (uint64_t)syscall_routine_write(ARG1(regs), (const void *)kbuf, (size_t)ARG3(regs), proc);
         kfree_heap(kbuf);
         break;
     }
     case SYSCALL_OPEN: {
         const char *path = NULL;
-        regs->rax        = handle_string_arg(current_pml4, regs->rbx, &path);
+        regs->rax        = handle_string_arg(current_pml4, ARG1(regs), &path);
         if (path) {
-            regs->rax = (uint64_t)syscall_routine_open(path, (syscall_open_flags_t)regs->rcx, (mode_t)regs->rdx, proc);
+            regs->rax = (uint64_t)syscall_routine_open(path, (syscall_open_flags_t)ARG2(regs), (mode_t)ARG3(regs), proc);
             kfree_heap((void *)path);
         }
         break;
     }
     case SYSCALL_CLOSE: {
-        regs->rax = (uint64_t)syscall_routine_close(regs->rbx, proc);
+        regs->rax = (uint64_t)syscall_routine_close(ARG1(regs), proc);
         break;
     }
     case SYSCALL_STAT: {
         const char *path = NULL;
-        regs->rax        = handle_string_arg(current_pml4, regs->rbx, &path);
+        regs->rax        = handle_string_arg(current_pml4, ARG1(regs), &path);
         if (path) {
-            regs->rax = (uint64_t)syscall_routine_stat(path, regs->rcx, proc, current_pml4);
+            regs->rax = (uint64_t)syscall_routine_stat(path, ARG2(regs), proc, current_pml4);
             kfree_heap((void *)path);
         }
         break;
     }
     case SYSCALL_FSTAT: {
-        regs->rax = (uint64_t)syscall_routine_fstat((int)regs->rbx, regs->rcx, proc, current_pml4);
+        regs->rax = (uint64_t)syscall_routine_fstat((int)ARG1(regs), ARG2(regs), proc, current_pml4);
         break;
     }
     case SYSCALL_LSTAT: {
         const char *path = NULL;
-        regs->rax        = handle_string_arg(current_pml4, regs->rbx, &path);
+        regs->rax        = handle_string_arg(current_pml4, ARG1(regs), &path);
         if (path) {
-            regs->rax = (uint64_t)syscall_routine_lstat(path, regs->rcx, proc, current_pml4);
+            regs->rax = (uint64_t)syscall_routine_lstat(path, ARG2(regs), proc, current_pml4);
             kfree_heap((void *)path);
         }
         break;
     }
     // case SYSCALL_POLL:
     case SYSCALL_LSEEK: {
-        regs->rax = (uint64_t)syscall_routine_lseek(regs->rbx, (ssize_t)regs->rcx, (int)regs->rdx, proc);
+        regs->rax = (uint64_t)syscall_routine_lseek(ARG1(regs), (ssize_t)ARG2(regs), (int)ARG3(regs), proc);
         break;
     }
     case SYSCALL_GETDENTS: {
         regs->rax
-            = (uint64_t)syscall_routine_getdents(regs->rbx, (void *)regs->rcx, (size_t)regs->rdx, proc, current_pml4);
+            = (uint64_t)syscall_routine_getdents(ARG1(regs), (void *)ARG2(regs), (size_t)ARG3(regs), proc, current_pml4);
         break;
     }
     case SYSCALL_MKDIR: {
         const char *path = NULL;
-        regs->rax        = handle_string_arg(current_pml4, regs->rbx, &path);
+        regs->rax        = handle_string_arg(current_pml4, ARG1(regs), &path);
         if (path) {
-            regs->rax = (uint64_t)syscall_routine_mkdir(path, (mode_t)regs->rcx, proc);
+            regs->rax = (uint64_t)syscall_routine_mkdir(path, (mode_t)ARG2(regs), proc);
             kfree_heap((void *)path);
         }
         break;
@@ -104,12 +104,12 @@ void syscall_handle_fs_call(registers_t *regs, proc_t *proc, pml4_t *current_pml
     case SYSCALL_LCHOWN: */
     // TODO: modify file groups
     case SYSCALL_GETCWD: {
-        regs->rax = (uint64_t)syscall_routine_getcwd(regs->rbx, (size_t)regs->rcx, proc, current_pml4);
+        regs->rax = (uint64_t)syscall_routine_getcwd(ARG1(regs), (size_t)ARG2(regs), proc, current_pml4);
         break;
     }
     case SYSCALL_CHDIR: {
         const char *path = NULL;
-        regs->rax        = handle_string_arg(current_pml4, regs->rbx, &path);
+        regs->rax        = handle_string_arg(current_pml4, ARG1(regs), &path);
         if (path) {
             regs->rax = (uint64_t)syscall_routine_chdir(path, proc);
             kfree_heap((void *)path);
@@ -124,9 +124,9 @@ void syscall_handle_fs_call(registers_t *regs, proc_t *proc, pml4_t *current_pml
 
         const char *dev    = NULL;
         const char *target = NULL;
-        regs->rax          = handle_string_arg(current_pml4, regs->rbx, &dev);
+        regs->rax          = handle_string_arg(current_pml4, ARG1(regs), &dev);
         if (dev) {
-            regs->rax = handle_string_arg(current_pml4, regs->rcx, &target);
+            regs->rax = handle_string_arg(current_pml4, ARG2(regs), &target);
             if (target) {
                 vfs_handle_t *dev_handle = NULL;
                 const char *dev_path     = kmalloc_heap(strlen(dev) + 1);

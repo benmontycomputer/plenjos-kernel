@@ -84,28 +84,8 @@ thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), vo
     // Set the page table
     thread->regs.cr3 = virt_to_phys((uint64_t)proc->pml4) & ~0xFFF;
 
-    uint64_t base_frame = find_next_free_frame();
-    if (!base_frame) {
-        kout(KERNEL_WARN, "create_thread(): couldn't allocate gsbase page (OOM?)\n");
-        for (uint64_t j = 0; j < THREAD_STACK_SIZE; j += PAGE_LEN) {
-            free_virtual_memory((uint64_t)thread->stack_top - j - PAGE_LEN, proc->pml4);
-        }
-        fsa_free(&_thread_fsa, thread);
-        return NULL;
-    }
-    thread->base = (gsbase_t *)phys_to_virt(base_frame);
-    memset(thread->base, 0, PAGE_LEN);
-
-    // These values will be set when the thread is assigned to a CPU
-    /* thread->base->proc             = (uint64_t)proc;
-    thread->base->cr3              = thread->regs.cr3;
-    thread->base->stack            = (uint64_t)thread->regs.iret_rsp;
-    thread->base->kernel_pml4_phys = (uint64_t)kernel_pml4_phys; */
-
     // TODO: handle OOM in these
     map_virtual_memory_using_alloc(virt_to_phys((uint64_t)thread), (uint64_t)thread, PAGE_LEN,
-                                   PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
-    map_virtual_memory_using_alloc(virt_to_phys((uint64_t)thread->base), (uint64_t)thread->base, PAGE_LEN,
                                    PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, proc->pml4);
 
     if (proc->threads == NULL) {
@@ -141,7 +121,6 @@ void release_thread(thread_t *thread) {
             }
         }
     }
-    phys_mem_unref_frame(phys_addr_to_frame_struct(virt_to_phys((uint64_t)thread->base)));
 
     fsa_free(&_thread_fsa, thread);
 }

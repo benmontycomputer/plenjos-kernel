@@ -33,5 +33,3 @@ __attribute__((noreturn)) //
 void start_scheduler();
 
 void stop_scheduler();
-
-void syscall_routine_sched(registers_t *regs, void *data);

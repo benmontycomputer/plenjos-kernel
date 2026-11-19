@@ -7,12 +7,12 @@
 #include "arch/x86_64/gdt/gdt.h"
 #include "arch/x86_64/idt.h"
 #include "arch/x86_64/irq.h"
-#include "arch/x86_64/pic/pic.h"
 #include "kernel.h"
 #include "lib/stdio.h"
 #include "memory/detect.h"
 #include "memory/mm.h"
 #include "proc/scheduler.h"
+#include "syscall/syscall.h"
 #include "timer/pit.h"
 
 #include <limine.h>
@@ -37,7 +37,6 @@ static gsbase_t *new_kernel_gs_base(uint32_t processor_id) {
     memset(base, 0, PAGE_LEN);
 
     base->proc = (uint64_t)NULL;
-    base->cr3  = kernel_pml4_phys;
 
     // This should NEVER be read from the kernel gs_base; the stack field is only for threads' gs_base.
     // If rsp is set to 0, any push will lead to a GPF and a pop would page fault as 0 is unmapped.
@@ -61,7 +60,7 @@ void setup_bs_gs_base() {
     cpu_cores[0].lapic_id = mp_response->bsp_lapic_id;
     cpu_cores[0].mp_info  = mp_response->cpus[0];
 
-    gs_bases[0]                 = (uint64_t)cpu_cores[0].kernel_gs_base;
+    gs_bases[0] = (uint64_t)cpu_cores[0].kernel_gs_base;
 
     kout(KERNEL_INFO, "base: %p %p\n", gs_bases[0], cpu_cores[0].kernel_gs_base);
 
@@ -127,6 +126,8 @@ void setup_other_core(struct limine_mp_info *mp_info) {
 
     kout(KERNEL_INFO, "Useable memory on detected core %d: %p\n\n", (int)get_curr_core(), PHYS_MEM_USEABLE_LENGTH);
 
+    syscall_init_cpu();
+
     cpu_cores[mp_info->processor_id].online = true;
 
     asm volatile("sti");
@@ -188,6 +189,8 @@ void load_smp() {
     setup_other_cores();
 
     smp_loaded = true;
+
+    syscall_init_cpu();
 
     // TODO: flush all tlbs
 }

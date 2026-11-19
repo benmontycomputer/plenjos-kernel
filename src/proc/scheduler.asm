@@ -56,12 +56,7 @@
 global _finalize_task_switch
 _finalize_task_switch:
     cli
-    ; GS_BASE always holds the user-level GS base (the thread's own gsbase page, written by the caller); the core's gsbase page lives in
-    ; IA32_KERNEL_GS_BASE and is only reached through a swapgs pair, so no swapgs is needed before the iretq.
-    ;
-    ; The iretq frame is built on the per-core kernel stack (the one we are already running on, mapped in every
-    ; process), NOT on the thread's user stack: a frame on the user stack could be rewritten by another thread of the
-    ; process before the iretq, and would corrupt the red zone. The user rsp is only loaded by the iretq itself.
+    ; Build the iretq frame on the current stack (should always be the per-core kernel stack)
     mov r15, rdi                  ; the thread's registers_t
     mov rdi, [r15 + CR_REG_CR3]
     mov cr3, rdi                  ; load the new thread's page tables (the kernel and the kernel stacks stay mapped)

@@ -42,6 +42,7 @@ fixed_size_allocator_t _ktask_fsa = FSA_DEFAULT(sizeof(kernel_task_t));
 thread_t *cores_threads[MAX_CORES] = { 0 };
 
 static thread_t ktask_thread_placeholder = { 0 };
+static proc_t kthread_proc = { 0 };
 
 thread_t *thread_rq     = NULL;
 kernel_task_t *ktask_rq = NULL;
@@ -267,26 +268,33 @@ void ipi_wakeup_routine(registers_t *regs, void *data) {
     cpu_scheduler_task();
 }
 
-void syscall_routine_sched(registers_t *regs, void *data) {
+void syscall_dispatch(registers_t *regs) {
     uint32_t curr_core = get_curr_core();
 
     lock_cores_threads();
 
     thread_t *thread = cores_threads[curr_core];
     if (!thread || thread == &ktask_thread_placeholder) {
-        panic("syscall_routine_sched() called on core %u that doesn't have a thread assigned!\n", curr_core);
+        panic("syscall_dispatch() called on core %u that doesn't have a thread assigned!\n", curr_core);
     }
-
-    cores_threads[curr_core] = NULL;
 
     unlock_cores_threads();
 
-    thread->state = ASLEEP;
-    memcpy(&thread->regs, regs, sizeof(*regs));
+    if (!thread->parent) {
+        panic("syscall(): couldn't get proc!\n");
+    }
 
-    delegate_kernel_task((kernel_task_func_t)syscall, thread);
+    // NOTE: regs->cr3 is WRONG and must be corrected here
+    pml4_t *current_pml4 = (pml4_t *)thread->parent->pml4;
+    regs->cr3 = get_physaddr((uint64_t)current_pml4, kernel_pml4);
 
-    cpu_scheduler_task();
+    // TODO: if we want to add a field to indicate that a thread is in kernel mode, update that here
+
+    asm volatile("sti");
+    syscall(regs, thread, current_pml4);
+    asm volatile("cli");
+
+    // TODO: if we want to add a field to indicate that a thread is in kernel mode, update that here
 }
 
 // TODO: more efficient way to wakeup than just sending to all cores
@@ -325,6 +333,8 @@ void thread_ready_safe(thread_t *thread) {
 
 __attribute__((noreturn)) //
 void start_scheduler() {
+    kthread_proc.pml4 = kernel_pml4;
+
     cpu_cores[0].online = true;
 
     asm volatile("sti");
@@ -413,12 +423,6 @@ void cpu_scheduler_task_c(uint32_t curr_core) {
             ipi_tlb_flush_routine(NULL, NULL);
         }
 
-        thread->base->processor_id     = curr_core;
-        thread->base->stack            = (uint64_t)thread->regs.iret_rsp;
-        thread->base->cr3              = virt_to_phys((uint64_t)thread->parent->pml4) & ~0xFFF;
-        thread->base->proc             = (uint64_t)thread->parent;
-        thread->base->kernel_pml4_phys = (uint64_t)kernel_pml4_phys;
-
         // For syscalls
         cpu_cores[curr_core].kernel_gs_base->proc = (uint64_t)thread->parent;
 
@@ -426,8 +430,6 @@ void cpu_scheduler_task_c(uint32_t curr_core) {
         /* printf("Thread info: regs addr %p, regs phys addr %p %p, stack %p, proc %p\n", &thread->regs,
                get_physaddr((uint64_t)&thread->regs, thread->parent->pml4),
                get_physaddr((uint64_t)&thread->regs, kernel_pml4), thread->regs.iret_rsp, thread->parent); */
-
-        write_msr(IA32_GS_BASE, (uint64_t)thread->base);
 
         _finalize_task_switch((registers_t *)&thread->regs);
     }
