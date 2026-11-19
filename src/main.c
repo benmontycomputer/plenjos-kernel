@@ -191,15 +191,15 @@ void kmain(void) {
     kernel_load_phys = executable_addr_request.response->physical_base;
     kernel_load_virt = executable_addr_request.response->virtual_base;
 
-// Setup the GDT
-#if ARCH(X86_64)
-    init_x86_64();
-#endif
-
     debug_serial = true;
 
     // TODO: integrate this into device manager
     init_serial();
+
+// Setup the GDT
+#if ARCH(X86_64)
+    init_x86_64();
+#endif
 
     kout(KERNEL_INFO, "Debugging to serial output now...\n");
     kout(KERNEL_INFO, "KERNEL CMDLINE: %s\n", executable_cmdline_request.response->cmdline);

@@ -37,10 +37,6 @@ void initialize_standard_library(int argc, char *argv[], int envc, char *envp[])
     // printf("initialize_standard_library called (argc=%d, argv=%p, envc=%d, envp=%p) \n", argc, argv, envc, envp);
 }
 
-// TODO: implement this
 _Noreturn void exit(int status) {
-    // Halt for now
-    while (1) {
-        asm volatile("hlt");
-    }
+    syscall_exit_process();
 }

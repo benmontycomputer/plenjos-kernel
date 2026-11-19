@@ -27,8 +27,8 @@ static volatile struct limine_mp_request mp_request = { .id = LIMINE_MP_REQUEST,
 
 volatile struct limine_mp_response *mp_response;
 
-volatile cpu_core_data_t cpu_cores[MAX_CORES];
-volatile uint64_t gs_bases[MAX_CORES];
+volatile cpu_core_data_t cpu_cores[MAX_CORES] = { 0 };
+volatile uint64_t gs_bases[MAX_CORES]         = { 0 };
 
 volatile bool smp_loaded = false;
 
@@ -36,12 +36,12 @@ static gsbase_t *new_kernel_gs_base(uint32_t processor_id) {
     gsbase_t *base = (gsbase_t *)phys_to_virt(find_next_free_frame());
     memset(base, 0, PAGE_LEN);
 
-    base->proc             = (uint64_t)NULL;
-    base->cr3              = kernel_pml4_phys;
+    base->proc = (uint64_t)NULL;
+    base->cr3  = kernel_pml4_phys;
 
     // This should NEVER be read from the kernel gs_base; the stack field is only for threads' gs_base.
     // If rsp is set to 0, any push will lead to a GPF and a pop would page fault as 0 is unmapped.
-    base->stack            = 0;
+    base->stack = 0;
 
     base->processor_id     = processor_id;
     base->kernel_pml4_phys = (uint64_t)kernel_pml4_phys;
@@ -51,6 +51,16 @@ static gsbase_t *new_kernel_gs_base(uint32_t processor_id) {
 
 void setup_bs_gs_base() {
     cpu_cores[0].kernel_gs_base = new_kernel_gs_base(0);
+
+    if (!mp_request.response) {
+        panic("No mp info. Halt!\n");
+    }
+
+    mp_response = mp_request.response;
+
+    cpu_cores[0].lapic_id = mp_response->bsp_lapic_id;
+    cpu_cores[0].mp_info  = mp_response->cpus[0];
+
     gs_bases[0]                 = (uint64_t)cpu_cores[0].kernel_gs_base;
 
     kout(KERNEL_INFO, "base: %p %p\n", gs_bases[0], cpu_cores[0].kernel_gs_base);
@@ -84,10 +94,24 @@ void ipi_tlb_flush_routine(registers_t *regs, void *data) {
     // apic_send_eoi();
 }
 
+void write_tsc_aux(uint32_t core) {
+    write_msr(IA32_TSC_AUX_MSR, core);
+}
+
 void setup_other_core(struct limine_mp_info *mp_info) {
     set_cr3_addr(kernel_pml4_phys);
 
     asm volatile("cli");
+
+    write_tsc_aux(mp_info->processor_id);
+
+    kout(KERNEL_INFO, "Setting up core id %d lapic id %d\n", mp_info->processor_id, mp_info->lapic_id);
+
+    cpu_cores[mp_info->processor_id].kernel_gs_base = new_kernel_gs_base(mp_info->processor_id);
+    gs_bases[mp_info->processor_id]                 = (uint64_t)cpu_cores[mp_info->processor_id].kernel_gs_base;
+
+    write_msr(IA32_GS_BASE, 0); // no thread yet; the scheduler sets this to the thread's gsbase page
+    write_msr(IA32_KERNEL_GS_BASE, (uint64_t)cpu_cores[mp_info->processor_id].kernel_gs_base);
 
     cpu_cores[mp_info->processor_id].lapic_id = mp_info->lapic_id;
     cpu_cores[mp_info->processor_id].mp_info  = mp_info;
@@ -99,27 +123,17 @@ void setup_other_core(struct limine_mp_info *mp_info) {
 
     // hpet_init();
     // pit_init();
-    // apic_start_timer();
-
-    // irq_register_routine(IPI_TLB_SHOOTDOWN_IRQ, &ipi_tlb_shootdown_routine);
-    // irq_register_routine(IPI_TLB_FLUSH_IRQ, &ipi_tlb_flush_routine);
-
-    kout(KERNEL_INFO, "Setting up core id %d lapic id %d\n", mp_info->processor_id, mp_info->lapic_id);
-
-    cpu_cores[mp_info->processor_id].kernel_gs_base = new_kernel_gs_base(mp_info->processor_id);
-    gs_bases[mp_info->processor_id]                 = (uint64_t)cpu_cores[mp_info->processor_id].kernel_gs_base;
-
-    write_msr(IA32_GS_BASE, 0); // no thread yet; the scheduler sets this to the thread's gsbase page
-    write_msr(IA32_KERNEL_GS_BASE, (uint64_t)cpu_cores[mp_info->processor_id].kernel_gs_base);
-
+    apic_start_timer();
 
     kout(KERNEL_INFO, "Useable memory on detected core %d: %p\n\n", (int)get_curr_core(), PHYS_MEM_USEABLE_LENGTH);
 
     cpu_cores[mp_info->processor_id].online = true;
 
-    // irq_register_routine(18, &ipi_routine);
+    asm volatile("sti");
 
-    cpu_scheduler_task();
+    for (;;) {
+        asm volatile("hlt");
+    }
 }
 
 void setup_other_cores() {
@@ -132,10 +146,6 @@ void setup_other_cores() {
         cores_threads[i]    = NULL;
         cpu_cores[i].online = false;
     }
-
-    cpu_cores[0].online   = true;
-    cpu_cores[0].lapic_id = mp_response->bsp_lapic_id;
-    cpu_cores[0].mp_info  = mp_response->cpus[0];
 
     for (uint64_t i = 1; i < mp_response->cpu_count; i++) {
         struct limine_mp_info *mp_info = mp_response->cpus[i];
@@ -159,33 +169,17 @@ int get_n_cores() {
 }
 
 uint32_t get_curr_core() {
-    if (!mp_response) {
-        return 0;
-    }
-
-    uint32_t lapic_id = ReadRegister(LAPIC_ID_REG) >> 24;
-
-    for (int i = 0; i < MAX_CORES; i++) {
-        if (cpu_cores[i].lapic_id == lapic_id) {
-            return i;
-        }
-    }
-
-    return -1; // Should never happen
+    uint32_t aux;
+    asm volatile("rdtscp" : "=c"(aux) : : "rax", "rdx");
+    return aux;
 }
 
 uint32_t get_curr_lapic_id() {
-    return ReadRegister(LAPIC_ID_REG) >> 24;
+    return cpu_cores[get_curr_core()].lapic_id;
 }
 
 void load_smp() {
     asm volatile("cli");
-
-    if (!mp_request.response) {
-        panic("No mp info. Halt!\n");
-    }
-
-    mp_response = mp_request.response;
 
     kout(KERNEL_INFO, "SMP Info:\n    Core count: %p\n", mp_response->cpu_count);
 

@@ -127,6 +127,8 @@ void set_thread_state(thread_t *thread, proc_thread_state_t state) {
     thread->state = state;
 }
 
+// This should fully free the thread.
+// TODO: finish?
 void release_thread(thread_t *thread) {
     if (!thread) return;
 

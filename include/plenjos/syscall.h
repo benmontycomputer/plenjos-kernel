@@ -50,6 +50,9 @@ typedef enum {
     SYSCALL_KB_READ,
     SYSCALL_SLEEP,
 
+    SYSCALL_EXIT_THREAD,
+    SYSCALL_EXIT_PROCESS,
+
     SYSCALL_SPAWN,
 } syscalls_call;
 

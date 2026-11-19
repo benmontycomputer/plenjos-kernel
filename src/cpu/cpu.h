@@ -37,3 +37,5 @@ void ipi_tlb_shootdown_routine(registers_t *regs, void *data);
 void ipi_tlb_flush_routine(registers_t *regs, void *data);
 
 int get_n_cores();
+
+void write_tsc_aux(uint32_t core);

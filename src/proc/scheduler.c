@@ -11,6 +11,7 @@
 #include "memory/mm.h"
 #include "proc/proc.h"
 #include "proc/thread.h"
+#include "syscall/syscall.h"
 #include "timer/pit.h"
 
 #include <stdatomic.h>
@@ -51,6 +52,8 @@ static atomic_flag ktask_rq_lock      = ATOMIC_FLAG_INIT;
 
 // Set by kill_process_threads() for a remote core that is still running
 static _Atomic bool kill_pending[MAX_CORES];
+
+static uint64_t volatile scheduler_ticks;
 
 // How long kill_process_threads() waits for a remote core to acknowledge before giving up and warning
 #define KILL_ACK_SPIN_LIMIT 200000000ULL
@@ -136,7 +139,8 @@ void thread_rq_add(thread_t *thread) {
     *link = thread;
 }
 
-// NOTE: caller must still call cpu_scheduler_task(); this function does not IPI the current core as the IPI would be received later on and interrupt something else.
+// NOTE: caller must still call cpu_scheduler_task(); this function does not IPI the current core as the IPI would be
+// received later on and interrupt something else.
 void kill_process_threads(proc_t *proc) {
     uint32_t cores_to_kill[MAX_CORES];
     size_t cores_to_kill_count = 0;
@@ -173,8 +177,7 @@ void kill_process_threads(proc_t *proc) {
 
     for (size_t i = 0; i < cores_to_kill_count; i++) {
         // The target core must be able to acquire cores_threads_lock in its IPI handler.
-        printf("Process exit called on core %d, switching core %d to another thread...\n", curr_core,
-               cores_to_kill[i]);
+        printf("Process exit called on core %d, switching core %d to another thread...\n", curr_core, cores_to_kill[i]);
         send_ipi(cpu_cores[cores_to_kill[i]].lapic_id, IPI_KILL_IRQ + 32);
     }
 
@@ -223,10 +226,15 @@ void ipi_kill_routine(registers_t *regs, void *data) {
 void ipi_wakeup_routine(registers_t *regs, void *data) {
     // kout(KERNEL_INFO, "Received IPI wakeup on core %d\n", get_curr_core());
 
-    lock_cores_threads();
-
     uint32_t curr_core = get_curr_core();
 
+    /* if (cores_threads[curr_core] == &ktask_thread_placeholder) {
+        return;
+    } */
+
+    lock_cores_threads();
+
+    // Check again w/ lock acquired
     if (cores_threads[curr_core] == &ktask_thread_placeholder) {
         unlock_cores_threads();
         return;
@@ -259,6 +267,28 @@ void ipi_wakeup_routine(registers_t *regs, void *data) {
     cpu_scheduler_task();
 }
 
+void syscall_routine_sched(registers_t *regs, void *data) {
+    uint32_t curr_core = get_curr_core();
+
+    lock_cores_threads();
+
+    thread_t *thread = cores_threads[curr_core];
+    if (!thread || thread == &ktask_thread_placeholder) {
+        panic("syscall_routine_sched() called on core %u that doesn't have a thread assigned!\n", curr_core);
+    }
+
+    cores_threads[curr_core] = NULL;
+
+    unlock_cores_threads();
+
+    thread->state = ASLEEP;
+    memcpy(&thread->regs, regs, sizeof(*regs));
+
+    delegate_kernel_task((kernel_task_func_t)syscall, thread);
+
+    cpu_scheduler_task();
+}
+
 // TODO: more efficient way to wakeup than just sending to all cores
 void send_wakeup_ipi() {
     uint32_t curr_core = get_curr_core();
@@ -280,10 +310,28 @@ void thread_ready(thread_t *thread) {
     send_wakeup_ipi();
 }
 
+void thread_ready_safe(thread_t *thread) {
+    bool interrupts = are_interrupts_enabled();
+    if (interrupts) {
+        asm volatile("cli");
+    }
+    lock_thread_rq();
+    thread_ready(thread);
+    unlock_thread_rq();
+    if (interrupts) {
+        asm volatile("sti");
+    }
+}
+
 __attribute__((noreturn)) //
 void start_scheduler() {
     cpu_cores[0].online = true;
-    cpu_scheduler_task();
+
+    asm volatile("sti");
+
+    for (;;) {
+        asm volatile("hlt");
+    }
 }
 
 void stop_scheduler() {
@@ -307,14 +355,13 @@ void cpu_scheduler_task_c(uint32_t curr_core) {
     }
 
     lock_ktask_rq();
-    if (ktask_rq) {
+    while (ktask_rq) {
         // There's a kernel task to run
         kernel_task_func_t func = ktask_rq->func;
         void *arg               = ktask_rq->arg;
 
-
         kernel_task_t *old = ktask_rq;
-        ktask_rq = ktask_rq->rq_next;
+        ktask_rq           = ktask_rq->rq_next;
 
         fsa_free(&_ktask_fsa, old);
 
@@ -328,19 +375,22 @@ void cpu_scheduler_task_c(uint32_t curr_core) {
 
         asm volatile("sti");
 
-        // Execute the kernel task
+        // Execute the kernel task. Interrupts are enabled in this function so the interrupt core can still get
+        // interrupts that might e.g. schedule ktasks that could then be processed on another core.
         func(arg);
 
-        asm volatile("cli");
+        asm volatile("cli"); // Disable interrupts just in case func() enabled them
 
         lock_cores_threads();
 
         cores_threads[curr_core] = NULL;
 
         unlock_cores_threads();
-    } else {
-        unlock_ktask_rq();
+
+        lock_ktask_rq();
     }
+
+    unlock_ktask_rq();
 
     // Pick the thread and mark it RUNNING under the lock, and keep using the local copy afterwards. Otherwise a
     // concurrent kill_process_threads() could mark it DEAD and clear cores_threads[] between the unlock and our
@@ -356,7 +406,7 @@ void cpu_scheduler_task_c(uint32_t curr_core) {
     unlock_cores_threads();
 
     if (thread) {
-        printf("Starting thread %p on core %d\n", thread->tid, curr_core);
+        // printf("Starting thread %p on core %d\n", thread->tid, curr_core);
         // The thread's regs are the first item in the struct
         // Check if kernel page table needs to be flushed
         if (get_physaddr((uint64_t)&thread->regs, kernel_pml4) == 0x0) {
@@ -373,19 +423,19 @@ void cpu_scheduler_task_c(uint32_t curr_core) {
         cpu_cores[curr_core].kernel_gs_base->proc = (uint64_t)thread->parent;
 
         // The thread's regs are the first item in the struct
-        printf("Thread info: regs addr %p, regs phys addr %p %p, stack %p, proc %p\n", &thread->regs,
+        /* printf("Thread info: regs addr %p, regs phys addr %p %p, stack %p, proc %p\n", &thread->regs,
                get_physaddr((uint64_t)&thread->regs, thread->parent->pml4),
-               get_physaddr((uint64_t)&thread->regs, kernel_pml4), thread->regs.iret_rsp, thread->parent);
+               get_physaddr((uint64_t)&thread->regs, kernel_pml4), thread->regs.iret_rsp, thread->parent); */
 
         write_msr(IA32_GS_BASE, (uint64_t)thread->base);
 
         _finalize_task_switch((registers_t *)&thread->regs);
     }
 
-    asm volatile("sti");
-    asm volatile("hlt");
-
-    cpu_scheduler_task();
+    for (;;) {
+        asm volatile("sti");
+        asm volatile("hlt");
+    }
 }
 
 int delegate_kernel_task(kernel_task_func_t func, void *arg) {

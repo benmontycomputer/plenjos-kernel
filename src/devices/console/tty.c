@@ -1,5 +1,6 @@
 #include "tty.h"
 
+#include "arch/x86_64/common.h"
 #include "devices/manager.h"
 #include "devices/sysdrivers.h"
 #include "kernel.h"
@@ -112,6 +113,11 @@ inline size_t tty_flush_in_buf(void *buf, size_t len, struct tty *tty) {
 }
 
 ssize_t tty_read(vfs_handle_t *handle, void *buf, size_t len) {
+    bool interrupts = are_interrupts_enabled();
+    if (interrupts) {
+        asm volatile("cli");
+    }
+
     endpoint_t *endpoint = devfs_get_endpoint_from_handle(handle);
     struct tty *tty      = endpoint->func_args;
 
@@ -120,13 +126,13 @@ ssize_t tty_read(vfs_handle_t *handle, void *buf, size_t len) {
         kout(KERNEL_PANIC, "tty_read(): tty is NULL!\n");
     }
 #endif
+    size_t i = 0;
 
     if (!tty->in) {
         kout(KERNEL_WARN, "tty_read(): tty->in is NULL!\n");
-        return -EIO;
+        i = -EIO;
+        goto ret;
     }
-
-    size_t i = 0;
 
     while (i < len) {
         i += tty_flush_in_buf((uint8_t *)buf + i, len - i, tty);
@@ -141,6 +147,12 @@ ssize_t tty_read(vfs_handle_t *handle, void *buf, size_t len) {
             break;
         }
     }
+
+ret:
+    if (interrupts) {
+        asm volatile("sti");
+    }
+
     return i;
 }
 

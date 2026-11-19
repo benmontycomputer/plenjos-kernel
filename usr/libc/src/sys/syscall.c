@@ -92,3 +92,11 @@ int syscall_mount(const char *dev, const char *target) {
 pid_t syscall_spawn(const char *path, char *const argv[], char *const envp[], size_t argc, size_t envc) {
     return (pid_t)syscall(SYSCALL_SPAWN, (uint64_t)path, (uint64_t)argv, (uint64_t)envp, (uint64_t)argc, (uint64_t)envc);
 }
+
+_Noreturn void syscall_exit_thread() {
+    syscall(SYSCALL_EXIT_THREAD, 0, 0, 0, 0, 0);
+}
+
+_Noreturn void syscall_exit_process() {
+    syscall(SYSCALL_EXIT_PROCESS, 0, 0, 0, 0, 0);
+}

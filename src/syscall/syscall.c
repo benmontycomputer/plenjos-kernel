@@ -17,6 +17,7 @@
 #include "syscall/mem/memmap.h"
 #include "syscall/syscall_helpers.h"
 #include "timer/pit.h"
+#include "timer/timer.h"
 
 #include <stdint.h>
 
@@ -24,7 +25,7 @@ static uint8_t fb_mapped = 0;
 
 extern void *linker_elf_buf;
 
-uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_t rsi, uint64_t rdi) {
+/* uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_t rsi, uint64_t rdi) {
     uint64_t out;
 
     asm volatile("mov %[_rax], %%rax\n"
@@ -41,7 +42,7 @@ uint64_t syscall(uint64_t rax, uint64_t rbx, uint64_t rcx, uint64_t rdx, uint64_
     );
 
     return out;
-}
+} */
 
 extern char *fb;
 extern int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
@@ -71,14 +72,20 @@ extern int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
     return true;
 } */
 
-void syscall_routine(registers_t *regs, void *data) {
+void syscall_sleep_finish(struct timer_timeout *timeout) {
+    thread_ready_safe((thread_t *)timeout->data);
+}
+
+void syscall(thread_t *thread) {
+    registers_t *regs = &thread->regs;
+
     uint64_t call = regs->rax;
     // printf("syscall %d\n", (int)call);
 
     // TODO: would we rather use this or the one from the proc struct? They should ALWAYS be the same, right?
     pml4_t *current_pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
 
-    proc_t *proc = _get_proc_kernel();
+    proc_t *proc = thread->parent;
 
     if (!proc) {
         printf("syscall: failed to get current process!\n");
@@ -86,12 +93,12 @@ void syscall_routine(registers_t *regs, void *data) {
         // TODO: handle this more gracefully (we might actually want to panic; this indicates a serious kernel issue)
         // TODO: is this the correct errno?
         regs->rax = (uint64_t)-1;
-        return;
+        goto ret;
     }
 
     if (call >= SYSCALL_FS_FIRST && call <= SYSCALL_FS_LAST) {
         syscall_handle_fs_call(regs, proc, current_pml4);
-        return;
+        goto ret;
     }
 
     switch (call) {
@@ -253,10 +260,8 @@ void syscall_routine(registers_t *regs, void *data) {
         break;
     }
     case SYSCALL_SLEEP: {
-        asm volatile("sti");
-        pit_sleep((uint32_t)regs->rbx);
-        asm volatile("cli");
-        break;
+        set_timeout(regs->rbx, syscall_sleep_finish, thread);
+        return;
     }
     case SYSCALL_SPAWN: {
         const char *path = NULL;
@@ -270,24 +275,24 @@ void syscall_routine(registers_t *regs, void *data) {
 
         // loadelf(linker_elf_buf, shell_proc->pml4, &linker_entry, LINKER_OFFS);
 
-        proc_t *proc = create_proc("spawn", init_proc);
-        if (!proc) {
+        proc_t *spawn_proc = create_proc("spawn", proc);
+        if (!spawn_proc) {
             kfree_heap((void *)path);
             regs->rax = (uint64_t)(int64_t)-ENOMEM;
             break;
         }
 
-        int res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_READ, 0, 0, &proc->fds[0]);
+        int res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_READ, 0, 0, &spawn_proc->fds[0]);
         if (!res) {
-            res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &proc->fds[1]);
+            res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &spawn_proc->fds[1]);
         }
         if (!res) {
-            res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &proc->fds[2]);
+            res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &spawn_proc->fds[2]);
         }
         if (!res) {
-            // The child may run and exit before execute() returns, so don't touch proc afterwards.
-            pid_t child_pid = proc->pid;
-            res             = execute(path, proc);
+            // The child may run and exit before execute() returns, so don't touch spawn_proc afterwards.
+            pid_t child_pid = spawn_proc->pid;
+            res             = execute(path, spawn_proc);
             if (!res) {
                 kfree_heap((void *)path);
                 regs->rax = (uint64_t)child_pid;
@@ -296,21 +301,36 @@ void syscall_routine(registers_t *regs, void *data) {
         }
 
         kout(KERNEL_WARN, "spawn: failed to start %s (%d)\n", path, res);
-        process_exit(proc);
+
+        asm volatile("cli");
+        process_exit(spawn_proc);
+        asm volatile("sti");
+
         kfree_heap((void *)path);
         regs->rax = (uint64_t)(int64_t)res;
 
         break;
     }
+    case SYSCALL_EXIT_THREAD: {
+        asm volatile("cli");
+        release_thread(thread);
+        asm volatile("sti");
+        return;
+    }
+    case SYSCALL_EXIT_PROCESS: {
+        asm volatile("cli");
+        process_exit(proc);
+        asm volatile("sti");
+        return;
+    }
     default:
         break;
     }
-}
 
-void syscall_routine_noret(registers_t *regs) {
-    syscall_routine(regs, NULL);
+ret:
+    thread_ready_safe(thread);
 }
 
 void syscalls_init() {
-    irq_register_routine(SYSCALL_IRQ, &syscall_routine, NULL);
+    irq_register_routine(SYSCALL_IRQ, &syscall_routine_sched, NULL);
 }

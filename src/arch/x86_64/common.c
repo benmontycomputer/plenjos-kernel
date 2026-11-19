@@ -22,6 +22,10 @@
 void init_x86_64() {
     asm volatile("cli");
 
+    write_tsc_aux(0);
+
+    setup_bs_gs_base();
+
     gdt_tss_init();
     acpi_init();
 
@@ -29,7 +33,7 @@ void init_x86_64() {
     enable_ioapic();
 
     uint32_t bsp_flags = (0 << 8) | (0 << 13) | (0 << 15); // Flags for the BSP
-    ioapic_route_all_irq(get_lapic_id(), bsp_flags);
+    ioapic_route_all_irq(get_curr_lapic_id(), bsp_flags);
 
     idt_init();
 
@@ -40,8 +44,11 @@ void init_x86_64() {
                       : kout(KERNEL_WARN, "Couldn't confirm APIC enabled.\n");
 
     // hpet_init();
-    pit_init();
-    // apic_start_timer();
+    pit_init(); // Interrupts are enabled by this
+    apic_calibrate_timer();
+    apic_start_timer();
+
+    kout(KERNEL_INFO, "Started BSP APIC timer.\n");
 
     PIC_remap(PIC1, PIC2);
     pic_disable();
@@ -50,10 +57,6 @@ void init_x86_64() {
     irq_register_routine(IPI_TLB_FLUSH_IRQ, &ipi_tlb_flush_routine, NULL);
     irq_register_routine(IPI_KILL_IRQ, &ipi_kill_routine, NULL);
     irq_register_routine(IPI_WAKEUP_IRQ, &ipi_wakeup_routine, NULL);
-
-    asm volatile("sti");
-
-    setup_bs_gs_base();
 
     // ReadRegister(0x60);
 }

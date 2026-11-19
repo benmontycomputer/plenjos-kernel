@@ -17,6 +17,9 @@ void ipi_wakeup_routine(registers_t *regs, void *data);
 // These DO NOT acquire the lock; it must be done by the caller
 void thread_ready(thread_t *thread);
 
+// This DOES acquire the lock, as well as disabling interrupts
+void thread_ready_safe(thread_t *thread);
+
 void lock_thread_rq();
 void unlock_thread_rq();
 
@@ -30,3 +33,5 @@ __attribute__((noreturn)) //
 void start_scheduler();
 
 void stop_scheduler();
+
+void syscall_routine_sched(registers_t *regs, void *data);

@@ -42,4 +42,7 @@ int syscall_mount(const char *dev, const char *target);
 
 pid_t syscall_spawn(const char *path, char *const argv[], char *const envp[], size_t argc, size_t envc);
 
+_Noreturn void syscall_exit_thread();
+_Noreturn void syscall_exit_process();
+
 #endif /* _LIBC_SYSCALL_H */

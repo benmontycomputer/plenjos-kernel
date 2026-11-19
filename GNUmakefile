@@ -190,6 +190,7 @@ clean:
 uefi_run:
 	qemu-system-x86_64 \
 		-m 4096 \
+		-cpu qemu64,+rdtscp \
 		-smp cores=4,threads=1,sockets=1,maxcpus=4 \
 		-drive file=../limine_bootable.img,if=none,format=raw,id=disk0 \
 		-device ide-hd,drive=disk0,bus=ide.0,unit=0 \
@@ -208,6 +209,7 @@ uefi_run:
 uefi_run_gdb:
 	qemu-system-x86_64 \
 		-m 4096 \
+		-cpu qemu64,+rdtscp \
 		-smp cores=4,threads=1,sockets=1,maxcpus=4 \
 		-drive file=../limine_bootable.img,if=none,format=raw,id=disk0 \
 		-device ide-hd,drive=disk0,bus=ide.0,unit=0 \

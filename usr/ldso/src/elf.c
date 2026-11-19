@@ -327,6 +327,12 @@ done_parsing:
             if (res < 0) {
                 syscall_print("parse_dynamic_section: failed to load needed library\n");
                 return -1;
+            } else {
+                syscall_print("parse_dynamic_section: loaded library ");
+                syscall_print(lib_path);
+                syscall_print(" at base ");
+                syscall_print_ptr(loaded_dsos[res].base);
+                syscall_print("\n");
             }
         }
     }

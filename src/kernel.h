@@ -37,6 +37,8 @@
 #define CANONICAL_UNIFORM_REGION 0xFFFF000000000000
 #define CANONICAL_CHECK_BIT      0x0000800000000000
 
+#define SCHEDULER_TICK_HZ 250
+
 /**
  * This file contains various kernel-wide definitions and structures, as well as config options.
  */
