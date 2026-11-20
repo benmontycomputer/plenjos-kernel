@@ -1,4 +1,4 @@
-SUBDIRS = usr/ldso usr/libc usr/shell
+SUBDIRS = usr/ldso usr/libc usr/libplenja usr/shell
 
 # Nuke built-in rules and variables.
 MAKEFLAGS += -rR
@@ -127,9 +127,13 @@ override ROOT_BOOT_DIR := root/boot
 all: $(ROOT_BIN_DIR) $(ROOT_BOOT_DIR) $(ROOT_LIB_DIR) bin/$(OUTPUT) $(SUBDIRS)
 
 # Subdir dependencies
-usr/shell: usr/libc
+usr/shell: usr/libc usr/libplenja
 	$(MAKE) -C $@
 	cp usr/shell/bin/* root/bin/
+
+usr/libplenja: usr/libc
+	$(MAKE) -C $@
+	cp usr/libplenja/lib/* root/lib/
 
 usr/libc: usr/ldso
 	$(MAKE) -C $@
@@ -184,6 +188,7 @@ clean:
 	rm -rf bin obj root
 	$(MAKE) -C usr/ldso clean
 	$(MAKE) -C usr/libc clean
+	$(MAKE) -C usr/libplenja clean
 	$(MAKE) -C usr/shell clean
 
 #		-drive file=../image.iso,if=ide,media=cdrom

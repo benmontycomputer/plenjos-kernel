@@ -58,12 +58,15 @@ pstring pstr_combine(pstring pstr1, pstring pstr2)
     //returnvalue.chars = malloc(pstr1.len + pstr2.len);
     if (pstr1.len > 0)
     {
-        strncpy(returnvalue.chars, pstr1.chars, pstr1.len);
-        strncat(returnvalue.chars, pstr2.chars, pstr2.len);
+        memcpy(returnvalue.chars, pstr1.chars, pstr1.len);
+        if (pstr2.len > 0)
+        {
+            memcpy(returnvalue.chars + pstr1.len, pstr2.chars, pstr2.len);
+        }
     }
     else
     {
-        strncpy(returnvalue.chars, pstr2.chars, pstr2.len);
+        memcpy(returnvalue.chars, pstr2.chars, pstr2.len);
     }
     returnvalue.len = pstr1.len + pstr2.len;
     return returnvalue;
@@ -141,8 +144,9 @@ char* insert_char_malloc (char *str, long len, char c, long pos)
     for (i = 0 ; i < pos ; ++i)
     p[i] = str[i];
     p[i++] = c;
-    for ( ; i < len + 2 ; ++i)
+    for ( ; i < len + 1 ; ++i)
     p[i] = str[i - 1];
+    p[len + 1] = '\0';
     //free(str);
     return p;
 }

@@ -1,20 +1,44 @@
-all: libplenja
+# libplenja: string + file helpers for user programs. Built against the in-tree libc and installed into root/lib by
+# the top-level GNUmakefile. Consumers use -isystem usr/libplenja/include and -L usr/libplenja/lib -lplenja.
 
-libplenja:
-	gcc -fPIC fs/libplenja-fs.c -o fs/libplenja-fs.o -c
-	gcc -fPIC str/libplenja-str.c -o str/libplenja-str.o -c
-	gcc fs/libplenja-fs.o str/libplenja-str.o -shared -o libplenja.so
-	echo '' | cat fs/libplenja-fs.h - str/libplenja-str.h > libplenja.h
+TOOLCHAIN_PREFIX ?= x86_64-elf-
 
-debug:
-	gcc -fPIC fs/libplenja-fs.c -o fs/libplenja-fs.o -c -g
-	gcc -fPIC str/libplenja-str.c -o str/libplenja-str.o -c -g
-	gcc fs/libplenja-fs.o str/libplenja-str.o -shared -o libplenja.so -g
-	echo '' | cat fs/libplenja-fs.h - str/libplenja-str.h > libplenja.h
+CC = $(TOOLCHAIN_PREFIX)gcc
+LD = $(TOOLCHAIN_PREFIX)ld
 
-install:
-	./preinstall.sh
-	cp libplenja.so /usr/lib/libplenja.so.0.0.0
-	ln -s libplenja.so.0.0.0 /usr/lib/libplenja.so.0
-	ln -s libplenja.so.0.0.0 /usr/lib/libplenja.so
-	cp libplenja.h /usr/include/libplenja.h
+CFLAGS   = -m64 -ffreestanding -fno-builtin -fno-stack-protector -g -O2 -Wall -Wextra \
+           -mno-mmx -mno-sse -mno-sse2 -fPIC -MMD -MP
+CPPFLAGS = -I fs -I str -isystem ../libc/include -I ../../include
+
+SRCS    := fs/libplenja-fs.c str/libplenja-str.c
+OBJS    := $(patsubst %.c,obj/%.c.o,$(SRCS))
+DEPS    := $(OBJS:.o=.d)
+HEADERS := include/libplenja.h include/libplenja-fs.h include/libplenja-str.h
+
+.PHONY: all clean
+all: lib/libplenja.so $(HEADERS)
+
+obj/%.c.o: %.c Makefile
+	mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+
+lib/libplenja.so: $(OBJS)
+	mkdir -p $(dir $@)
+	$(LD) -shared -o $@ $^
+
+include/libplenja.h: libplenja.h
+	mkdir -p $(dir $@)
+	cp $< $@
+
+include/libplenja-fs.h: fs/libplenja-fs.h
+	mkdir -p $(dir $@)
+	cp $< $@
+
+include/libplenja-str.h: str/libplenja-str.h
+	mkdir -p $(dir $@)
+	cp $< $@
+
+-include $(DEPS)
+
+clean:
+	rm -rf obj lib include
