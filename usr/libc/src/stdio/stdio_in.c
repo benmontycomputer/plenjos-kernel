@@ -17,6 +17,8 @@ char getchar() {
         size_t res = fread(&ch, 1, 1, stdin);
         if (res == 1) {
             return ch;
+        } else {
+            syscall_sleep(5);
         }
     }
 }

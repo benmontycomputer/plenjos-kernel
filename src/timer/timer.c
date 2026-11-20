@@ -4,12 +4,19 @@
 #include "arch/x86_64/common.h"
 #include "hpet.h"
 #include "lib/stdio.h"
+#include "lib/sync.h"
 #include "memory/kmalloc.h"
 #include "pit.h"
 
 #include <stdatomic.h>
 
 struct timer_timeout timer_timeouts[TIMER_MAX_TIMEOUTS] = { 0 };
+
+static void thread_wakeup_callback(struct timer_timeout *timeout) {
+    completion_t *data = (completion_t *)timeout->data;
+
+    complete(data);
+}
 
 int set_core_wakeup_timeout(uint64_t milliseconds, uint32_t core_id, uint64_t *started_at_out) {
     for (int i = 0; i < TIMER_MAX_TIMEOUTS; i++) {
@@ -103,7 +110,11 @@ void kthread_sleep_finish(struct timer_timeout *timeout) {
     thread_ready_safe((thread_t *)timeout->data);
 }
 
-uint64_t kthread_sleep_ms(uint64_t ms, thread_t *thread) {
-    // TODO: implement properly
-    return ksleep_nonblocking_ms(ms, 0);
+uint64_t kthread_sleep_ms(uint64_t ms) {
+    completion_t c = COMPLETION_INIT;
+
+    set_timeout(ms, thread_wakeup_callback, &c);
+    wait_for_completion(&c, -1);
+
+    return 0;
 }

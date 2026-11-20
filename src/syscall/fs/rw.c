@@ -30,6 +30,7 @@ ssize_t syscall_routine_read(int fd, void *buf, size_t count, proc_t *proc, pml4
 
     // TODO: (SECURITY RISK) check that the final output buffer is valid before reading from the fs at all.
     res = vfs_read(handle, buf_tmp, count);
+    // TODO: Sockets, etc. should BLOCK by default
 
     if (res > 0) {
         int check = copy_to_user_buf(buf, buf_tmp, res, false, current_pml4);

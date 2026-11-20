@@ -245,7 +245,7 @@ void syscall(registers_t *regs, thread_t *thread, pml4_t *current_pml4) {
         break;
     }
     case SYSCALL_SLEEP: {
-        kthread_sleep_ms(ARG1(regs), thread);
+        kthread_sleep_ms(ARG1(regs));
         break;
     }
     case SYSCALL_SPAWN: {
