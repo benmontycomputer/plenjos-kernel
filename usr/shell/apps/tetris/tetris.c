@@ -273,6 +273,6 @@ void tetris_main() {
             }
         }
         // usleep(20000); // ~50 FPS
-        syscall_sleep(2);
+        syscall_sleep(20);
     }
 }
