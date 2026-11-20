@@ -17,7 +17,7 @@ typedef struct thread thread_t;
 
 typedef enum {
     READY,
-    ASLEEP,
+    BLOCKED,
     RUNNING,
     DEAD,
 } proc_thread_state_t;

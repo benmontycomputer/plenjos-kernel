@@ -9,24 +9,19 @@
 #include <stdint.h>
 
 uint64_t syscall(uint64_t rax, uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t r10, uint64_t r8, uint64_t r9) {
-    uint64_t out;
+    register uint64_t r_rdi asm("rdi") = rdi;
+    register uint64_t r_rsi asm("rsi") = rsi;
+    register uint64_t r_rdx asm("rdx") = rdx;
+    register uint64_t r10_ asm("r10")  = r10;
+    register uint64_t r8_ asm("r8")    = r8;
+    register uint64_t r9_ asm("r9")    = r9;
+    uint64_t ret;
 
-    asm volatile("mov %[_rax], %%rax\n"
-                 "mov %[_rdi], %%rdi\n"
-                 "mov %[_rsi], %%rsi\n"
-                 "mov %[_rdx], %%rdx\n"
-                 "mov %[_r10], %%r10\n"
-                 "mov %[_r8], %%r8\n"
-                 "mov %[_r9], %%r9\n"
-                 "int $0x80\n"
-                 "mov %%rax, %[_out]\n"
-                 : [_out] "=r"(out)
-                 : [_rax] "r"(rax), [_rdi] "r"(rdi), [_rsi] "r"(rsi), [_rdx] "r"(rdx), [_r10] "r"(r10), [_r8] "r"(r8),
-                   [_r9] "r"(r9)
-                 : "rax", "rdi", "rsi", "rdx", "r10", "r8", "r9" // Clobbered registers
-    );
-
-    return out;
+    asm volatile("syscall"
+                 : "=a"(ret)
+                 : "a"(rax), "r"(r_rdi), "r"(r_rsi), "r"(r_rdx), "r"(r10_), "r"(r8_), "r"(r9_)
+                 : "rcx", "r11", "memory");
+    return ret;
 }
 
 int syscall_open(const char *path, syscall_open_flags_t flags, mode_t mode_if_create) {

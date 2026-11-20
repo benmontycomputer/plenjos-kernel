@@ -1,6 +1,7 @@
 #include "proc/thread.h"
 
 #include "arch/x86_64/gdt/gdt.h"
+#include "arch/x86_64/gdt/tss.h"
 #include "lib/special_mem/fixed_size_allocator.h"
 #include "lib/stdio.h"
 #include "lib/string.h"
@@ -39,7 +40,7 @@ thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), vo
     thread->next            = NULL;
     thread->parent          = proc;
     // thread->regs = {0};
-    thread->state           = ASLEEP;
+    thread->state           = BLOCKED;
     thread->tid             = __atomic_fetch_add(&next_tid, 1, __ATOMIC_SEQ_CST);
     thread->index_in_parent = atomic_fetch_add(&(proc->next_thread_index), 1);
 
@@ -56,10 +57,11 @@ thread_t *create_thread(proc_t *proc, const char *name, void (*func)(void *), vo
             }
             fsa_free(&_thread_fsa, thread);
             return NULL;
-
         }
         memset((void *)phys_to_virt(p), 0, PAGE_LEN);
     }
+
+    thread->kstack_top = (void *)alloc_kstack();
 
     // Set ss table descriptors
     thread->regs.iret_cs = USER_CS; // User code

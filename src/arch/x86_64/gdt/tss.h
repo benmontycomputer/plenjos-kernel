@@ -27,4 +27,7 @@ struct tss { // 104 bytes is the minimum size of a TSS
 
 void tss_init();
 
+uint64_t alloc_kstack();
+void free_kstack(uint64_t stack);
+
 #endif

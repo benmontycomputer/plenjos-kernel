@@ -215,7 +215,7 @@ uefi_run_gdb:
 		-device ide-hd,drive=disk0,bus=ide.0,unit=0 \
 		-drive file=../image.iso,if=none,media=cdrom,id=disk1 \
 		-device ide-cd,drive=disk1,bus=ide.1,unit=0 \
-		-d guest_errors,cpu_reset,invalid_mem,unimp \
+		-d int,guest_errors,cpu_reset,invalid_mem,unimp -D qemu.log \
 		-vga std \
 		-serial stdio \
 		-smbios type=0,uefi=on \
@@ -223,8 +223,9 @@ uefi_run_gdb:
 		-usb \
 		-device usb-kbd \
 		-device usb-mouse \
-        -no-reboot \
-        -s -S
+		-no-reboot \
+		-no-shutdown \
+		-s -S
 
 #-device i8042
 

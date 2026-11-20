@@ -1,10 +1,10 @@
 #pragma once
 
+#include "kernel.h"
+#include "lib/structures/rbtree.h"
+
 #include <stddef.h>
 #include <stdint.h>
-
-#include "lib/structures/rbtree.h"
-#include "kernel.h"
 
 // Paging memory manager
 #define PAGING_FLAG_PRESENT       0x001
@@ -49,6 +49,7 @@
 #define PAGE_FLAG_WRITE   0x2
 #define PAGE_FLAG_USER    0x4
 #define PAGE_FLAG_NX      (1ULL << 63)
+#define PS_BIT            (1ULL << 7) // Large pages
 
 #define PHYSADDR_MASK 0x000FFFFFFFFFF000ULL
 
@@ -83,7 +84,7 @@ typedef struct page { // 64 bit
     uint64_t pat      : 1;
     uint64_t global   : 1;
     uint64_t ignored  : 3;
-    frame_t  frame    : 40;
+    frame_t frame     : 40;
     uint64_t reserved : 11;
     uint64_t nx       : 1;
 } __attribute__((packed)) page_t;
@@ -122,7 +123,7 @@ struct vm_area {
 
     /**
      * Got this idea from linux; this stores the largest gap of free virtual memory to the left of this area.
-     * This will either be the gap between this area and its left child or between 
+     * This will either be the gap between this area and its left child or between
      */
     unsigned long largest_left_gap;
 };

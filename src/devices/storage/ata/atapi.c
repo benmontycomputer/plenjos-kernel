@@ -51,7 +51,7 @@ int atapi_send_packet_command(struct ide_device *dev, const uint8_t *packet, siz
         goto cleanup;
     }
 
-    if (atomic_load_explicit(&dev->channel->irq_cnt, memory_order_acquire) != 0) {
+    if (atomic_load_explicit(&dev->channel->irq_done.cnt, memory_order_acquire) != 0) {
         kout(KERNEL_SEVERE_FAULT, "Kernel Programming Error: ATAPI send_packet_command called while IRQ processing is ongoing\n");
         res = -1;
         goto cleanup;
@@ -133,7 +133,6 @@ int atapi_send_packet_command(struct ide_device *dev, const uint8_t *packet, siz
 
         if (status & ATA_SR_ERR) {
             kout(KERNEL_EXTERNAL_FAULT, "Error: ATAPI device reported error after PACKET command\n");
-            atomic_fetch_sub_explicit(&dev->channel->irq_cnt, 1, memory_order_release);
             res = -1;
             goto cleanup;
         }
@@ -162,39 +161,20 @@ int atapi_send_packet_command(struct ide_device *dev, const uint8_t *packet, siz
             if (is_write) {
                 // Write data to device
                 for (uint16_t i = 0; i < wordcount; i++) {
-                    // Delay this as long as possible to give us the best chance at detecting overlapping IRQs, but it
-                    // must ultimately be called before the last word is transfered, because the last word can trigger
-                    // another IRQ letting us know that we are done, and not calling this before that would lead to a
-                    // false positive.
-                    if (i == wordcount - 1) {
-                        atomic_fetch_sub_explicit(&dev->channel->irq_cnt, 1, memory_order_release);
-                    }
-
                     uint16_t word = ((uint16_t *)buffer)[i];
                     outw(dev->channel->cmd_base + ATA_REG_DATA, word);
                 }
             } else {
                 // Read data from device
                 for (uint16_t i = 0; i < wordcount; i++) {
-                    // Delay this as long as possible to give us the best chance at detecting overlapping IRQs, but it
-                    // must ultimately be called before the last word is transfered, because the last word can trigger
-                    // another IRQ letting us know that we are done, and not calling this before that would lead to a
-                    // false positive.
-                    if (i == wordcount - 1) {
-                        atomic_fetch_sub_explicit(&dev->channel->irq_cnt, 1, memory_order_release);
-                    }
-
                     uint16_t word           = inw(dev->channel->cmd_base + ATA_REG_DATA);
                     ((uint16_t *)buffer)[i] = word;
                 }
             }
-        } else {
-            atomic_fetch_sub_explicit(&dev->channel->irq_cnt, 1, memory_order_release);
         }
     }
 
     atomic_store_explicit(&dev->channel->last_status, 0, memory_order_release);
-    atomic_store_explicit(&dev->channel->irq_cnt, 0, memory_order_release);
 
 cleanup:
     if (interrupts_were_enabled == 0) {

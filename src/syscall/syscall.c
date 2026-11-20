@@ -1,5 +1,6 @@
 #include "syscall/syscall.h"
 
+#include "arch/x86_64/cpuid/cpuid.h"
 #include "arch/x86_64/gdt/gdt.h"
 #include "devices/input/keyboard/keyboard.h"
 #include "kernel.h"
@@ -74,10 +75,6 @@ extern int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
 
     return true;
 } */
-
-void syscall_sleep_finish(struct timer_timeout *timeout) {
-    thread_ready_safe((thread_t *)timeout->data);
-}
 
 void syscall(registers_t *regs, thread_t *thread, pml4_t *current_pml4) {
     proc_t *proc = thread->parent;
@@ -248,7 +245,7 @@ void syscall(registers_t *regs, thread_t *thread, pml4_t *current_pml4) {
         break;
     }
     case SYSCALL_SLEEP: {
-        kthread_sleep_ms(ARG1(regs));
+        kthread_sleep_ms(ARG1(regs), thread);
         break;
     }
     case SYSCALL_SPAWN: {

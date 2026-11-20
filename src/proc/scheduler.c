@@ -42,7 +42,7 @@ fixed_size_allocator_t _ktask_fsa = FSA_DEFAULT(sizeof(kernel_task_t));
 thread_t *cores_threads[MAX_CORES] = { 0 };
 
 static thread_t ktask_thread_placeholder = { 0 };
-static proc_t kthread_proc = { 0 };
+static proc_t kthread_proc               = { 0 };
 
 thread_t *thread_rq     = NULL;
 kernel_task_t *ktask_rq = NULL;
@@ -224,6 +224,7 @@ void ipi_kill_routine(registers_t *regs, void *data) {
 }
 
 // TODO: differentiate between wakeup and preempt? or change wakeup to preempt?
+// TODO: rename this to yield
 void ipi_wakeup_routine(registers_t *regs, void *data) {
     // kout(KERNEL_INFO, "Received IPI wakeup on core %d\n", get_curr_core());
 
@@ -275,8 +276,14 @@ void syscall_dispatch(registers_t *regs) {
 
     thread_t *thread = cores_threads[curr_core];
     if (!thread || thread == &ktask_thread_placeholder) {
-        panic("syscall_dispatch() called on core %u that doesn't have a thread assigned!\n", curr_core);
-    }
+    for (int i = 0; i < get_n_cores(); i++) {
+        printf("core %d: thread=%p state=%d\n", i, cores_threads[i],
+               cores_threads[i] ? cores_threads[i]->state : -1);
+        }
+    panic("syscall_dispatch() core %u (lapic %u) no thread; rax=%lu rip=%p rsp=%p\n",
+          curr_core, get_curr_lapic_id() /* or your lapic id read */,
+          regs->rax, regs->iret_rip, regs->iret_rsp);
+}
 
     unlock_cores_threads();
 
@@ -286,7 +293,7 @@ void syscall_dispatch(registers_t *regs) {
 
     // NOTE: regs->cr3 is WRONG and must be corrected here
     pml4_t *current_pml4 = (pml4_t *)thread->parent->pml4;
-    regs->cr3 = get_physaddr((uint64_t)current_pml4, kernel_pml4);
+    regs->cr3            = get_physaddr((uint64_t)current_pml4, kernel_pml4);
 
     // TODO: if we want to add a field to indicate that a thread is in kernel mode, update that here
 
@@ -311,6 +318,9 @@ void send_wakeup_ipi() {
 }
 
 void thread_ready(thread_t *thread) {
+    if (thread->state == READY || thread->state == RUNNING) {
+        panic("thread_ready() called on thread %u which was already %s\n", thread->tid, thread->state == RUNNING ? "running" : "ready");
+    }
     thread->state = READY;
     thread_rq_add(thread);
 
@@ -331,17 +341,10 @@ void thread_ready_safe(thread_t *thread) {
     }
 }
 
-__attribute__((noreturn)) //
 void start_scheduler() {
     kthread_proc.pml4 = kernel_pml4;
 
     cpu_cores[0].online = true;
-
-    asm volatile("sti");
-
-    for (;;) {
-        asm volatile("hlt");
-    }
 }
 
 void stop_scheduler() {
@@ -353,6 +356,25 @@ void stop_scheduler() {
 
 __attribute__((noreturn)) //
 extern void _finalize_task_switch(registers_t *regs);
+extern void kcontext_block(uint64_t *saved_rsp, mutex *m);
+
+__attribute__((noreturn)) //
+extern void kcontext_resume(uint64_t saved_rsp);
+
+// Marks the thread as blocked and waits for it to be woken, only releasing the mutex at the last second and reacquiring
+// it upon wake
+void block(mutex *m, thread_t *thread) {
+    bool irq = irq_save();
+    lock_cores_threads();
+    thread->state = BLOCKED;
+    cores_threads[get_curr_core()] = NULL;
+    unlock_cores_threads();
+
+    kcontext_block(&thread->kctx_rsp, m);
+
+    mutex_lock(m);
+    irq_restore(irq);
+}
 
 __attribute__((noreturn)) //
 void cpu_scheduler_task_c(uint32_t curr_core) {
@@ -416,22 +438,31 @@ void cpu_scheduler_task_c(uint32_t curr_core) {
     unlock_cores_threads();
 
     if (thread) {
-        // printf("Starting thread %p on core %d\n", thread->tid, curr_core);
-        // The thread's regs are the first item in the struct
-        // Check if kernel page table needs to be flushed
-        if (get_physaddr((uint64_t)&thread->regs, kernel_pml4) == 0x0) {
-            ipi_tlb_flush_routine(NULL, NULL);
-        }
-
         // For syscalls
-        cpu_cores[curr_core].kernel_gs_base->proc = (uint64_t)thread->parent;
+        cpu_cores[curr_core].kernel_gs_base->syscall_stack = (uint64_t)thread->kstack_top;
 
-        // The thread's regs are the first item in the struct
-        /* printf("Thread info: regs addr %p, regs phys addr %p %p, stack %p, proc %p\n", &thread->regs,
-               get_physaddr((uint64_t)&thread->regs, thread->parent->pml4),
-               get_physaddr((uint64_t)&thread->regs, kernel_pml4), thread->regs.iret_rsp, thread->parent); */
+        if (thread->kctx_rsp) {
+            uint64_t rsp     = thread->kctx_rsp;
+            thread->kctx_rsp = 0;
 
-        _finalize_task_switch((registers_t *)&thread->regs);
+            // TODO: is this needed? I don't think so.
+            set_cr3_addr(kernel_pml4_phys); // it blocked in kernel mode, on the kernel page tables
+            kcontext_resume(rsp);
+        } else {
+            // printf("Starting thread %p on core %d\n", thread->tid, curr_core);
+            // The thread's regs are the first item in the struct
+            // Check if kernel page table needs to be flushed
+            if (get_physaddr((uint64_t)&thread->regs, kernel_pml4) == 0x0) {
+                ipi_tlb_flush_routine(NULL, NULL);
+            }
+
+            // The thread's regs are the first item in the struct
+            /* printf("Thread info: regs addr %p, regs phys addr %p %p, stack %p, proc %p\n", &thread->regs,
+                get_physaddr((uint64_t)&thread->regs, thread->parent->pml4),
+                get_physaddr((uint64_t)&thread->regs, kernel_pml4), thread->regs.iret_rsp, thread->parent); */
+
+            _finalize_task_switch((registers_t *)&thread->regs);
+        }
     }
 
     for (;;) {

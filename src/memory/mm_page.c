@@ -239,11 +239,15 @@ physptr_t get_physaddr(uint64_t virt, pml4_t *pml4) {
     dir_entry_t pdpt_entry = pdpt_table->entries[pdpt_index];
 
     if (!pdpt_entry.present) return 0;
+    if (*(uint64_t *)&pdpt_entry & PS_BIT) // 1 GiB page
+        return ((*(uint64_t *)&pdpt_entry) & 0x000FFFFFC0000000ULL) + (virt & 0x3FFFFFFFULL);
 
     pd_t *pd_table       = (pd_t *)phys_to_virt(pdpt_entry.base_addr << 12);
     dir_entry_t pd_entry = pd_table->entries[pd_index];
 
     if (!pd_entry.present) return 0;
+    if (*(uint64_t *)&pd_entry & PS_BIT) // 2 MiB page
+        return ((*(uint64_t *)&pd_entry) & 0x000FFFFFFFE00000ULL) + (virt & 0x1FFFFFULL);
 
     pt_t *pt_table = (pt_t *)phys_to_virt(pd_entry.base_addr << 12);
     page_t page    = pt_table->pages[pt_index];

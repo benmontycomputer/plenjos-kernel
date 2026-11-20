@@ -8,6 +8,7 @@
 #include "lib/string.h"
 #include "memory/kmalloc.h"
 #include "memory/mm.h"
+#include "memory/vmdump.h"
 #include "proc/proc.h"
 #include "proc/scheduler.h"
 #include "proc/thread.h"
@@ -153,6 +154,7 @@ _Noreturn void panic_nomsg() {
 }
 
 proc_t *init_proc;
+static thread_t bootstrap_kthread = { 0 };
 
 // The following will be our kernel's entry point.
 // If renaming kmain() to something else, make sure to change the
@@ -207,154 +209,21 @@ void kmain(void) {
          executable_file_request.response->executable_file->mbr_disk_id);
 
     load_smp();
+    cores_threads[0] = &bootstrap_kthread;
+    bootstrap_kthread.tid = -1;
+
+    start_scheduler();
 
     vfs_init();
 
     device_manager_init();
 
+    // Boot with "vmdump" on the kernel command line (limine.conf) to print the live kernel page tables
+    if (vm_dump_requested(executable_cmdline_request.response->cmdline)) {
+        vm_dump("kernel pml4", kernel_pml4, VM_DUMP_ALL);
+    }
+
     clear();
-
-    /* vfs_handle_t *ld_handle = NULL;
-    int res                 = vfs_open("/lib/ld.so", SYSCALL_OPEN_FLAG_READ, 0, 0, &ld_handle);
-    ssize_t linker_read_bytes;
-    if (res == 0) {
-        kout(KERNEL_INFO, "Loading ld.so...\n\n");
-        uint64_t file_size = ld_handle->backing_node->stat.size;
-
-        linker_elf_buf = kmalloc_heap(file_size);
-        if (!linker_elf_buf) {
-            panic("OOM error allocating memory for elf buffer\n");
-        }
-
-        linker_read_bytes = vfs_read(ld_handle, linker_elf_buf, file_size);
-        vfs_close(ld_handle);
-        if (linker_read_bytes < 0) {
-            panic("Error reading /lib/ld.so: %d\n", (int)linker_read_bytes);
-        } else if ((uint64_t)linker_read_bytes != file_size) {
-            panic("Short read reading /lib/ld.so: expected %p, got %p\n", (void *)file_size, (void *)linker_read_bytes);
-        }
-    } else {
-        panic("Error opening /lib/ld.so: %d\n", res);
-    }
-
-    // ld_handle has already been closed
-
-    asm volatile("cli");
-    lock_thread_rq();
-
-    res = vfs_open("/bin/init", SYSCALL_OPEN_FLAG_READ, 0, 0, &ld_handle);
-    if (res == 0) {
-        kout(KERNEL_INFO, "Loading init...\n\n");
-        uint64_t file_size = ld_handle->backing_node->stat.size;
-        proc_t *shell_proc = create_proc("init", NULL);
-
-        int res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_READ, 0, 0, &shell_proc->fds[0]);
-        if (res) {
-            kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stdin\n", res);
-        }
-
-        res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &shell_proc->fds[1]);
-        if (res) {
-            kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stdout\n", res);
-        }
-
-        res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &shell_proc->fds[2]);
-        if (res) {
-            kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stderr\n", res);
-        }
-
-        uint64_t entry;
-        void *elf_buf = kmalloc_heap(file_size);
-        if (!elf_buf) {
-            panic("OOM error allocating memory for elf buffer\n");
-        }
-
-        ssize_t read_bytes = vfs_read(ld_handle, elf_buf, file_size);
-        vfs_close(ld_handle);
-        if (read_bytes < 0) {
-            panic("Error reading /bin/init: %d\n", (int)read_bytes);
-        } else if ((uint64_t)read_bytes != file_size) {
-            panic("Short read reading /bin/init: expected %p, got %p\n", (void *)file_size, (void *)read_bytes);
-        }
-
-        kout(KERNEL_INFO, "Read %p bytes for init and %p bytes for ld.so\n", (void *)read_bytes,
-             (void *)linker_read_bytes);
-
-        // Load the linker first
-        uint64_t linker_entry;
-        loadelf(linker_elf_buf, shell_proc->pml4, &linker_entry, LINKER_OFFS);
-        // kfree_heap(linker_elf_buf);
-
-        // 0x7fff80000000ULL
-        loadelf(elf_buf, shell_proc->pml4, &entry, 0x400000ULL);
-        kfree_heap(elf_buf);
-
-        thread_t *shell_thread = create_thread(shell_proc, "init_t0", (void *)linker_entry, NULL);
-
-        // Everything we are about to do fits in the top page of the stack.
-        uint64_t *rsp_og
-            = (uint64_t *)(phys_to_virt(get_physaddr((uint64_t)shell_thread->stack_top - PAGE_LEN, shell_proc->pml4))
-                           + 0x1000);
-        uint64_t *rsp = rsp_og;
-
-        // First, setup the stack
-        const char *argv0 = "/bin/init";
-        const char *argv1 = NULL;
-
-        const char *envp0 = NULL;
-
-        const uint64_t argc = 1;
-
-        size_t argv0_len = strlen(argv0) + 1;
-
-        // Push argv0 onto the stack (getting address aligned to 8 bytes)
-        uint64_t argv0_addr = ((uint64_t)(rsp)-argv0_len) & ~0x7ULL;
-        rsp                 = (uint64_t *)argv0_addr;
-        memcpy((void *)argv0_addr, argv0, argv0_len);
-
-        uint64_t str_usr_addr = (uint64_t)shell_thread->stack_top - ((uint64_t)rsp_og - argv0_addr);
-
-        // Align the rsp to 16-bytes (we have even number of values left to push after this)
-        rsp = (uint64_t *)((uint64_t)(rsp) & ~0xF);
-
-        // Push envp0, argv1, argv0, argc onto the stack
-        stack_push_qword(0, &rsp);
-        stack_push_qword(0, &rsp);
-        stack_push_qword((uint64_t)str_usr_addr, &rsp);
-        stack_push_qword((uint64_t)argc, &rsp);
-
-        shell_thread->regs.iret_rsp -= (uint64_t)rsp_og - (uint64_t)rsp;
-
-        kout(KERNEL_INFO, "Final stack pointer for init: %p from %p; entry: %p\n", (void *)shell_thread->regs.iret_rsp,
-             (void *)rsp, (void *)entry);
-
-        shell_thread->regs.rdi = shell_thread->regs.iret_rsp;
-        shell_thread->regs.rsi = LINKER_OFFS; // Linker base addr
-        shell_thread->regs.rdx = 0x400000ULL; // Shell binary base addr
-
-        thread_ready(shell_thread);
-    } else {
-        kout(KERNEL_WARN, "\nWARN: Falling back to module...\n\n");
-
-        if (!module_request.response) {
-            panic("No modules detected.\n");
-        } else {
-            void *elf_addr = module_request.response->modules[0]->address;
-
-            proc_t *shell_proc = create_proc("kshell", NULL);
-
-            uint64_t entry;
-
-            loadelf(elf_addr, shell_proc->pml4, &entry, 0);
-
-            thread_t *shell_thread = create_thread(shell_proc, "kshell_t0", (void *)entry, NULL);
-
-            thread_ready(shell_thread);
-        }
-    }
-
-    unlock_thread_rq();
-    asm volatile("sti"); */
 
     init_proc = create_proc("init", NULL);
 
@@ -375,10 +244,7 @@ void kmain(void) {
 
     execute("/bin/init", init_proc);
 
-    start_scheduler();
-
-    printf("No more code. Halt!\n");
-    hcf();
+    cpu_scheduler_task();
 }
 
 void populate_string_hexnum(char *buf, size_t len, const char *str, uint32_t hex) {

@@ -31,3 +31,5 @@ int cancel_timeout(int timeout_id);
 uint64_t ksleep_blocking_ms(uint64_t milliseconds, uint32_t *curr_core_if_known);
 // This doesn't require curr_core_if_known because it may not resume on the same core it started on.
 uint64_t ksleep_nonblocking_ms(uint64_t milliseconds, uint32_t priority);
+
+uint64_t kthread_sleep_ms(uint64_t ms, thread_t *thread);

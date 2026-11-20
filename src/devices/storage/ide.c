@@ -319,13 +319,7 @@ int ide_select_bus(struct ide_device *dev) {
 // TODO: by allowing interrupts to run, this actually causes code to jump into an interrupt handler with rsp set to the
 // tss stack for the core, which is somewhere above the current stack, so the stack **will** get corrupted
 int ide_wait_for_irq(struct ide_device *dev) {
-    while (atomic_load_explicit(&dev->channel->irq_cnt, memory_order_acquire) == 0) {
-        // Wait for IRQ to be processed
-        // TODO: this might need to be something else if the driver runs on a different core from the IRQ handler
-        // asm volatile("hlt");
-        asm volatile("pause");
-    }
-    return 0;
+    return wait_for_completion(&dev->channel->irq_done, -1ULL);
 }
 
 #endif // __KERNEL_SUPPORT_DEV_STORAGE_IDE

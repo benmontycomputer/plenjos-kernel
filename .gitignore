@@ -18,3 +18,4 @@ usr/shell/lib
 usr/shell/obj
 
 .DS_Store
+qemu.log

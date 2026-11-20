@@ -73,24 +73,57 @@ _finalize_task_switch:
     load_task_general_registers
     iretq
 
+%macro switch_to_core_stack 0      ; leaves the core id in edi
+    swapgs
+    mov  ecx, dword [gs:0x18]
+    swapgs
+    mov  edi, ecx
+    lea  rdx, [rel tss_obj]
+    imul rcx, rcx, 0x68
+    mov  rsp, [rdx + rcx + 0x4]
+%endmacro
+
 global cpu_scheduler_task
 extern cpu_scheduler_task_c
 extern tss_obj
 cpu_scheduler_task:
     cli
-
-    ; Load the current core ID and switch to that core's TSS rsp0.
-    swapgs
-    mov ecx, dword [gs:0x18] ; read processor id from this core's gsbase page (in KERNEL_GS_BASE)
-    swapgs
-    mov edi, ecx ; first argument of cpu_scheduler_task_c(uint32_t curr_core)
-    lea rdx, [rel tss_obj] ; load address of tss_obj into rdx
-    imul rcx, rcx, 0x68 ; multiplies processor_id by size of tss_obj
-    mov rsp, [rdx + rcx + 0x4]
-
+    switch_to_core_stack
     call cpu_scheduler_task_c
 
 .hang:
     hlt
     jmp .hang
-    
+
+
+global kcontext_block
+global kcontext_resume
+
+; void kcontext_block(uint64_t *saved_rsp, mutex *m)
+kcontext_block:
+    cli
+    push rbp
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    mov  [rdi], rsp             ; where to restart from
+    mov  r12, rsi               ; the mutex (r12 was just saved)
+
+    switch_to_core_stack
+
+    mov  byte [r12], 0          ; unlock m (atomic_flag clear); from here another core may resume the thread
+    call cpu_scheduler_task_c
+
+; void kcontext_resume(uint64_t saved_rsp)
+kcontext_resume:
+    cli
+    mov  rsp, rdi
+    pop  r15
+    pop  r14
+    pop  r13
+    pop  r12
+    pop  rbx
+    pop  rbp
+    ret                         ; returns into block(), right after kcontext_block

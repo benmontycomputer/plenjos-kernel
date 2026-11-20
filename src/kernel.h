@@ -145,7 +145,7 @@ typedef struct regs registers_t;
 struct gsbase {
     // This must point to the TOP of the stack
     uint64_t stack;            // 0x00; UNUSED
-    uint64_t proc;             // 0x08
+    uint64_t proc;             // 0x08; UNUSED / BROKEN (DEPRECATED)
     uint64_t syscall_stack;    // 0x10; stores the KERNEL stack for the current USER thread's syscalls
     uint32_t processor_id;     // 0x18
     uint32_t reserved0;        // 0x1C

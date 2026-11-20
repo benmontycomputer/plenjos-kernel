@@ -1,6 +1,7 @@
 // https://github.com/baponkar/KeblaOS/blob/main/kernel/src/arch/gdt/tss.c
 
 #include <stdint.h>
+#include <stdatomic.h>
 
 #include "kernel.h"
 
@@ -43,10 +44,8 @@ void tss_set_entry(int i, uint64_t base, uint32_t limit, uint8_t access, uint8_t
     gdt_entries[get_curr_core()][i] = create_descriptor(base, limit, access, gran);
 }
 
-void tss_init() {
-    TSS_STACK_ADDR += PAGE_LEN * 4; // Leave 4 guard pages
-
-    uint64_t stack = TSS_STACK_ADDR;
+uint64_t alloc_kstack() {
+    uint64_t stack = atomic_fetch_add(&TSS_STACK_ADDR, PAGE_LEN * 4 + KERNEL_STACK_SIZE) + PAGE_LEN * 4;
 
     for (uint64_t i = 0; i < KERNEL_STACK_SIZE; i += PAGE_LEN) {
         uint64_t frame = find_next_free_frame();
@@ -56,10 +55,21 @@ void tss_init() {
         map_virtual_memory_using_alloc(frame, stack + i, true, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, alloc_paging_node, kernel_pml4);
     }
 
+    // TODO: bounds checking; management of free vmem, etc.
+
     stack += KERNEL_STACK_SIZE;
-    TSS_STACK_ADDR += KERNEL_STACK_SIZE;
 
     kout(KERNEL_INFO, "TSS stack addr: %p\n", stack);
+
+    return stack;
+}
+
+void free_kstack(uint64_t stack) {
+    // TODO: IMPORTANT: IMPLEMENT
+}
+
+void tss_init() {
+    uint64_t stack = alloc_kstack();
 
     memset(&tss_obj[get_curr_core()], 0, sizeof(struct tss));
 

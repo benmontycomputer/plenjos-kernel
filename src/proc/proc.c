@@ -107,11 +107,14 @@ proc_t *create_proc(const char *name, proc_t *parent) {
     printf("proc pml4 virt: %p\n", proc->pml4);
 
     // TODO: handle OOM from map_virtual_memory_using_alloc
-    for (uint64_t i = TSS_STACK_ADDR - (KERNEL_STACK_SIZE * get_n_cores()); i < TSS_STACK_ADDR; i += PAGE_LEN) {
+    /* for (uint64_t i = TSS_STACK_ADDR - (KERNEL_STACK_SIZE * get_n_cores()); i < TSS_STACK_ADDR; i += PAGE_LEN) {
         // printf("mapping %p\n", gs_bases[i]);
         map_virtual_memory_using_alloc(get_physaddr(i, kernel_pml4), i, PAGE_LEN, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,
                                        alloc_paging_node, proc->pml4);
-    }
+    } */
+
+    // Map stacks
+    proc->pml4->entries[284] = kernel_pml4->entries[284];
 
     // TODO: only map the necessary regions (interrupt tables + stubs only?)
     map_virtual_memory_using_alloc(kernel_load_phys, kernel_load_virt,

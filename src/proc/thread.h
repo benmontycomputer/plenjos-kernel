@@ -29,6 +29,9 @@ struct thread {
     // registers for that). This is not a valid memory address; this is directly on top of the stack, not inside its
     // allocation.
     void *stack_top;
+    void *kstack_top;
+
+    uint64_t kctx_rsp; // If this is set, then use kcontext_resume() to switch to this thread instead, and use this rsp.
     
     rbnode_t scheduler_node;
     uint64_t scheduler_prio;

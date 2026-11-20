@@ -98,3 +98,12 @@ uint64_t ksleep_nonblocking_ms(uint64_t milliseconds, uint32_t priority) {
         return (pit_count - end + milliseconds);
     }
 }
+
+void kthread_sleep_finish(struct timer_timeout *timeout) {
+    thread_ready_safe((thread_t *)timeout->data);
+}
+
+uint64_t kthread_sleep_ms(uint64_t ms, thread_t *thread) {
+    // TODO: implement properly
+    return ksleep_nonblocking_ms(ms, 0);
+}

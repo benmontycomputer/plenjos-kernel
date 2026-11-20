@@ -29,7 +29,8 @@ extern void cpu_scheduler_task();
 // IMPORTANT: interrupts must remain DISABLED for the duration of this function, or its stack could get overwritten.
 int delegate_kernel_task(kernel_task_func_t func, void *arg);
 
-__attribute__((noreturn)) //
 void start_scheduler();
 
 void stop_scheduler();
+
+void block(mutex *m, thread_t *thread);

@@ -131,7 +131,6 @@ ssize_t pata_read_sectors_func(DRIVE_t *drive, uint64_t lba, size_t sectors, voi
         uint8_t status = atomic_load_explicit(&dev->channel->last_status, memory_order_acquire);
 
         if (status & ATA_SR_ERR) {
-            atomic_fetch_sub_explicit(&dev->channel->irq_cnt, 1, memory_order_release);
             kout(KERNEL_EXTERNAL_FAULT, "Error: ATAPI device reported error after PACKET command\n");
             res = -EIO;
             goto cleanup;
@@ -141,7 +140,6 @@ ssize_t pata_read_sectors_func(DRIVE_t *drive, uint64_t lba, size_t sectors, voi
             pata_read_data(dev, buffer, bytes_per_sector);
             sectors_read++;
             total_bytes += bytes_per_sector;
-            atomic_fetch_sub_explicit(&dev->channel->irq_cnt, 1, memory_order_release);
         }
     }
 
