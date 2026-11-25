@@ -285,13 +285,29 @@ int parse_dynamic_section(struct elf_object *obj) {
             obj->pltgot = obj->base + d->d_un.d_ptr;
             break;
         }
+        case DT_SYMENT: {
+            obj->syment = d->d_un.d_val;
+            break;
+        }
         case DT_SYMTAB: {
             obj->symtab = (ELF_sym_t *)(obj->base + d->d_un.d_ptr);
             break;
         }
-        // TODO: check for DT_STRSZ and DT_SYMENT?
+        case DT_STRSZ: {
+            obj->strsz = d->d_un.d_val;
+            break;
+        }
         case DT_STRTAB: {
             obj->strtab = (const char *)(obj->base + d->d_un.d_ptr);
+            break;
+        }
+        case DT_HASH: {
+            // TODO: DT_GNU_HASH? Also, actually handle the hash table.
+            uint32_t *hash   = (uint32_t *)(obj->base + d->d_un.d_ptr);
+            uint32_t nbucket = hash[0];
+            uint32_t nchain  = hash[1]; // Equal to number of syms
+
+            obj->nsyms = nchain;
             break;
         }
         // DT_INIT, DT_INIT_ARRAY, DT_FINI, DT_FINI_ARRAY could be handled here for initializers/finalizers
@@ -369,13 +385,18 @@ ELF_addr_t resolve_symbol(const char *name) {
             continue;
         }
 
-        // Assume up to 1024 symbols per object for now
-        // TODO: use something like GNU hash map to speed this up and also determine actual symbol count
-        for (size_t j = 0; j < 1024; j++) {
+        // TODO: actually use the hash map
+        for (size_t j = 0; j < obj->nsyms; j++) {
             ELF_sym_t *sym = &symtab[j];
 
             if (sym->st_name == 0) {
                 continue; // Empty name
+            }
+
+            if (sym->st_name >= obj->strsz) {
+                syscall_print("ERROR: invalid st_name\n");
+                return 0; // Not technically a problem resolving the symbol, but this indicates a corrupt header or
+                          // other issue.
             }
 
             const char *sym_name = strtab + sym->st_name;

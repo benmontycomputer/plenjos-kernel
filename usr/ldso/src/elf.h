@@ -155,6 +155,11 @@ struct elf_object {
 
     ELF_sym_t *symtab;
     const char *strtab;
+
+    uint64_t strsz;  // Size of string table
+    uint64_t syment; // Size of each ENTRY in sym table
+
+    uint32_t nsyms;
 };
 
 void init_dso_base();
