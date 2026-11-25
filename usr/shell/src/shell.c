@@ -186,7 +186,7 @@ static bool process_cmd(const char *cmd) {
             printf("Unknown command: %s\n", toks[0]);
         } else {
             fclose(f);
-            syscall_spawn(toks[0], NULL, NULL, 0, 0);
+            pid_t pid = syscall_spawn(toks[0], NULL, NULL, 0, 0);
         }
     }
 

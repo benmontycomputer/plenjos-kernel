@@ -89,3 +89,5 @@ int backs();
 int setcursor(bool curs);
 
 int clear();
+
+void console_seek_fb(uint64_t x, uint64_t y);

@@ -50,19 +50,23 @@ void scroll_console() {
 }
 
 void printf_ch_fb(char ch) {
-    if ((int)GET_CONSOLE_Y(console_pos) >= CONSOLE_H()) scroll_console();
+    while ((int)GET_CONSOLE_Y(console_pos) >= CONSOLE_H()) scroll_console();
 
     if (ch == '\n') {
         // Remove the cursor (if any)
         if (cursor) kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0xFFFFFF, 0x000000);
         console_pos += (CONSOLE_W() - GET_CONSOLE_X(console_pos));
-        if ((int)GET_CONSOLE_Y(console_pos) >= CONSOLE_H()) scroll_console();
+        while ((int)GET_CONSOLE_Y(console_pos) >= CONSOLE_H()) scroll_console();
     } else {
         kputchar(ch, GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0xFFFFFF, 0x000000);
         console_pos++;
     }
 
     if (cursor) kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0x000000, 0xFFFFFF);
+}
+
+void console_seek_fb(uint64_t x, uint64_t y) {
+    console_pos = x + CONSOLE_W() * y;
 }
 
 void printf_ch(char ch) {

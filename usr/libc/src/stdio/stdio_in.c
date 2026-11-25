@@ -18,6 +18,7 @@ char getchar() {
         if (res == 1) {
             return ch;
         } else {
+            // TODO: get rid of this
             syscall_sleep(5);
         }
     }

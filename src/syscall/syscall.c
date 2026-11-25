@@ -296,6 +296,13 @@ void syscall(registers_t *regs, thread_t *thread, pml4_t *current_pml4) {
 
         break;
     }
+    case SYSCALL_WAITPID: {
+        pid_t pid = (pid_t)ARG1(regs);
+
+        
+
+        break;
+    }
     case SYSCALL_EXIT_THREAD: {
         asm volatile("cli");
         release_thread(thread);

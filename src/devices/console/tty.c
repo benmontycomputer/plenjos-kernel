@@ -9,6 +9,18 @@
 
 extern void printf_ch_fb(char ch);
 
+static void tty_dump_unhandled_escape_sequence(struct tty *tty) {
+    kout(KERNEL_INFO, "tty_default_write(): unhandled escape sequence 0x1b(ESC)");
+
+    for (int i = 1; i < sizeof(tty->out_buf); i++) {
+        if (!tty->out_buf[i]) {
+            break;
+        }
+        kout(KERNEL_INFO, " %.2x(%c)", (uint32_t)tty->out_buf[i], tty->out_buf[i]);
+    }
+    kout(KERNEL_INFO, "\n");
+}
+
 int tty_default_out(void *func_args) {
     struct tty *tty = func_args;
 #ifdef _KERNEL_EXTRA_CHECKS_FOR_NULL_ARGS
@@ -47,16 +59,51 @@ int tty_default_out(void *func_args) {
             } else if (i == 6 && !memcmp(tty->out_buf, "\x1b[?12l", i)) {
                 // Disable cursor
                 setcursor(false);
-            } else {
-                kout(KERNEL_INFO, "tty_default_write(): unhandled escape sequence");
+            } else if (tty->out_buf[i - 1] == 'H' || tty->out_buf[i - 1] == 'f') {
+                // Move cursor
+                if (i == 2) {
+                    if (tty->out_buf[i - 1] == 'H') {
+                        console_seek_fb(0, 0);
+                    }
+                } else if (i > 2 && tty->out_buf[1] == '[') {
+                    uint64_t x = 0;
+                    uint64_t y = 0;
 
-                for (int i = 0; i < sizeof(tty->out_buf); i++) {
-                    if (!tty->out_buf[i]) {
+                    bool on_y = false;
+
+                    for (int j = 2; j < i - 1; j++) {
+                        char outch = tty->out_buf[j];
+                        if (outch == ';') {
+                            if (!on_y) {
+                                on_y = true;
+                                continue;
+                            }
+                        } else if (outch >= '0' && outch <= '9') {
+                            if (on_y) {
+                                y *= 10;
+                                y += outch - '0';
+                            } else {
+                                x *= 10;
+                                x += outch - '0';
+                            }
+                            continue;
+                        }
+
+                        on_y = false;
                         break;
                     }
-                    kout(KERNEL_INFO, " %.2x(%c)", (uint32_t)tty->out_buf[i], tty->out_buf[i]);
+
+                    // TODO: check x and y's max bounds
+                    if (on_y && x > 0 && y > 0) {
+                        console_seek_fb(x - 1, y - 1);
+                    } else {
+                        tty_dump_unhandled_escape_sequence(tty);
+                    }
+                } else {
+                    tty_dump_unhandled_escape_sequence(tty);
                 }
-                kout(KERNEL_INFO, "\n");
+            } else {
+                tty_dump_unhandled_escape_sequence(tty);
             }
 #ifdef _KERNEL_TTY_BUFFER_CORRECTNESS_CHECKS
         }
@@ -134,6 +181,8 @@ ssize_t tty_read(vfs_handle_t *handle, void *buf, size_t len) {
         goto ret;
     }
 
+    mutex_lock(&tty->in_buf_lock);
+
     while (i < len) {
         i += tty_flush_in_buf((uint8_t *)buf + i, len - i, tty);
 
@@ -147,6 +196,8 @@ ssize_t tty_read(vfs_handle_t *handle, void *buf, size_t len) {
             break;
         }
     }
+
+    mutex_unlock(&tty->in_buf_lock);
 
 ret:
     if (interrupts) {
@@ -172,6 +223,8 @@ ssize_t tty_write(vfs_handle_t *handle, const void *buf, size_t len) {
     }
 
     size_t i = 0;
+
+    mutex_lock(&tty->out_buf_lock);
 
     while (i < len) {
         char ch = ((char *)buf)[i];
@@ -205,5 +258,7 @@ ssize_t tty_write(vfs_handle_t *handle, const void *buf, size_t len) {
             i++;
         }
     }
+
+    mutex_unlock(&tty->out_buf_lock);
     return i;
 }

@@ -2,6 +2,7 @@
 
 #include "kernel.h"
 #include "lib/structures/rbtree.h"
+#include "lib/sync.h"
 #include "memory/mm_common.h"
 #include "vfs/vfs.h"
 
@@ -9,6 +10,9 @@
 #include <stdint.h>
 
 #define PROCESS_FDS_MAX 64
+
+#define PROC_STATUS_EXITED      0x100
+#define PROC_STATUS_MASK_RESULT 0xFF
 
 struct thread;
 typedef struct thread thread_t;
@@ -27,6 +31,8 @@ typedef enum {
 typedef struct proc proc_t;
 
 struct proc {
+    rbnode_t rbnode;
+
     proc_t *parent;
     pid_t pid;
     char name[PROCESS_THREAD_NAME_LEN];
@@ -48,6 +54,10 @@ struct proc {
 
     uid_t uid;
     char *cwd; // Page-aligned; 4096 bytes
+
+    wait_queue_t exit_wq;
+    uint32_t status;
+
     // TODO: should cwd be a file descriptor instead?
     // TODO: implement groups
 };
@@ -55,6 +65,7 @@ struct proc {
 proc_t *create_proc(const char *name, proc_t *parent);
 // void release_proc(proc_t *proc);
 void process_exit(proc_t *proc);
+void process_reap(proc_t *proc);
 
 proc_t *_get_proc_kernel();
 

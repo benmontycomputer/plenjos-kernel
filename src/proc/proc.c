@@ -12,6 +12,7 @@
 #include "lib/special_mem/fixed_size_allocator.h"
 #include "lib/stdio.h"
 #include "lib/string.h"
+#include "lib/structures/rbtree.h"
 #include "memory/kmalloc.h"
 #include "memory/mm.h"
 #include "proc/scheduler.h"
@@ -35,6 +36,16 @@ volatile pid_t next_pid = 0;
 
 static fixed_size_allocator_t _proc_fsa = FSA_DEFAULT(sizeof(proc_t));
 
+int pid_cmp(void *a, void *b) {
+    proc_t *pa = (proc_t *)a;
+    proc_t *pb = (proc_t *)b;
+
+    return (pa->pid > pb->pid) - (pa->pid < pb->pid);
+}
+
+mutex pid_tree_lock = MUTEX_INIT;
+static rbtree_t pid_tree = (rbtree_t) { 0 };
+
 proc_t *_get_proc_kernel() {
     gsbase_t *gsbase = (gsbase_t *)read_msr(IA32_KERNEL_GS_BASE);
 
@@ -47,6 +58,10 @@ proc_t *_get_proc_kernel() {
 
 // TODO: enforce some (configurable) PID_MAX?
 proc_t *create_proc(const char *name, proc_t *parent) {
+    if (!pid_tree.cmp) {
+        rbtree_init(&pid_tree, pid_cmp);
+    }
+
     if (!parent) {
         if (next_pid != 0) {
             printf("Error: trying to create a new process (name %s), but pid 0 is taken and no parent was provided!\n",
@@ -94,6 +109,7 @@ proc_t *create_proc(const char *name, proc_t *parent) {
 
     proc->state   = READY;
     proc->threads = NULL;
+    proc->exit_wq = WQ_INIT;
 
     uint64_t pml4_frame = find_next_free_frame();
     if (!pml4_frame) {
@@ -161,6 +177,12 @@ proc_t *create_proc(const char *name, proc_t *parent) {
 
         parent->first_child = proc;
     }
+
+    bool _i = irq_save();
+    mutex_lock(&pid_tree_lock);
+    rbtree_insert(&pid_tree, &proc->rbnode);
+    mutex_unlock(&pid_tree_lock);
+    irq_restore(_i);
 
     return proc;
 }
@@ -369,7 +391,7 @@ void process_exit(proc_t *proc) {
     kfree_heap((void *)proc->fds);
     proc->fds = NULL;
 
-    proc->pml4->entries[284] = (dir_entry_t){ 0 }; // Don't want to free this as it is direct from kernel
+    proc->pml4->entries[284] = (dir_entry_t) { 0 }; // Don't want to free this as it is direct from kernel
 
     // Unref page table
     free_page_table((pml4_t *)proc->pml4);
@@ -388,6 +410,19 @@ void process_exit(proc_t *proc) {
         *link = proc->next_sibling;
     }
 
+    wq_signal(&proc->exit_wq, proc->status |= PROC_STATUS_EXITED, true);
+}
+
+// Called when the process's parent gets around to reaping it
+int process_reap(proc_t *proc) {
+    bool _i = irq_save();
+    mutex_lock(&pid_tree_lock);
+    int res = rbtree_remove(&pid_tree, &proc->rbnode);
+    mutex_unlock(&pid_tree_lock);
+    irq_restore(_i);
+    if (res) {
+        panic("process_reap(): couldn't remove pid %d from tree!\n", proc->pid);
+    }
     fsa_free(&_proc_fsa, proc);
 }
 
