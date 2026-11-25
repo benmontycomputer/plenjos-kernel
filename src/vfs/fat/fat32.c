@@ -294,6 +294,13 @@ static uint32_t fat32_dir_start_cluster(vfs_fat32_cache_node_data_t *node_data) 
     return FAT32_CLUSTER_FROM_DIR_ENTRY(node_data->dir_entry);
 }
 
+struct fat32_lfn_state {
+    uint16_t name16[FAT32_LFN_MAX_ORDER * 13]; // UTF-16
+    uint8_t checksum;
+    uint8_t next_order;
+    uint8_t total;
+};
+
 /**
  * A fat32_dir_iter walks one directory's entries along the cluster chain. It has a 1-cluster buffer.
  * After fat32_dir_iter_next() returns an item, it->cluster and it->off hold the position to resume from.
@@ -308,12 +315,20 @@ struct fat32_dir_iter {
     uint32_t off;
 
     bool loaded; // whether buf currently holds `cluster`
+
+    struct fat32_lfn_state *lfn_state;
 };
 
 struct fat32_dir_item {
     struct fat32_directory_entry *entry; // Points into the iterator's buffer; only valid until the next call
     char name[NAME_MAX + 1];             // Name to present to the VFS
 };
+
+static void fat32_dir_iter_drop_lfn(struct fat32_dir_iter *it) {
+    it->lfn_state->checksum = 0;
+    it->lfn_state->next_order = 0;
+    it->lfn_state->total = 0;
+}
 
 static int fat32_dir_iter_init(struct fat32_dir_iter *it, struct filesystem_fat32 *fs, uint32_t cluster,
                                uint32_t pos_in_cluster) {
@@ -327,6 +342,13 @@ static int fat32_dir_iter_init(struct fat32_dir_iter *it, struct filesystem_fat3
         kout(KERNEL_WARN, "fat32_dir_iter_init(): couldn't allocate cluster buffer (kmalloc_heap() failed) (OOM?)\n");
         return -ENOMEM;
     }
+    it->lfn_state = kmalloc_heap(sizeof(*it->lfn_state));
+    if (!it->lfn_state) {
+        kout(KERNEL_WARN, "fat32_dir_iter_init(): couldn't allocate lfn state buffer (kmalloc_heap() failed) (OOM?)\n");
+        kfree_heap(it->buf);
+        return -ENOMEM;
+    }
+    fat32_dir_iter_drop_lfn(it);
 
     return 0;
 }
@@ -335,6 +357,10 @@ static void fat32_dir_iter_free(struct fat32_dir_iter *it) {
     if (it->buf) {
         kfree_heap(it->buf);
         it->buf = NULL;
+    }
+    if (it->lfn_state) {
+        kfree_heap(it->lfn_state);
+        it->lfn_state = NULL;
     }
 }
 
@@ -359,6 +385,63 @@ static void fat32_short_name(const struct fat32_directory_entry *entry, char *ou
     out[o] = '\0';
 }
 
+static uint8_t fat32_short_checksum(const char name[11]) {
+    uint8_t sum = 0;
+    for (int i = 0; i < 11; i++) {
+        sum = (uint8_t)(((sum & 1) ? 0x80 : 0) + (sum >> 1) + (uint8_t)name[i]);
+    }
+    return sum;
+}
+
+/**
+ * Converts up to n UTF-16LE code units to NUL-terminated UTF-8, returning the number of bytes written excluding the
+ * NULL, or -1 if `out` is too small.
+ */
+static int fat32_utf16_to_utf8(const uint16_t *in, size_t n, char *out, size_t out_size) {
+    size_t o = 0;
+
+    for (size_t i = 0; i < n && in[i] != 0; i++) {
+        uint32_t cp = in[i];
+
+        if (cp >= 0xD800 && cp <= 0xDBFF) {
+            // High surrogate: needs a low surrogate right after it
+            if (i + 1 < n && in[i + 1] >= 0xDC00 && in[i + 1] <= 0xDFFF) {
+                cp = 0x10000 + ((cp - 0xD800) << 10) + (in[i + 1] - 0xDC00);
+                i++;
+            } else {
+                cp = 0xFFFD;
+            }
+        } else if (cp >= 0xDC00 && cp <= 0xDFFF) {
+            cp = 0xFFFD; // Lone low surrogate
+        }
+
+        size_t need = cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
+        if (o + need + 1 > out_size) { // +1 keeps room for the NULL
+            out[0] = '\0';
+            return -1;
+        }
+
+        if (need == 1) {
+            out[o++] = (char)cp;
+        } else if (need == 2) {
+            out[o++] = (char)(0xC0 | (cp >> 6));
+            out[o++] = (char)(0x80 | (cp & 0x3F));
+        } else if (need == 3) {
+            out[o++] = (char)(0xE0 | (cp >> 12));
+            out[o++] = (char)(0x80 | ((cp >> 6) & 0x3F));
+            out[o++] = (char)(0x80 | (cp & 0x3F));
+        } else {
+            out[o++] = (char)(0xF0 | (cp >> 18));
+            out[o++] = (char)(0x80 | ((cp >> 12) & 0x3F));
+            out[o++] = (char)(0x80 | ((cp >> 6) & 0x3F));
+            out[o++] = (char)(0x80 | (cp & 0x3F));
+        }
+    }
+
+    out[o] = '\0';
+    return (int)o;
+}
+
 /**
  * Returns 1 and outputs item if there is another entry, 0 at the end of the directory, or -errno.
  */
@@ -377,29 +460,71 @@ static int fat32_dir_iter_next(struct fat32_dir_iter *it, struct fat32_dir_item 
             uint8_t *raw  = it->buf + it->off;
             it->off      += 32;
 
+            if (raw[0] == 0x00) {
+                // End of directory
+                it->cluster = FAT32_END_OF_CHAIN;
+                it->off     = 0;
+                fat32_dir_iter_drop_lfn(it);
+                return 0;
+            }
+            if (raw[0] == 0xE5) {
+                // Deleted entry
+                fat32_dir_iter_drop_lfn(it);
+                continue;
+            }
+
             if (fat32_is_long_entry(raw)) {
-                // TODO: long file names
+                struct fat32_long_directory_entry *entry = (struct fat32_long_directory_entry *)raw;
+
+                uint8_t order = entry->order & 0x3F;
+                if (order > FAT32_LFN_MAX_ORDER || order == 0) {
+                    fat32_dir_iter_drop_lfn(it);
+                    continue;
+                }
+
+                if (entry->order & 0x40) {
+                    // Start of new LFN; reset state
+                    fat32_dir_iter_drop_lfn(it);
+
+                    it->lfn_state->checksum   = entry->checksum;
+                    it->lfn_state->next_order = order;
+                    it->lfn_state->total      = order;
+                } else if (it->lfn_state->next_order != 0 && entry->order == it->lfn_state->next_order && entry->checksum == it->lfn_state->checksum) {
+                    // Continuation
+                } else {
+                    // Invalid; drop
+                    fat32_dir_iter_drop_lfn(it);
+                    continue;
+                }
+
+                memcpy(it->lfn_state->name16 + (order - 1) * 13, entry->name1, sizeof(entry->name1));
+                memcpy(it->lfn_state->name16 + (order - 1) * 13 + 5, entry->name2, sizeof(entry->name2));
+                memcpy(it->lfn_state->name16 + (order - 1) * 13 + 11, entry->name3, sizeof(entry->name3));
+                it->lfn_state->next_order--;
+
                 continue;
             }
 
             struct fat32_directory_entry *entry = (struct fat32_directory_entry *)raw;
-
-            if ((uint8_t)entry->name[0] == 0x00) {
-                // End of directory
-                it->cluster = FAT32_END_OF_CHAIN;
-                it->off     = 0;
-                return 0;
-            }
-            if ((uint8_t)entry->name[0] == 0xE5) {
-                // Deleted entry
-                continue;
-            }
             if (entry->attr & FAT_ATTR_VOLUME_ID) {
+                fat32_dir_iter_drop_lfn(it);
                 continue;
             }
 
             item->entry = entry;
-            fat32_short_name(entry, item->name);
+
+            uint8_t checksum = fat32_short_checksum(entry->name);
+            if (checksum == it->lfn_state->checksum && it->lfn_state->total != 0 && it->lfn_state->next_order == 0) {
+                if (fat32_utf16_to_utf8(it->lfn_state->name16, it->lfn_state->total * 13, item->name, sizeof(item->name)) < 0) {
+                    // Fallback
+                    fat32_short_name(entry, item->name);
+                }
+            } else {
+                fat32_short_name(entry, item->name);
+            }
+
+            fat32_dir_iter_drop_lfn(it);
+
             return 1;
         }
 

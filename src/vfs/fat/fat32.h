@@ -11,6 +11,8 @@
 #define FAT_ATTR_READ_ONLY 0x01
 #define FAT_ATTR_VOLUME_ID 0x08
 
+#define FAT32_LFN_MAX_ORDER 20
+
 struct fat32_boot_sector {
     struct fat_boot_sector_generic generic;
 
@@ -104,14 +106,15 @@ typedef struct vfs_fat32_cache_node_data {
 
 typedef struct vfs_fat32_handle_instance_data {
     uint64_t current_cluster; // Current extent location being read (lba offset)
-    uint64_t pos_in_cluster;              // Offset within current extent
+    uint64_t pos_in_cluster;  // Offset within current extent
     uint64_t seek_pos;
     uint64_t unused;
 } __attribute__((packed)) vfs_fat32_handle_instance_data_t;
 
 int fat32_setup(struct filesystem_fat32 *fs, partition_t *partition);
 
-int fat32_drive_read(struct filesystem_fat32 *fs, uint32_t fat_lba, uint32_t fat_sectors, void *buffer, uint32_t bytes_to_read);
+int fat32_drive_read(struct filesystem_fat32 *fs, uint32_t fat_lba, uint32_t fat_sectors, void *buffer,
+                     uint32_t bytes_to_read);
 int fat32_read_entry(struct filesystem_fat32 *fs, uint32_t cluster, void *buffer, uint32_t bytes_to_read);
 int fat32_next_cluster(struct filesystem_fat32 *fs, uint32_t cluster, uint32_t *next);
 int fat32_mount(struct filesystem_fat32 *fs, fscache_node_t *mount_node);

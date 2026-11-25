@@ -148,7 +148,6 @@ void hcf(void) {
 }
 
 _Noreturn void panic_nomsg() {
-    /* TODO: halt all threads */
     stop_scheduler();
     hcf();
 }
