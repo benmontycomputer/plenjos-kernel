@@ -70,8 +70,8 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
 
         if (type == LIMINE_MEMMAP_USABLE) {
             if (length >= (phys_mem_frame_map_size + PAGE_LEN)) {
-                map_virtual_memory_using_alloc(base, phys_to_virt(base), length, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,
-                                               test_alloc, kernel_pml4);
+                /* map_virtual_memory_using_alloc(base, phys_to_virt(base), length, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,
+                                               test_alloc, kernel_pml4); */
 
                 phys_mem_frame_map = (phys_mem_free_frame_t *)phys_to_virt(base);
                 memset(phys_mem_frame_map, 0, phys_mem_frame_map_size);
@@ -105,8 +105,8 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
 
         if (type == LIMINE_MEMMAP_USABLE) {
             // if (base != virt_to_phys((uint64_t)phys_mem_frame_map))
-            map_virtual_memory_using_alloc(base, phys_to_virt(base), length, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,
-                                           test_alloc, kernel_pml4);
+            /* map_virtual_memory_using_alloc(base, phys_to_virt(base), length, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,
+                                           test_alloc, kernel_pml4); */
 
             // TODO: why do we stop one short?
             phys_mem_free_frame_t *frame = phys_addr_to_frame_struct(base);
@@ -138,8 +138,8 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
         uint64_t type   = memmap.mem_entries[i]->type;
 
         if (type == LIMINE_MEMMAP_FRAMEBUFFER) {
-            map_virtual_memory_using_alloc(base, phys_to_virt(base), length, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,
-                                           test_alloc, kernel_pml4);
+            /* map_virtual_memory_using_alloc(base, phys_to_virt(base), length, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,
+                                           test_alloc, kernel_pml4); */
         }
     }
 
