@@ -13,6 +13,10 @@ usr/libc/lib
 usr/libc/obj
 usr/libc/crt
 
+usr/libplenja/bin
+usr/libplenja/lib
+usr/libplenja/obj
+
 usr/shell/bin
 usr/shell/lib
 usr/shell/obj

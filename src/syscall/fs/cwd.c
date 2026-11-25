@@ -20,14 +20,6 @@ int syscall_routine_chdir(const char *restrict path, proc_t *proc) {
         return res;
     }
 
-    res = collapse_path(path_abs, path_abs);
-    if (res < 0) {
-        printf("syscall_routine_chdir: failed to collapse path %s for process %s (pid %p), errno %d\n", path_abs,
-               proc->name, proc->pid, res);
-        kfree_heap(path_abs);
-        return res;
-    }
-
     res = fscache_request_node(path_abs, proc->uid, NULL);
     if (res < 0) {
         kfree_heap(path_abs);

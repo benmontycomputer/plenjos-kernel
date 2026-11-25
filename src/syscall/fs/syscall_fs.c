@@ -129,8 +129,8 @@ void syscall_handle_fs_call(registers_t *regs, proc_t *proc, pml4_t *current_pml
             regs->rax = handle_string_arg(current_pml4, ARG2(regs), &target);
             if (target) {
                 vfs_handle_t *dev_handle = NULL;
-                const char *dev_path     = kmalloc_heap(strlen(dev) + 1);
-                const char *target_path  = kmalloc_heap(strlen(target) + 1);
+                const char *dev_path     = kmalloc_heap(PATH_MAX);
+                const char *target_path  = kmalloc_heap(PATH_MAX);
 
                 if (dev_path && target_path) {
                     regs->rax = (uint64_t)handle_relative_path(dev, proc, dev_path);

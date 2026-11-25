@@ -1,5 +1,12 @@
 #include "pint.h"
 
+/*
+ * pint: a tiny terminal text editor.
+ *
+ * Only POSIX basics are used: termios for raw mode, read()/write() for I/O and VT100/ANSI escape sequences for output
+ * (cursor positioning, erase-to-end-of-line and inverse video). Screen size comes from $LINES/$COLUMNS (80x24 if unset).
+ */
+
 #define DEFAULT_FILENAME ".pinttmp"
 #define TABLEN 8
 
@@ -9,27 +16,47 @@
 #define TBARH 1
 #define BBARH 2
 
+#define DEFAULT_ROWS 24
+#define DEFAULT_COLS 80
+#define MIN_ROWS 5
+#define MIN_COLS 20
+
+#define TITLE " Pint Editor "
 #define BBARM "^X: Quit    ^W: Write"
 #define BBARI "^X          ^W       "
 
-#define SAVEMSG "Do you want to save? (y)es/(n)o/(c)ancel\0"
+#define SAVEMSG "Do you want to save? (y)es/(n)o/(c)ancel"
 #define FNPROMPT "Filename: "
-#define SFAIL_EACCES "Failed to save: permission denied.\0"
-#define SFAIL_GENERIC "Failed to save.\0"
-#define SFAIL_INVALIDINPUT "Invalid input. Not closing.\0"
+#define SFAIL_EACCES "Failed to save: permission denied."
+#define SFAIL_GENERIC "Failed to save."
+#define SFAIL_INVALIDINPUT "Invalid input. Not closing."
 #define WOSUCCES "Saved."
 
-#define INVTCOLOR COLOR_BLACK
-#define INVBGCOLOR COLOR_WHITE
+#define CTRL_KEY(k) ((k) & 0x1f)
+#define PATH_BUF 1024
+#define MSG_BUF 1100
 
-typedef struct fileLines
-{
+#define QUIT 5
+
+enum key {
+    K_NONE = 0,
+    K_BACKSPACE = 127,
+    K_LEFT = 1000,
+    K_RIGHT,
+    K_UP,
+    K_DOWN,
+    K_CTRL_LEFT,
+    K_CTRL_RIGHT,
+    K_CTRL_UP,
+    K_CTRL_DOWN,
+};
+
+typedef struct fileLines {
     pstring *lines;
     long lineCount;
 } fileLines;
 
-typedef struct display
-{
+typedef struct display {
     long firstRow;
     long rowCap;
     long currentRow;
@@ -43,772 +70,758 @@ static struct display currentDisplay;
 
 static char *filename;
 
+static int screenRows = DEFAULT_ROWS;
+static int screenCols = DEFAULT_COLS;
+
+/* Where layout() decided the cursor goes (0-based screen coordinates). */
+static long cursorY, cursorX;
+
+/* Transient message shown on the row above the bottom bar; cleared on the next key press. */
+static char statusmsg[MSG_BUF];
+static bool promptActive;
+
+/* ---------------------------------------------------------------------------------------------------------------- */
+/* Prototypes */
+
+static long displayPos(pstring row, long arrayIndex);
+static int arrayPos(pstring row, long index);
+static int edit(void);
+static int processChar(int ch);
+static int savePrompt(void);
+static void layout(void);
+static void render(void);
+static int save(char *path);
+static int combineRows(long keep, long remove);
+static int splitRow(long row, long index);
+static int insertRow(pstring contents, long index);
+static int removeRow(long index);
+static int insertChar(long row, char c, long pos);
+static int removeChar(long row, long pos);
+
+/* ---------------------------------------------------------------------------------------------------------------- */
+/* Terminal handling */
+
+static struct termios orig_termios;
+static bool raw_enabled = false;
+
+static void write_all(const char *buf, size_t len) {
+    while (len > 0) {
+        ssize_t n = write(STDOUT_FILENO, buf, len);
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return;
+        }
+        buf += n;
+        len -= (size_t)n;
+    }
+}
+
+static void disable_raw_mode(void) {
+    if (raw_enabled) {
+        /* Leave the terminal clean: reset attributes, show the cursor, clear the screen. */
+        static const char reset[] = "\x1b[m\x1b[?25h\x1b[2J\x1b[H";
+        write_all(reset, sizeof(reset) - 1);
+        tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+        raw_enabled = false;
+    }
+}
+
+static int enable_raw_mode(void) {
+    if (tcgetattr(STDIN_FILENO, &orig_termios) == -1) {
+        return -1;
+    }
+
+    struct termios raw = orig_termios;
+    raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+    raw.c_cflag |= CS8;
+    raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+    /* read() returns after 1/10 s even without input, so a lone ESC can be told apart from an escape sequence. */
+    raw.c_cc[VMIN]  = 0;
+    raw.c_cc[VTIME] = 1;
+
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) {
+        return -1;
+    }
+    raw_enabled = true;
+    return 0;
+}
+
+static void get_screen_size(void) {
+    const char *l = getenv("LINES");
+    const char *c = getenv("COLUMNS");
+
+    int rows = l ? atoi(l) : 0;
+    int cols = c ? atoi(c) : 0;
+
+    screenRows = rows >= MIN_ROWS ? rows : DEFAULT_ROWS;
+    screenCols = cols >= MIN_COLS ? cols : DEFAULT_COLS;
+}
+
+/* Reads one byte; returns 1 on success, 0 on timeout. */
+static int read_byte(char *out) {
+    for (;;) {
+        ssize_t n = read(STDIN_FILENO, out, 1);
+        if (n == 1) {
+            return 1;
+        }
+        if (n == 0) {
+            return 0;
+        }
+        if (errno == EINTR || errno == EAGAIN) {
+            continue;
+        }
+        return 0;
+    }
+}
+
+/* Blocks until a key is pressed and returns it. Escape sequences are decoded into K_* values. */
+static int read_key(void) {
+    char c;
+    while (!read_byte(&c)) {
+    }
+
+    if (c != '\x1b') {
+        return (unsigned char)c;
+    }
+
+    /* ESC [ <params> <final>   (e.g. ESC [ A, or ESC [ 1 ; 5 C for ctrl+right) */
+    char b;
+    if (!read_byte(&b) || (b != '[' && b != 'O')) {
+        return K_NONE;
+    }
+
+    char params[8];
+    int n = 0;
+    char final = 0;
+    while (read_byte(&b)) {
+        if (b >= '@' && b <= '~') {
+            final = b;
+            break;
+        }
+        if (n < (int)sizeof(params)) {
+            params[n++] = b;
+        }
+    }
+
+    /* xterm-style modifier parameter: "...;5" means ctrl */
+    bool ctrl = n > 0 && params[n - 1] == '5';
+
+    switch (final) {
+    case 'A': return ctrl ? K_CTRL_UP : K_UP;
+    case 'B': return ctrl ? K_CTRL_DOWN : K_DOWN;
+    case 'C': return ctrl ? K_CTRL_RIGHT : K_RIGHT;
+    case 'D': return ctrl ? K_CTRL_LEFT : K_LEFT;
+    default: return K_NONE;
+    }
+}
+
+/* ---------------------------------------------------------------------------------------------------------------- */
+/* Output buffer: a frame is assembled in memory and written with a single write() to avoid flicker. */
+
+struct abuf {
+    char *b;
+    size_t len;
+    size_t cap;
+};
+
+static void ab_append(struct abuf *ab, const char *s, size_t n) {
+    if (ab->len + n > ab->cap) {
+        size_t cap = ab->cap ? ab->cap * 2 : 4096;
+        while (cap < ab->len + n) {
+            cap *= 2;
+        }
+        char *nb = realloc(ab->b, cap);
+        if (!nb) {
+            return;
+        }
+        ab->b   = nb;
+        ab->cap = cap;
+    }
+    memcpy(ab->b + ab->len, s, n);
+    ab->len += n;
+}
+
+static void ab_puts(struct abuf *ab, const char *s) {
+    ab_append(ab, s, strlen(s));
+}
+
+static void ab_int(struct abuf *ab, long v) {
+    char tmp[24];
+    int i = 0;
+    if (v <= 0) {
+        ab_append(ab, "0", 1);
+        return;
+    }
+    while (v > 0 && i < (int)sizeof(tmp)) {
+        tmp[i++] = (char)('0' + v % 10);
+        v /= 10;
+    }
+    while (i > 0) {
+        ab_append(ab, &tmp[--i], 1);
+    }
+}
+
+/* Moves to a 0-based row/column. */
+static void ab_move(struct abuf *ab, long row, long col) {
+    ab_puts(ab, "\x1b[");
+    ab_int(ab, row + 1);
+    ab_puts(ab, ";");
+    ab_int(ab, col + 1);
+    ab_puts(ab, "H");
+}
+
+#define INVERT_ON "\x1b[7m"
+#define INVERT_OFF "\x1b[m"
+#define ERASE_EOL "\x1b[K"
+
+/* Appends the visible part of a row, starting at array index startIdx, expanding tabs and clipping to the screen. */
+static void ab_row(struct abuf *ab, pstring row, long startIdx) {
+    long col  = displayPos(row, startIdx);
+    long base = col;
+
+    for (long i = startIdx; i < row.len; i++) {
+        unsigned char c = (unsigned char)row.chars[i];
+        long w          = (c == '\t') ? TABLEN - col % TABLEN : 1;
+        char out        = (c == '\t') ? ' ' : ((c >= 32 && c < 127) ? (char)c : '?');
+
+        for (long k = 0; k < w && col - base < screenCols; k++, col++) {
+            ab_append(ab, &out, 1);
+        }
+        if (col - base >= screenCols) {
+            break;
+        }
+    }
+}
+
+static long messageRow(void) {
+    return screenRows - BBARH - 1;
+}
+
+static void ab_message(struct abuf *ab, const char *msg, long *cursorColOut) {
+    long len        = (long)strlen(msg);
+    long buffersize = (screenCols - len) / 2;
+    long row        = messageRow();
+
+    ab_move(ab, row, 0);
+    ab_puts(ab, ERASE_EOL);
+
+    if (len + 1 < screenCols) {
+        long col = buffersize - 1;
+        ab_move(ab, row, col);
+        ab_puts(ab, INVERT_ON "[");
+        ab_append(ab, msg, (size_t)len);
+        ab_puts(ab, "]" INVERT_OFF);
+        *cursorColOut = col + 1 + len;
+    } else {
+        ab_move(ab, row, 0);
+        ab_puts(ab, INVERT_ON);
+        ab_append(ab, msg, (size_t)screenCols);
+        ab_puts(ab, INVERT_OFF);
+        *cursorColOut = screenCols - 1;
+    }
+}
+
+static void render(void) {
+    struct abuf ab = { 0 };
+
+    ab_puts(&ab, "\x1b[?25l");
+
+    /* Title bar */
+    ab_move(&ab, 0, 0);
+    ab_puts(&ab, INVERT_ON);
+    for (int i = 0; i < screenCols; i++) {
+        char c = (i < (int)sizeof(TITLE) - 1) ? TITLE[i] : ' ';
+        ab_append(&ab, &c, 1);
+    }
+    ab_puts(&ab, INVERT_OFF);
+
+    /* Text area */
+    for (long y = 0; y < currentDisplay.rowCap; y++) {
+        long i = currentDisplay.firstRow + y;
+        ab_move(&ab, TBARH + y, 0);
+        if (i < lines.lineCount) {
+            ab_row(&ab, lines.lines[i], i == currentDisplay.currentRow ? currentDisplay.xOffset : 0);
+        }
+        ab_puts(&ab, ERASE_EOL);
+    }
+
+    /* Bottom bar: the shortcut letters are shown inverted */
+    ab_move(&ab, screenRows - BBARH, 0);
+    for (size_t i = 0; i < sizeof(BBARM) - 1; i++) {
+        bool inv = i < sizeof(BBARI) - 1 && BBARI[i] != ' ';
+        if (inv) {
+            ab_puts(&ab, INVERT_ON);
+        }
+        ab_append(&ab, &BBARM[i], 1);
+        if (inv) {
+            ab_puts(&ab, INVERT_OFF);
+        }
+    }
+    ab_puts(&ab, ERASE_EOL);
+
+    /* Whatever is left below the bar */
+    for (int r = screenRows - BBARH + 1; r < screenRows; r++) {
+        ab_move(&ab, r, 0);
+        ab_puts(&ab, ERASE_EOL);
+    }
+
+    /* Message / prompt row (drawn last so it sits on top of the text area) */
+    long promptCol = 0;
+    if (statusmsg[0]) {
+        ab_message(&ab, statusmsg, &promptCol);
+    }
+
+    if (promptActive && statusmsg[0]) {
+        ab_move(&ab, messageRow(), promptCol);
+    } else {
+        ab_move(&ab, cursorY, cursorX);
+    }
+    ab_puts(&ab, "\x1b[?25h");
+
+    write_all(ab.b, ab.len);
+    free(ab.b);
+}
+
+static void setmsg(const char *msg) {
+    strncpy(statusmsg, msg, sizeof(statusmsg) - 1);
+    statusmsg[sizeof(statusmsg) - 1] = '\0';
+}
+
+/* ---------------------------------------------------------------------------------------------------------------- */
+/* Entry point */
+
 int main(int argc, char **argv) {
     if (argc == 2) {
-		if (strcmp(argv[1], "--help") == 0)
-		{
-			printf("Usage:\n");
-			printf(argv[0]);
-			printf(" [FILE]\n");
-			return 0;
-		}
-		if (strcmp(argv[1], "--version") == 0)
-		{
-			printf("pint v0.0.1-alpha.2\n");
-			return 0;
-		}
+        if (strcmp(argv[1], "--help") == 0) {
+            printf("Usage:\n%s [FILE]\n", argv[0]);
+            return 0;
+        }
+        if (strcmp(argv[1], "--version") == 0) {
+            printf("pint v0.0.1-alpha.2\n");
+            return 0;
+        }
 
-		filename = malloc(strlen(argv[1]));
-		strcpy(filename, argv[1]);
-	}
-	else
-	{
-		filename = malloc(sizeof(DEFAULT_FILENAME));
-		strcpy(filename, DEFAULT_FILENAME);
-	}
-	
-    setlocale(LC_ALL, "en_US.UTF-8");
-	initscr();
+        filename = malloc(strlen(argv[1]) + 1);
+        if (!filename) {
+            return 1;
+        }
+        strcpy(filename, argv[1]);
+    } else {
+        filename = malloc(sizeof(DEFAULT_FILENAME));
+        if (!filename) {
+            return 1;
+        }
+        strcpy(filename, DEFAULT_FILENAME);
+    }
 
-    set_tabsize(TABLEN);
+    if (enable_raw_mode() == -1) {
+        printf("pint: standard input is not a terminal\n");
+        return 2;
+    }
+    atexit(disable_raw_mode);
+
+    get_screen_size();
 
     int returnVal = edit();
 
-    endwin();
+    disable_raw_mode();
     return returnVal;
 }
 
-int edit()
-{
-    if (start_color() != OK)
-	{
-		printf("Couldn't start color.");
-		return 2;
-	}
-
-    clear();
-	noecho();
-	cbreak();
-    keypad(stdscr, true);
-
-    move(TBARH, 0);
-    
+static int edit(void) {
     currentDisplay.currentRow = 0;
-    currentDisplay.firstRow = 0;
-    currentDisplay.xIndex = 0;
+    currentDisplay.firstRow   = 0;
+    currentDisplay.xIndex     = 0;
+    currentDisplay.xOffset    = 0;
+    currentDisplay.widthCap   = screenCols;
+    currentDisplay.rowCap     = screenRows - (TBARH + BBARH);
 
-    getmaxyx(stdscr,currentDisplay.rowCap,currentDisplay.widthCap);
-    currentDisplay.rowCap -= (TBARH + BBARH);
-
-    lines.lines = openFile(filename);
-    if (countLines(filename) == 0 | lines.lines == NULL)
-    {
+    lines.lines    = openFile(filename);
+    long lineCount = countLines(filename);
+    if (lineCount <= 0 || lines.lines == NULL) {
         lines.lines = malloc(sizeof(pstring));
-        lines.lineCount = 1;
-        lines.lines[0] = pstr_new();
-    }
-    else
-    {
-        lines.lineCount = countLines(filename);
-    }
-
-    draw();
-
-    int maxY = getmaxy(stdscr);
-
-    writeLineInvertColor(pstr_new_from_chars(" Pint Editor ", 13), 0);
-    writeLine(pstr_new_from_chars(BBARM, strlen(BBARM)), maxY - BBARH);
-
-    int i = 0;
-    while (i < strlen(BBARI))
-    {
-        if (BBARI[i] != ' ')
-        {
-            char *tmp = malloc(2);
-            tmp[0] = BBARI[i];
-            tmp[1] = '\0';
-            writeCharsInvertColor(pstr_new_from_chars(tmp, 2), maxY - BBARH, i);
-            free(tmp);
+        if (!lines.lines) {
+            return 1;
         }
-        i ++;
+        lines.lineCount = 1;
+        lines.lines[0]  = pstr_new();
+    } else {
+        lines.lineCount = lineCount;
     }
 
-    while (true)
-    {
-        int ch = getch();
+    layout();
 
-        if (processChar(ch, filename) == 5)
-        {
+    for (;;) {
+        render();
+
+        int ch = read_key();
+        statusmsg[0] = '\0';
+
+        if (processChar(ch) == QUIT) {
             return 0;
         }
     }
 }
 
-int processChar(int ch, char *filename)
-{
-    long oldY, oldX;
-    getyx(stdscr, oldY, oldX);
-    if (ch == KEY_LEFT)
-    {
-        if (currentDisplay.xIndex == 0)
-        {
-            if (currentDisplay.currentRow == 0)
-            {
-                // at beginning
-            }
-            else
-            {
-                if (currentDisplay.currentRow == currentDisplay.firstRow)
-                {
-                    currentDisplay.firstRow --;
+/* ---------------------------------------------------------------------------------------------------------------- */
+/* Editing logic */
+
+static int processChar(int ch) {
+    /* The cursor row on screen, as of the last layout() */
+    long oldY = currentDisplay.currentRow - currentDisplay.firstRow + TBARH;
+
+    if (ch == K_LEFT) {
+        if (currentDisplay.xIndex == 0) {
+            if (currentDisplay.currentRow == 0) {
+                /* at beginning */
+            } else {
+                if (currentDisplay.currentRow == currentDisplay.firstRow) {
+                    currentDisplay.firstRow--;
                 }
-                currentDisplay.currentRow --;
-                currentDisplay.xIndex = lines.lines[currentDisplay.currentRow].len;
+                currentDisplay.currentRow--;
+                currentDisplay.xIndex  = lines.lines[currentDisplay.currentRow].len;
                 currentDisplay.xOffset = -1;
-                draw();
+                layout();
             }
-        }
-        else
-        {
-            if (currentDisplay.xIndex - currentDisplay.xOffset <= 1)
-            {
-                currentDisplay.xOffset --;
-                if (currentDisplay.xOffset <= 0)
-                {
-                    currentDisplay.xOffset == 0;
+        } else {
+            if (currentDisplay.xIndex - currentDisplay.xOffset <= 1) {
+                currentDisplay.xOffset--;
+                if (currentDisplay.xOffset <= 0) {
+                    currentDisplay.xOffset = 0;
                 }
             }
             currentDisplay.xIndex--;
-            draw();
+            layout();
         }
-    }
-    else if (ch == KEY_RIGHT)
-    {
-        if (currentDisplay.xIndex >= lines.lines[currentDisplay.currentRow].len)
-        {
-            if (currentDisplay.currentRow + 1 >= lines.lineCount)
-            {
-                // EOF
-            }
-            else
-            {
-                if (oldY + 1 >= getmaxy(stdscr) - BBARH)
-                {
-                    currentDisplay.firstRow ++;
+    } else if (ch == K_RIGHT) {
+        if (currentDisplay.xIndex >= lines.lines[currentDisplay.currentRow].len) {
+            if (currentDisplay.currentRow + 1 >= lines.lineCount) {
+                /* EOF */
+            } else {
+                if (oldY + 1 >= screenRows - BBARH) {
+                    currentDisplay.firstRow++;
                 }
                 currentDisplay.currentRow++;
-                currentDisplay.xIndex = 0;
+                currentDisplay.xIndex  = 0;
                 currentDisplay.xOffset = 0;
-                draw();
+                layout();
             }
-        }
-        else
-        {
-            if (displayPos(lines.lines[currentDisplay.currentRow], currentDisplay.xIndex) - displayPos(lines.lines[currentDisplay.currentRow], currentDisplay.xOffset) + 1 >= getmaxx(stdscr) - 1)
-            {
-                currentDisplay.xOffset ++;
+        } else {
+            if (displayPos(lines.lines[currentDisplay.currentRow], currentDisplay.xIndex)
+                        - displayPos(lines.lines[currentDisplay.currentRow], currentDisplay.xOffset) + 1
+                    >= screenCols - 1) {
+                currentDisplay.xOffset++;
             }
             currentDisplay.xIndex++;
-            draw();
+            layout();
         }
-    }
-    else if (ch == KEY_DOWN)
-    {
-        if (currentDisplay.currentRow + 1 >= lines.lineCount)
-        {
+    } else if (ch == K_DOWN) {
+        if (currentDisplay.currentRow + 1 >= lines.lineCount) {
             currentDisplay.xOffset = -1;
-            currentDisplay.xIndex = lines.lines[currentDisplay.currentRow].len;
-            draw();
-        }
-        else
-        {
+            currentDisplay.xIndex  = lines.lines[currentDisplay.currentRow].len;
+            layout();
+        } else {
             currentDisplay.currentRow++;
 
-            if (TBARH + currentDisplay.rowCap <= oldY + 1)
-            {
+            if (TBARH + currentDisplay.rowCap <= oldY + 1) {
                 currentDisplay.firstRow++;
             }
-            else
-            {
-                
-            }
-            //currentDisplay.xOffset = 0;
-            //currentDisplay.xIndex = 0;
             currentDisplay.xOffset = -1;
-            currentDisplay.xIndex = arrayPos(lines.lines[currentDisplay.currentRow], displayPos(lines.lines[currentDisplay.currentRow - 1], currentDisplay.xIndex));
-            draw();
+            currentDisplay.xIndex  = arrayPos(lines.lines[currentDisplay.currentRow],
+                                              displayPos(lines.lines[currentDisplay.currentRow - 1], currentDisplay.xIndex));
+            layout();
         }
-    }
-    else if (ch == KEY_UP)
-    {
-        if (currentDisplay.currentRow <= 0)
-        {
+    } else if (ch == K_UP) {
+        if (currentDisplay.currentRow <= 0) {
             currentDisplay.xOffset = 0;
-            currentDisplay.xIndex = 0;
-            draw();
-        }
-        else
-        {
+            currentDisplay.xIndex  = 0;
+            layout();
+        } else {
             currentDisplay.currentRow--;
-            if (oldY <= TBARH)
-            {
+            if (oldY <= TBARH) {
                 currentDisplay.firstRow--;
             }
-            else
-            {
-
-            }
-            //currentDisplay.xOffset = 0;
-            //currentDisplay.xIndex = 0;
 
             currentDisplay.xOffset = -1;
-            currentDisplay.xIndex = arrayPos(lines.lines[currentDisplay.currentRow], displayPos(lines.lines[currentDisplay.currentRow + 1], currentDisplay.xIndex));
-
-            draw();
+            currentDisplay.xIndex  = arrayPos(lines.lines[currentDisplay.currentRow],
+                                              displayPos(lines.lines[currentDisplay.currentRow + 1], currentDisplay.xIndex));
+            layout();
         }
-    }
-    else if (isalnum(ch) || ch == ' ' || ch == '!' || ch == '@' || ch == '#' || ch == '$' || ch == '%' || ch == '^' || ch == '&' || ch == '*' || ch == '(' || ch == ')' || ch == '-' || ch == '_' || ch == '=' || ch == '+' || ch == '`' || ch == '~' || ch == '[' || ch == ']' || ch == '{' || ch == '}' || ch == '\\' || ch == '|' || ch == '\'' || ch == '"' || ch == ';' || ch == ':' || ch == ',' || ch == '.' || ch == '<' || ch == '>' || ch == '/' || ch == '?' || ch == '\t')
-    {
-        insertChar(currentDisplay.currentRow, ch, currentDisplay.xIndex);
+    } else if ((ch >= 32 && ch < 127) || ch == '\t') {
+        insertChar(currentDisplay.currentRow, (char)ch, currentDisplay.xIndex);
         currentDisplay.xIndex++;
-        draw();
-    }
-    else if (ch == 127)
-    {
-        if (currentDisplay.xIndex == 0)
-        {
-            if (currentDisplay.currentRow != 0 && lines.lineCount != 1)
-            {
+        layout();
+    } else if (ch == K_BACKSPACE || ch == CTRL_KEY('h')) {
+        if (currentDisplay.xIndex == 0) {
+            if (currentDisplay.currentRow != 0 && lines.lineCount != 1) {
                 currentDisplay.xOffset = -1;
-                currentDisplay.xIndex = lines.lines[currentDisplay.currentRow - 1].len;
+                currentDisplay.xIndex  = lines.lines[currentDisplay.currentRow - 1].len;
                 combineRows(currentDisplay.currentRow - 1, currentDisplay.currentRow);
-                currentDisplay.currentRow --;
+                currentDisplay.currentRow--;
             }
-        }
-        else
-        {
+        } else {
             removeChar(currentDisplay.currentRow, currentDisplay.xIndex - 1);
-            currentDisplay.xIndex --;
+            currentDisplay.xIndex--;
         }
-        draw();
-    }
-    else if (ch == 10)
-    {
+        layout();
+    } else if (ch == '\n' || ch == '\r') {
         splitRow(currentDisplay.currentRow, currentDisplay.xIndex);
-        currentDisplay.xIndex = 0;
+        currentDisplay.xIndex  = 0;
         currentDisplay.xOffset = 0;
-        currentDisplay.currentRow ++;
-        draw();
-    }
-    else if (ch == 23)
-    {
+        currentDisplay.currentRow++;
+        layout();
+    } else if (ch == CTRL_KEY('w')) {
         savePrompt();
-    }
-    else if (ch == 24)
-    {
-        //save(filename);
-        //stdMessage(pstr_new_from_chars(" Saved ", 7));
-        int sizeY, sizeX;
-        getmaxyx(stdscr, sizeY, sizeX);
-        stdMessage(pstr_new_from_chars(SAVEMSG, strlen(SAVEMSG)));
-        refresh();
-        int ch = getch();
-        if (ch == 'y')
-        {
-            savePrompt();
-        }
-        else if (ch == 'n')
-        {
-            return 5;
-        }
-        else if (ch == 'c')
-        {
-            int y,x;
-            getyx(stdscr, y, x);
+    } else if (ch == CTRL_KEY('x')) {
+        setmsg(SAVEMSG);
+        render();
 
-            move(sizeY - BBARH - 1, 0);
-            clrtoeol();
-            move(y, x);
-            draw();
-        }
-        else
-        {
-            int y,x;
-            getyx(stdscr, y, x);
+        int ans = read_key();
+        statusmsg[0] = '\0';
 
-            move(sizeY - BBARH - 1, 0);
-            clrtoeol();
-            move(y, x);
-            refresh();
-            
-            stdMessage(pstr_new_from_chars(SFAIL_INVALIDINPUT, strlen(SFAIL_INVALIDINPUT)));
+        if (ans == 'y' || ans == 'Y') {
+            if (savePrompt()) {
+                return QUIT;
+            }
+        } else if (ans == 'n' || ans == 'N') {
+            return QUIT;
+        } else if (ans == 'c' || ans == 'C') {
+            /* cancel: just go back to editing */
+        } else {
+            setmsg(SFAIL_INVALIDINPUT);
         }
-    }
-    else if (ch == 546) // ctrl+left
-    {
-        int i = 0;
-        while (i < CTRLHACCEL)
-        {
-            processChar(KEY_LEFT, filename);
-            i++;
+    } else if (ch == K_CTRL_LEFT) {
+        for (int i = 0; i < CTRLHACCEL; i++) {
+            processChar(K_LEFT);
         }
-    }
-    else if (ch == 561) // ctrl+right
-    {
-        int i = 0;
-        while (i < CTRLHACCEL)
-        {
-            processChar(KEY_RIGHT, filename);
-            i++;
+    } else if (ch == K_CTRL_RIGHT) {
+        for (int i = 0; i < CTRLHACCEL; i++) {
+            processChar(K_RIGHT);
         }
-    }
-    else if (ch == 526) // ctrl+down
-    {
-        int i = 0;
-        while (i < CTRLVACCEL)
-        {
-            processChar(KEY_DOWN, filename);
-            i++;
+    } else if (ch == K_CTRL_DOWN) {
+        for (int i = 0; i < CTRLVACCEL; i++) {
+            processChar(K_DOWN);
         }
-    }
-    else if (ch == 567) // ctrl+up
-    {
-        int i = 0;
-        while (i < CTRLVACCEL)
-        {
-            processChar(KEY_UP, filename);
-            i++;
+    } else if (ch == K_CTRL_UP) {
+        for (int i = 0; i < CTRLVACCEL; i++) {
+            processChar(K_UP);
         }
+    } else if (ch == CTRL_KEY('f')) {
+        /* Insert search here */
     }
-    else if (ch == 6) // ctrl+f
-    {
-        // Insert search here
-    }
-    else
-    {
-        /*char *t1 = malloc(10);
-        snprintf(t1, 10, "%d", ch);
-        writeLineInvertColor(pstr_new_from_chars(t1, 10), 0);
-        free(t1);*/
-    }
+
+    return 0;
 }
 
-int *savePrompt()
-{
-    int oldY, oldX;
-    getyx(stdscr, oldY, oldX);
-    //stdMessage(pstr_new_from_chars(FNPROMPT, strlen(FNPROMPT)));
+/* Asks for a filename and writes the buffer to it. Returns 1 if the file was saved, 0 otherwise. */
+static int savePrompt(void) {
+    char fname[PATH_BUF];
+    size_t n = 0;
 
-    char fname[255];
-
-    bool saveBool = false;
-
-    if (filename[0] != '/')
-    {
-        char *cwd = getcwd(NULL, 0);
-        strncpy(fname, cwd, strlen(cwd) + 1);
-        strncat(fname, "/", 2);
-        strncat(fname, filename, strlen(filename) + 1);
-        free(cwd);
-    }
-    else
-    {
-        strncpy(fname, filename, strlen(filename));
+    fname[0] = '\0';
+    if (filename[0] != '/' && getcwd(fname, sizeof(fname)) != NULL) {
+        n = strlen(fname);
+        if (n > 0 && fname[n - 1] != '/' && n + 1 < sizeof(fname)) {
+            fname[n++] = '/';
+        }
+        fname[n] = '\0';
+    } else {
+        fname[0] = '\0';
     }
 
-    int ch2;
-    int i = strlen(fname);
-    stdMessage(pstr_combine(pstr_new_from_chars(FNPROMPT, strlen(FNPROMPT)), pstr_new_from_chars(fname, i)));
+    size_t flen = strlen(filename);
+    if (n + flen >= sizeof(fname)) {
+        flen = sizeof(fname) - 1 - n;
+    }
+    memcpy(fname + n, filename, flen);
+    n += flen;
+    fname[n] = '\0';
 
-    move(getmaxy(stdscr) - BBARH - 1, (getmaxx(stdscr) - (i + strlen(FNPROMPT) + 2)) / 2 + i + 1 + strlen(FNPROMPT));
+    bool confirmed = false;
+    promptActive   = true;
+    for (;;) {
+        char msg[MSG_BUF];
+        size_t plen = sizeof(FNPROMPT) - 1;
+        memcpy(msg, FNPROMPT, plen);
+        memcpy(msg + plen, fname, n + 1);
+        setmsg(msg);
+        render();
 
-    while (saveBool == false)
-    {
-        int ch2 = getch();
-        
-        if (ch2 == 24)
-        {
+        int ch = read_key();
+        if (ch == CTRL_KEY('x')) {
             break;
-        }
-        else if (ch2 == 10)
-        {
-            saveBool = true;
-            fname[i] = '\0';
+        } else if (ch == '\n' || ch == '\r') {
+            confirmed = true;
             break;
+        } else if (ch == K_BACKSPACE || ch == CTRL_KEY('h')) {
+            if (n > 0) {
+                fname[--n] = '\0';
+            }
+        } else if (ch >= 32 && ch < 127) {
+            if (n + 1 < sizeof(fname)) {
+                fname[n++] = (char)ch;
+                fname[n]   = '\0';
+            }
         }
-        else if (isalnum(ch2) || ch2 == ' ' || ch2 == '!' || ch2 == '@' || ch2 == '#' || ch2 == '$' || ch2 == '%' || ch2 == '^' || ch2 == '&' || ch2 == '*' || ch2 == '(' || ch2 == ')' || ch2 == '-' || ch2 == '_' || ch2 == '=' || ch2 == '+' || ch2 == '`' || ch2 == '~' || ch2 == '[' || ch2 == ']' || ch2 == '{' || ch2 == '}' || ch2 == '\\' || ch2 == '|' || ch2 == '\'' || ch2 == '"' || ch2 == ';' || ch2 == ':' || ch2 == ',' || ch2 == '.' || ch2 == '<' || ch2 == '>' || ch2 == '/' || ch2 == '?')
-        {
-            fname[i] = ch2;
-        }
-        else if (ch2 == 127)
-        {
-            fname[i - 1] = 0;
-            i -= 2;
-        }
-        i ++;
-        move(getmaxy(stdscr) - BBARH - 1, (getmaxx(stdscr) - (i + strlen(FNPROMPT) + 2)) / 2 + i + 1 + strlen(FNPROMPT));
-        stdMessage(pstr_combine(pstr_new_from_chars(FNPROMPT, strlen(FNPROMPT)), pstr_new_from_chars(fname, i)));
+    }
+    promptActive = false;
+    statusmsg[0] = '\0';
+
+    if (!confirmed || n == 0) {
+        return 0;
     }
 
-    move(oldY, oldX);
+    int result = save(fname);
+    if (result != 0) {
+        setmsg(result == EACCES ? SFAIL_EACCES : SFAIL_GENERIC);
+        return 0;
+    }
 
-    if (saveBool)
-    {
-        /*char *fname2 = malloc(i + 1);
+    setmsg(WOSUCCES);
 
-        if (fname[0] == '/')
-        {
-            strncpy(fname2, fname, i);
-        }
-        else
-        {
-            fname2 = realloc(fname2, i + 1 + strlen(dirname(filename)));
-            strncpy(fname2, dirname(filename), strlen(filename));
-            strncat(fname2, fname, i);
-        }
-
-        int result = save(fname2);*/
-        int result = save(fname);
-        //free(filename);
-        //free(fname2);
-        if (result == 0)
-        {
-            stdMessage(pstr_new_from_chars(WOSUCCES, strlen(WOSUCCES)));
-        }
-        else
-        {
-            if (result == EACCES)
-            {
-                stdMessage(pstr_new_from_chars(SFAIL_EACCES, strlen(SFAIL_EACCES)));
-            }
-            else
-            {
-                stdMessage(pstr_new_from_chars(SFAIL_GENERIC, strlen(SFAIL_GENERIC)));
-            }
-            refresh();
-        }
-
+    char *newname = malloc(n + 1);
+    if (newname) {
+        memcpy(newname, fname, n + 1);
         free(filename);
-        filename = malloc(strlen(fname) + 1);
-        strncpy(filename, fname, strlen(fname));
-        filename[strlen(fname)] = '\0';
-        //filename = tmp;
+        filename = newname;
     }
-    else
-    {
-        
-    }
+    return 1;
 }
 
-int stdMessage(pstring msg)
-{
-    int sizeY, sizeX;
-    getmaxyx(stdscr, sizeY, sizeX);
-    int buffersize = (sizeX - msg.len) / 2;
-
-    int x,y;
-    getyx(stdscr, y, x);
-    move(sizeY - 3, 0);
-    clrtoeol();
-    move(y, x);
-
-    if (msg.len + 1 < sizeX)
-    {
-        pstring output = pstr_new_from_chars("[", 2);
-        output = pstr_combine(output, msg);
-        output = pstr_combine(output, pstr_new_from_chars("]", 2));
-        writeCharsInvertColor(output, sizeY - BBARH - 1, buffersize - 1);
-    }
-    else
-    {
-        writeCharsInvertColor(msg, sizeY - BBARH - 1, buffersize);
-    }
-
-    refresh();
+static int save(char *path) {
+    return writeFile(path, lines.lines, lines.lineCount);
 }
 
-int save(char *filename)
-{
-    writeFile(filename, lines.lines, lines.lineCount);
-}
-
-int combineRows(long keep, long remove)
-{
-    //lines.lines[keep] = pstr_combine(lines.lines[keep], lines.lines[remove]);
+static int combineRows(long keep, long remove) {
     pstring tmp = pstr_combine(lines.lines[keep], lines.lines[remove]);
     free(lines.lines[keep].chars);
     lines.lines[keep].chars = tmp.chars;
-    lines.lines[keep].len = tmp.len;
-    
-    removeRow(remove);
+    lines.lines[keep].len   = tmp.len;
+
+    return removeRow(remove);
 }
 
-int splitRow(long row, long index)
-{
-    insertRow(pstr_start_at(lines.lines[row], index), row + 1);
-    //lines.lines[row] = pstr_first_n(lines.lines[row], index);
+static int splitRow(long row, long index) {
+    int res = insertRow(pstr_start_at(lines.lines[row], index), row + 1);
+
     pstring tmp = pstr_first_n(lines.lines[row], index);
     free(lines.lines[row].chars);
     lines.lines[row].chars = tmp.chars;
-    lines.lines[row].len = tmp.len;
+    lines.lines[row].len   = tmp.len;
+
+    return res;
 }
 
-int insertRow(pstring contents, long index)
-{
-    expandRows();
-
-    long i = lines.lineCount - 1;
-    
-    while (i >= index + 1)
-    {
-        lines.lines[i].chars = lines.lines[i - 1].chars;
-        lines.lines[i].len = lines.lines[i - 1].len;
-
-        i--;
+static int insertRow(pstring contents, long index) {
+    pstring *grown = realloc(lines.lines, (lines.lineCount + 1) * sizeof(pstring));
+    if (!grown) {
+        return -1;
     }
-    
+    lines.lines = grown;
+
+    memmove(&lines.lines[index + 1], &lines.lines[index], (lines.lineCount - index) * sizeof(pstring));
     lines.lines[index] = contents;
+    lines.lineCount++;
+
+    return 0;
 }
 
-int expandRows()
-{
-    lines.lines = realloc(lines.lines, (lines.lineCount + 1) * sizeof(pstring));
-    lines.lineCount ++;
+static int removeRow(long index) {
+    free(lines.lines[index].chars);
+
+    memmove(&lines.lines[index], &lines.lines[index + 1], (lines.lineCount - index - 1) * sizeof(pstring));
+    lines.lineCount--;
+
+    pstring *shrunk = realloc(lines.lines, lines.lineCount * sizeof(pstring));
+    if (shrunk) {
+        lines.lines = shrunk;
+    }
+
+    return 0;
 }
 
-int removeRow(long index)
-{
-    pstring tmp[lines.lineCount - 1];
-    
-    long i = 0;
-    
-    while (i < index)
-    {
-        tmp[i].chars = lines.lines[i].chars;
-        tmp[i].len = lines.lines[i].len;
-        //tmp[i].displaylength = rows[i].displaylength;
-        i++;
-    }
-    i++;
-    while (i < lines.lineCount)
-    {
-        tmp[i - 1].chars = lines.lines[i].chars;
-        tmp[i - 1].len = lines.lines[i].len;
-        //tmp[i - 1].displaylength = rows[i].displaylength;
-        i++;
-    }
-    
-    //free(rows);
-    //rows = malloc((numberOfRows - 1) * sizeof(editorRow));
-    lines.lines = realloc(lines.lines, (lines.lineCount - 1) * sizeof(pstring));
-
-    i = 0;
-    
-    while (i < lines.lineCount - 1)
-    {
-        lines.lines[i].chars = tmp[i].chars;
-        lines.lines[i].len = tmp[i].len;
-        //rows[i].displaylength = tmp[i].displaylength;
-        i++;
-    }
-    
-    //rows = tmp;
-    
-    lines.lineCount --;
-}
-
-int insertChar(long row, char insertChar, long pos)
-{
-    //lines.lines[row] = pstr_insert_char(lines.lines[row], insertChar, pos);
-    pstring tmp = pstr_insert_char(lines.lines[row], insertChar, pos);
+static int insertChar(long row, char c, long pos) {
+    pstring tmp = pstr_insert_char(lines.lines[row], c, pos);
     free(lines.lines[row].chars);
     lines.lines[row].chars = tmp.chars;
-    lines.lines[row].len = tmp.len;
+    lines.lines[row].len   = tmp.len;
+
+    return 0;
 }
 
-int removeChar(long row, long pos)
-{
-    //lines.lines[row] = pstr_remove_char(lines.lines[row], pos);
+static int removeChar(long row, long pos) {
     pstring tmp = pstr_remove_char(lines.lines[row], pos);
     free(lines.lines[row].chars);
     lines.lines[row].chars = tmp.chars;
-    lines.lines[row].len = tmp.len;
+    lines.lines[row].len   = tmp.len;
+
+    return 0;
 }
 
-int draw()
-{
-    long newY = currentDisplay.currentRow - currentDisplay.firstRow + TBARH;
-    long newX = 0;
+/* ---------------------------------------------------------------------------------------------------------------- */
+/* Scrolling and cursor placement (no output) */
+
+static void layout(void) {
+    long newY      = currentDisplay.currentRow - currentDisplay.firstRow + TBARH;
     long xIndexPos = displayPos(lines.lines[currentDisplay.currentRow], currentDisplay.xIndex);
-    if (currentDisplay.xOffset == -1)
-    {
-        if (xIndexPos >= getmaxx(stdscr) - 1)
-        {
-            currentDisplay.xOffset = currentDisplay.xIndex - getmaxx(stdscr) + 8;
-        }
-        else
-        {
+
+    if (currentDisplay.xOffset == -1) {
+        if (xIndexPos >= screenCols - 1) {
+            currentDisplay.xOffset = currentDisplay.xIndex - screenCols + 8;
+        } else {
             currentDisplay.xOffset = 0;
         }
     }
+    if (currentDisplay.xOffset < 0) {
+        currentDisplay.xOffset = 0;
+    }
 
-    while (xIndexPos - displayPos(lines.lines[currentDisplay.currentRow], currentDisplay.xOffset) >= getmaxx(stdscr) - 1)
-    {
+    while (xIndexPos - displayPos(lines.lines[currentDisplay.currentRow], currentDisplay.xOffset) >= screenCols - 1) {
         currentDisplay.xOffset++;
     }
 
-    newX = xIndexPos - displayPos(lines.lines[currentDisplay.currentRow], currentDisplay.xOffset);
-
-    move(newY, newX);
-
-    long firstLine = currentDisplay.firstRow;
-    long lastLine = currentDisplay.firstRow + currentDisplay.rowCap;
-
-    long i = firstLine;
-    while (i < lastLine)
-    {
-        if (i >= lines.lineCount)
-        {
-            writeLine(pstr_new_from_chars("", 0), i - firstLine + TBARH);
-        }
-        else
-        {
-            if (i == currentDisplay.currentRow)
-            {
-                writeLine(pstr_start_at(lines.lines[i], currentDisplay.xOffset), i - firstLine + TBARH);
-            }
-            else
-            {
-                writeLine(lines.lines[i], i - firstLine + TBARH);
-            }
-        }
-
-        i++;
-    }
-    refresh();
+    cursorY = newY;
+    cursorX = xIndexPos - displayPos(lines.lines[currentDisplay.currentRow], currentDisplay.xOffset);
 }
 
-int writeLine(pstring line, int y)
-{
-    int oldY = getcury(stdscr);
-    int oldX = getcurx(stdscr);
-    move(y, 0);
-    clrtoeol();
-
-    addnstr(pstr_get_terminated(line).chars, getmaxx(stdscr));
-
-    move(oldY, oldX);
-}
-
-int writeLineInvertColor(pstring line, int y)
-{
-    bool invertColor = true;
-    if (invertColor)
-    {
-        init_pair(1, INVTCOLOR, INVBGCOLOR);
-        attrset(COLOR_PAIR(1));
-    }
-    int oldY = getcury(stdscr);
-    int oldX = getcurx(stdscr);
-    move(y, 0);
-    clrtoeol();
-
-    addnstr(pstr_get_terminated(line).chars, getmaxx(stdscr));
-
-    if (invertColor)
-    {
-        attroff(COLOR_PAIR(1));
-    }
-
-    move(oldY, oldX);
-}
-
-int writeCharsInvertColor(pstring chars, int line, int charindex)
-{
-    int y,x;
-    getyx(stdscr, y, x);
-    init_pair(1, INVTCOLOR, INVBGCOLOR);
-    attrset(COLOR_PAIR(1));
-    move(line, charindex);
-    addnstr(pstr_get_terminated(chars).chars, getmaxx(stdscr));
-    attroff(COLOR_PAIR(1));
-    move(y, x);
-}
-
-long displayLen(pstring row)
-{
-    long i = 0;
-    long len = 0;
-    while (i < row.len)
-    {
-        if (row.chars[len] == '\t')
-        {
-            len += TABLEN;
-        }
-        else
-        {
-            len ++;
-        }
-        i++;
-    }
-    return len;
-}
-long displayPos(pstring row, long arrayIndex)
-{
-    long i = 0;
+static long displayPos(pstring row, long arrayIndex) {
+    long i   = 0;
     long pos = 0;
-    while (i < arrayIndex)
-    {
-        if (i >= row.len)
-        {
+    while (i < arrayIndex) {
+        if (i >= row.len) {
             return pos;
         }
-        if (row.chars[i] == '\t')
-        {
-            //pos += TABLEN;
+        if (row.chars[i] == '\t') {
             pos += TABLEN - pos % TABLEN;
-        }
-        else
-        {
-            pos ++;
+        } else {
+            pos++;
         }
         i++;
     }
     return pos;
 }
 
-int arrayPos(pstring row, long index)
-{
-    long i = 0;//rows[row].reallength - 1;
+static int arrayPos(pstring row, long index) {
+    long i      = 0;
     long newlen = 0;
-    while (i < row.len)
-    {
-        if (index == 0)
-        {
+    while (i < row.len) {
+        if (index == 0) {
             i = 0;
             break;
         }
-        if (row.chars[i] == '\t')
-        {
-            //newlen += 8 - newlen % 8;//(i + 8) / 8 * 8 - i;
+        if (row.chars[i] == '\t') {
             newlen += TABLEN - newlen % TABLEN;
-        }
-        else
-        {
-            //newlen += utf8len(&rows[row].chars.chars[i]);
+        } else {
             newlen++;
         }
 
         i++;
-        if (newlen >= index)
-        {
-            if (newlen > index)
-            {
-                //fprintf(stderr, "1210 error");
-            }
+        if (newlen >= index) {
             break;
         }
     }
 
-    return(i);
+    return (int)i;
 }

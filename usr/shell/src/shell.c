@@ -180,7 +180,14 @@ static bool process_cmd(const char *cmd) {
             printf("mount failed (errno %d)\n", res);
         }
     } else if (toks[0][0] != 0) {
-        printf("Unknown command: %s\n", toks[0]);
+        // printf("Unknown command: %s\n", toks[0]);
+        FILE *f = fopen(toks[0], "r");
+        if (!f) {
+            printf("Unknown command: %s\n", toks[0]);
+        } else {
+            fclose(f);
+            syscall_spawn(toks[0], NULL, NULL, 0, 0);
+        }
     }
 
     add_to_cmd_history(cmd);

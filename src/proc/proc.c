@@ -16,6 +16,7 @@
 #include "memory/mm.h"
 #include "proc/scheduler.h"
 #include "proc/thread.h"
+#include "syscall/syscall_helpers.h"
 #include "vfs/fscache.h"
 
 #include <stdint.h>
@@ -26,7 +27,7 @@ extern char __kernel_end[];
 // Largest executable (or dynamic linker) we are willing to read into memory
 #define EXEC_MAX_FILE_SIZE (64ULL << 20)
 // Longest path we'll copy onto the new process's stack (it has to fit in the top stack page with the argv block)
-#define EXEC_MAX_PATH 2048
+#define EXEC_MAX_PATH      2048
 
 volatile proc_t *pid_zero = NULL;
 
@@ -114,6 +115,7 @@ proc_t *create_proc(const char *name, proc_t *parent) {
     } */
 
     // Map stacks
+    // Note: this is removed before freeing the page table
     proc->pml4->entries[284] = kernel_pml4->entries[284];
 
     // TODO: only map the necessary regions (interrupt tables + stubs only?)
@@ -163,8 +165,8 @@ proc_t *create_proc(const char *name, proc_t *parent) {
     return proc;
 }
 
-void *linker_elf_buf    = NULL;
-size_t linker_elf_size  = 0;
+void *linker_elf_buf   = NULL;
+size_t linker_elf_size = 0;
 
 void load_linker() {
     vfs_handle_t *ld_handle = NULL;
@@ -202,6 +204,21 @@ int execute(const char *path, proc_t *proc) {
         return -EINVAL;
     }
 
+    // NOTE: this is ONLY for the vfs_open() call
+    char *path_abs = kmalloc_heap(PATH_MAX);
+    if (!path_abs) {
+        printf("OOM Error: syscall_routine_open: OOM error allocating memory for absolute path buffer\n");
+        return -ENOMEM;
+    }
+
+    int res = handle_relative_path(path, proc, path_abs);
+    if (res < 0) {
+        printf("syscall_routine_open: failed to handle relative path %s for process %s (pid %p), errno %d\n", path,
+               proc->name, proc->pid, res);
+        kfree_heap(path_abs);
+        return res;
+    }
+
     if (strlen(path) > EXEC_MAX_PATH) {
         return -EINVAL;
     }
@@ -212,7 +229,8 @@ int execute(const char *path, proc_t *proc) {
 
     vfs_handle_t *ld_handle = NULL;
 
-    int res = vfs_open(path, SYSCALL_OPEN_FLAG_READ, 0, 0, &ld_handle);
+    res = vfs_open(path_abs, SYSCALL_OPEN_FLAG_READ, 0, 0, &ld_handle);
+    kfree_heap(path_abs);
     if (res != 0) {
         return res;
     }
@@ -264,7 +282,7 @@ int execute(const char *path, proc_t *proc) {
         return -ENOMEM;
     }
     uint64_t *rsp_og = (uint64_t *)(phys_to_virt(stack_top_phys) + 0x1000);
-    uint64_t *rsp = rsp_og;
+    uint64_t *rsp    = rsp_og;
 
     // First, setup the stack
     const char *argv0 = path;
@@ -299,7 +317,7 @@ int execute(const char *path, proc_t *proc) {
     thread->regs.rdx = 0x400000ULL; // Shell binary base addr
 
     bool interrupts = are_interrupts_enabled();
-    
+
     if (interrupts) {
         asm volatile("cli");
     }
@@ -350,6 +368,8 @@ void process_exit(proc_t *proc) {
     }
     kfree_heap((void *)proc->fds);
     proc->fds = NULL;
+
+    proc->pml4->entries[284] = (dir_entry_t){ 0 }; // Don't want to free this as it is direct from kernel
 
     // Unref page table
     free_page_table((pml4_t *)proc->pml4);

@@ -158,37 +158,34 @@ int handle_relative_path(const char *rel, proc_t *proc, char *out) {
         return -EINVAL;
     }
 
+    size_t rel_len = strlen(rel);
+    if (rel_len == 0) {
+        return -ENOENT; // POSIX required
+    }
+
     if (rel[0] == '/') {
         // Absolute path
-        strncpy(out, rel, PATH_MAX);
-        out[PATH_MAX - 1] = '\0';
-        return 0;
-    } else {
-        // Relative path
-        if (proc->cwd[0] == '\0') {
-            // No cwd set; treat as root
-            if (strlen(rel) + 2 > PATH_MAX) {
-                return -ENAMETOOLONG;
-            }
-            // snprintf(out, PATH_MAX, "/%s", rel);
-            *out = '/';
-            strncpy(out + 1, rel, PATH_MAX - 1);
-            out[PATH_MAX - 1] = '\0';
-        } else {
-            // snprintf(out, PATH_MAX, "%s/%s", proc->cwd, rel);
-            size_t cwd_len = strlen(proc->cwd);
-            size_t rel_len = strlen(rel);
-            if (cwd_len + rel_len + 2 > PATH_MAX) {
-                return -ENAMETOOLONG;
-            }
-
-            strncpy(out, proc->cwd, cwd_len + 1);
-            out[cwd_len] = '/';
-            strncpy(out + cwd_len + 1, rel, rel_len + 1);
-            out[PATH_MAX - 1] = '\0';
+        if (rel_len + 1 > PATH_MAX) {
+            return -ENAMETOOLONG;
         }
-        return 0;
+        memcpy(out, rel, rel_len + 1);
+    } else {
+        const char *cwd = proc->cwd[0] ? proc->cwd : "/";
+        size_t cwd_len = strlen(cwd);
+        bool has_slash  = cwd[cwd_len - 1] == '/';
+        
+        if (cwd_len + (has_slash ? 0 : 1) + rel_len + 1 > PATH_MAX) {
+            return -ENAMETOOLONG;
+        }
+
+        memcpy(out, cwd, cwd_len);
+        if (!has_slash) {
+            out[cwd_len++] = '/';
+        }
+        memcpy(out + cwd_len, rel, rel_len + 1);
     }
+
+    return collapse_path(out, out);
 }
 
 int collapse_path(const char *path_in, char *path_out) {

@@ -3,8 +3,8 @@
 #include "lib/stdio.h"
 #include "lib/string.h"
 #include "memory/kmalloc.h"
-#include "vfs/fscache.h"
 #include "timer/timer.h"
+#include "vfs/fscache.h"
 
 // A pointer to this indicates that we should check the root directory of the filesystem (fat32 doesn't have an actual
 // entry for the root directory)
@@ -281,7 +281,142 @@ int fat32_mount(struct filesystem_fat32 *fs, fscache_node_t *mount_node) {
     return 0;
 }
 
-#define FAT32_CLUSTER_FROM_DIR_ENTRY(dir_entry) ((uint32_t)0x0FFFFFFF & (((uint32_t)dir_entry->first_cluster_high << 16) | ((uint32_t)dir_entry->first_cluster_low)))
+#define FAT32_CLUSTER_FROM_DIR_ENTRY(dir_entry)                                                      \
+    ((uint32_t)0x0FFFFFFF                                                                            \
+     & (((uint32_t)dir_entry->first_cluster_high << 16) | ((uint32_t)dir_entry->first_cluster_low)))
+
+#define FAT32_END_OF_CHAIN 0x0FFFFFF8
+
+static uint32_t fat32_dir_start_cluster(vfs_fat32_cache_node_data_t *node_data) {
+    if (node_data->dir_entry == &_fat32_placeholder_root) {
+        return node_data->fs->boot_sector.root_cluster;
+    }
+    return FAT32_CLUSTER_FROM_DIR_ENTRY(node_data->dir_entry);
+}
+
+/**
+ * A fat32_dir_iter walks one directory's entries along the cluster chain. It has a 1-cluster buffer.
+ * After fat32_dir_iter_next() returns an item, it->cluster and it->off hold the position to resume from.
+ */
+struct fat32_dir_iter {
+    struct filesystem_fat32 *fs;
+    uint8_t *buf;
+    uint32_t bytes_per_cluster;
+
+    // cluster and off are the scan's state; cluster is >= FAT32_END_OF_CHAIN when finished
+    uint32_t cluster;
+    uint32_t off;
+
+    bool loaded; // whether buf currently holds `cluster`
+};
+
+struct fat32_dir_item {
+    struct fat32_directory_entry *entry; // Points into the iterator's buffer; only valid until the next call
+    char name[NAME_MAX + 1];             // Name to present to the VFS
+};
+
+static int fat32_dir_iter_init(struct fat32_dir_iter *it, struct filesystem_fat32 *fs, uint32_t cluster,
+                               uint32_t pos_in_cluster) {
+    it->fs                = fs;
+    it->bytes_per_cluster = fs->boot_sector.generic.bytes_per_sector * fs->boot_sector.generic.sectors_per_cluster;
+    it->cluster           = cluster;
+    it->off               = pos_in_cluster;
+    it->loaded            = false;
+    it->buf               = kmalloc_heap(it->bytes_per_cluster);
+    if (!it->buf) {
+        kout(KERNEL_WARN, "fat32_dir_iter_init(): couldn't allocate cluster buffer (kmalloc_heap() failed) (OOM?)\n");
+        return -ENOMEM;
+    }
+
+    return 0;
+}
+
+static void fat32_dir_iter_free(struct fat32_dir_iter *it) {
+    if (it->buf) {
+        kfree_heap(it->buf);
+        it->buf = NULL;
+    }
+}
+
+// Lowercase form of 8.3 entry
+static void fat32_short_name(const struct fat32_directory_entry *entry, char *out) {
+    int o = 0;
+    for (int i = 0; i < 8; i++) {
+        if (entry->name[i] != ' ') {
+            out[o++] = tolower(entry->name[i]);
+        }
+    }
+
+    int ext_start = o + 1;
+    for (int i = 8; i < 11; i++) {
+        if (entry->name[i] != ' ') {
+            if (o < ext_start) {
+                out[o++] = '.';
+            }
+            out[o++] = tolower(entry->name[i]);
+        }
+    }
+    out[o] = '\0';
+}
+
+/**
+ * Returns 1 and outputs item if there is another entry, 0 at the end of the directory, or -errno.
+ */
+static int fat32_dir_iter_next(struct fat32_dir_iter *it, struct fat32_dir_item *item) {
+    while (it->cluster < FAT32_END_OF_CHAIN) {
+        if (!it->loaded) {
+            int res = fat32_read_entry(it->fs, it->cluster, it->buf, it->bytes_per_cluster);
+            if (res < 0) {
+                kout(KERNEL_WARN, "fat32_dir_iter_next(): fat32_read_entry() failed with errno %d\n", res);
+                return -EIO;
+            }
+            it->loaded = true;
+        }
+
+        while (it->off + 32 <= it->bytes_per_cluster) {
+            uint8_t *raw  = it->buf + it->off;
+            it->off      += 32;
+
+            if (fat32_is_long_entry(raw)) {
+                // TODO: long file names
+                continue;
+            }
+
+            struct fat32_directory_entry *entry = (struct fat32_directory_entry *)raw;
+
+            if ((uint8_t)entry->name[0] == 0x00) {
+                // End of directory
+                it->cluster = FAT32_END_OF_CHAIN;
+                it->off     = 0;
+                return 0;
+            }
+            if ((uint8_t)entry->name[0] == 0xE5) {
+                // Deleted entry
+                continue;
+            }
+            if (entry->attr & FAT_ATTR_VOLUME_ID) {
+                continue;
+            }
+
+            item->entry = entry;
+            fat32_short_name(entry, item->name);
+            return 1;
+        }
+
+        // Finished this cluster; go to the next one
+        uint32_t next;
+        if (fat32_next_cluster(it->fs, it->cluster, &next) < 0 || next == 0 || next >= FAT32_END_OF_CHAIN) {
+            it->cluster = FAT32_END_OF_CHAIN;
+            it->off     = 0;
+            return 0;
+        }
+        it->cluster = next;
+        it->off     = 0;
+        it->loaded  = false;
+    }
+
+    return 0;
+}
 
 int fat32_load_func(fscache_node_t *node, const char *name, fscache_node_t *out) {
     vfs_fat32_cache_node_data_t *node_data = (vfs_fat32_cache_node_data_t *)node->internal_data;
@@ -298,169 +433,67 @@ int fat32_load_func(fscache_node_t *node, const char *name, fscache_node_t *out)
 
     struct filesystem_fat32 *fs = node_data->fs;
 
-    uint32_t cluster = FAT32_CLUSTER_FROM_DIR_ENTRY(node_data->dir_entry);
-    if (node_data->dir_entry == &_fat32_placeholder_root) {
-        cluster = fs->boot_sector.root_cluster;
+    struct fat32_dir_iter it;
+    int res = fat32_dir_iter_init(&it, fs, fat32_dir_start_cluster(node_data), 0);
+    if (res < 0) {
+        return res;
     }
 
-    uint32_t bytes_per_cluster = fs->boot_sector.generic.bytes_per_sector * fs->boot_sector.generic.sectors_per_cluster;
+    struct fat32_dir_item item;
+    while ((res = fat32_dir_iter_next(&it, &item)) > 0) {
+        if (strncmp(item.name, name, NAME_MAX + 1) != 0) {
+            continue;
+        }
 
-    uint8_t *cluster_buf = kmalloc_heap(bytes_per_cluster);
-    if (!cluster_buf) {
-        kout(KERNEL_WARN, "fat32_load_func(): couldn't allocate cluster_buf (kmalloc_heap() failed) (OOM?)\n");
-        return -ENOMEM;
-    }
-
-    int res = -ENOENT;
-
-    // printf("FAT32 Directory (start cluster %u):\n", cluster);
-
-    while (cluster < 0x0FFFFFF8) {
-        res = fat32_read_entry(fs, cluster, cluster_buf, bytes_per_cluster);
-        if (res < 0) {
-            kout(KERNEL_WARN, "fat32_load_func(): fat32_read_entry() failed with errno %d\n", res);
-            res = -EIO;
+        // Found
+        struct fat32_directory_entry *entry   = item.entry;
+        vfs_fat32_cache_node_data_t *out_data = (vfs_fat32_cache_node_data_t *)out->internal_data;
+        out_data->dir_entry                   = kmalloc_heap(sizeof(struct fat32_directory_entry));
+        if (!out_data->dir_entry) {
+            kout(KERNEL_WARN, "fat32_load_func(): kmalloc_heap() failed after finding node (OOM?)!\n");
+            res = -ENOMEM;
             goto cleanup;
         }
+        *out_data->dir_entry = *entry;
+
+        out_data->fs = fs;
+
+        mode_t mode = 0777;
+        if (entry->attr & FAT_ATTR_READ_ONLY) {
+            mode &= ~(S_IWUSR | S_IWGRP | S_IWOTH);
+        }
+        if (!fs->exec) {
+            mode &= ~(S_IXUSR | S_IXGRP | S_IXOTH);
+        }
+
+        if (entry->attr & FAT_ATTR_DIRECTORY) {
+            mode |= S_IFDIR;
+        } else {
+            mode |= S_IFREG;
+        }
+
+        struct kstat stat = {
+            .dev  = fs->partition->endpoint->dev,
+            .gid  = fs->mount_gid,
+            .uid  = fs->mount_uid,
+            .mode = mode,
+            .size = (off_t)entry->file_size,
+            .rdev = (dev_t)0,
+        };
+
+        fscache_node_populate(out, 0, name, stat,
+                              (entry->attr & FAT_ATTR_DIRECTORY) ? &fat32_directory_fsops : &fat32_file_fsops);
+
+        res = 0;
+        goto cleanup;
+    }
+
+    if (res == 0) {
         res = -ENOENT;
-
-        // Iterate directory entries in this cluster
-        for (uint32_t off = 0; off + 32 <= bytes_per_cluster; off += 32) {
-            if (fat32_is_long_entry(cluster_buf + off)) {
-                struct fat32_long_directory_entry *long_entry
-                    = (struct fat32_long_directory_entry *)(cluster_buf + off);
-
-                if ((uint8_t)long_entry->name1[0] == 0x00) {
-                    // End of directory
-                    goto cleanup;
-                }
-                if ((uint8_t)long_entry->name1[0] == 0xE5) {
-                    // Deleted entry
-                    continue;
-                }
-
-                char name_buf[14] = { 0 };
-                for (int i = 0; i < 5; i++) {
-                    if (long_entry->name1[i] > 255) {
-                        kout(KERNEL_WARN, "fat32_directory_read_func(): unhandled unicode character %x.\n",
-                             (uint32_t)long_entry->name1[i]);
-                    } else {
-                        name_buf[i] = long_entry->name1[i];
-                    }
-                }
-
-                for (int i = 0; i < 6; i++) {
-                    if (long_entry->name2[i] > 255) {
-                        kout(KERNEL_WARN, "fat32_directory_read_func(): unhandled unicode character %x.\n",
-                             (uint32_t)long_entry->name2[i]);
-                    } else {
-                        name_buf[i + 5] = long_entry->name2[i];
-                    }
-                }
-
-                for (int i = 0; i < 2; i++) {
-                    if (long_entry->name3[i] > 255) {
-                        kout(KERNEL_WARN, "fat32_directory_read_func(): unhandled unicode character %x.\n",
-                             (uint32_t)long_entry->name3[i]);
-                    } else {
-                        name_buf[i + 11] = long_entry->name3[i];
-                    }
-                }
-
-                // Already NULL-terminated
-
-                printf("UNHANDLED LONG NAME: %.13s\n", name_buf);
-            } else {
-                struct fat32_directory_entry *entry = (struct fat32_directory_entry *)(cluster_buf + off);
-
-                if ((uint8_t)entry->name[0] == 0x00) {
-                    // End of directory
-                    goto cleanup;
-                }
-                if ((uint8_t)entry->name[0] == 0xE5) {
-                    // Deleted entry
-                    continue;
-                }
-                if (entry->attr & FAT_ATTR_VOLUME_ID) {
-                    continue;
-                }
-
-                char name_buf[13] = { 0 };
-                int buf_i         = 0;
-                for (int i = 0; i < 8; i++) {
-                    char c = tolower(entry->name[i]);
-                    if (c != ' ') {
-                        name_buf[buf_i++] = c;
-                    }
-                }
-                int dot_i = buf_i++;
-                for (int i = 8; i < 11; i++) {
-                    char c = tolower(entry->name[i]);
-                    if (c != ' ') {
-                        name_buf[buf_i++] = c;
-                        name_buf[dot_i]   = '.';
-                    }
-                }
-                // Already NULL terminated
-
-                if (!strncmp(name_buf, name, sizeof(name_buf))) {
-                    // Found
-                    res                                   = 0;
-                    vfs_fat32_cache_node_data_t *out_data = (vfs_fat32_cache_node_data_t *)out->internal_data;
-                    out_data->dir_entry                   = kmalloc_heap(sizeof(struct fat32_directory_entry));
-                    if (!out_data->dir_entry) {
-                        kout(KERNEL_WARN, "fat32_load_func(): kmalloc_heap() failed after finding node (OOM?)!\n");
-                        res = -ENOMEM;
-                        goto cleanup;
-                    }
-                    *out_data->dir_entry = *entry;
-
-                    out_data->fs = fs;
-
-                    mode_t mode = 0777;
-                    if (entry->attr & FAT_ATTR_READ_ONLY) {
-                        mode &= ~(S_IWUSR | S_IWGRP | S_IWOTH);
-                    }
-                    if (!fs->exec) {
-                        mode &= ~(S_IXUSR | S_IXGRP | S_IXOTH);
-                    }
-
-                    if (entry->attr & FAT_ATTR_DIRECTORY) {
-                        mode |= S_IFDIR;
-                    } else {
-                        mode |= S_IFREG;
-                    }
-
-                    struct kstat stat = {
-                        .dev  = fs->partition->endpoint->dev,
-                        .gid  = fs->mount_gid,
-                        .uid  = fs->mount_uid,
-                        .mode = mode,
-                        .size = (off_t)entry->file_size,
-                        .rdev = (dev_t)0,
-                    };
-
-                    fscache_node_populate(out, 0, name, stat,
-                                          (entry->attr & FAT_ATTR_DIRECTORY) ? &fat32_directory_fsops
-                                                                             : &fat32_file_fsops);
-
-                    goto cleanup;
-                }
-            }
-        }
-
-        uint32_t next;
-        if (fat32_next_cluster(fs, cluster, &next) < 0) {
-            break;
-        }
-        if (next == 0 || next >= 0x0FFFFFF8) {
-            break;
-        }
-        cluster = next;
     }
 
 cleanup:
-    kfree_heap(cluster_buf);
+    fat32_dir_iter_free(&it);
     return res;
 }
 
@@ -475,139 +508,72 @@ int fat32_unload_func(fscache_node_t *node) {
 }
 
 ssize_t fat32_directory_read_func(vfs_handle_t *handle, void *buf, size_t len) {
-    vfs_fat32_cache_node_data_t *node_data = (vfs_fat32_cache_node_data_t *)handle->backing_node->internal_data;
+    vfs_fat32_cache_node_data_t *node_data        = (vfs_fat32_cache_node_data_t *)handle->backing_node->internal_data;
     vfs_fat32_handle_instance_data_t *handle_data = (vfs_fat32_handle_instance_data_t *)handle->instance_data;
 
     if (len % sizeof(struct plenjos_dirent)) {
         return -EINVAL;
     }
 
-    size_t num_dirents = len / sizeof(struct plenjos_dirent);
-
     if (node_data->dir_entry->attr == FAT_ATTR_LONG_NAME) {
-        kout(KERNEL_WARN, "fat32_load_func(): long entry support not implemented!\n");
+        kout(KERNEL_WARN, "fat32_directory_read_func(): long entry support not implemented!\n");
         return -ENOSYS;
     }
 
     if (!(node_data->dir_entry->attr & FAT_ATTR_DIRECTORY)) {
-        kout(KERNEL_PANIC, "fat32_load_func(): not a directory (so load_func shouldn't have been populated)!\n");
+        kout(KERNEL_PANIC,
+             "fat32_directory_read_func(): not a directory (so read_func shouldn't have been populated)!\n");
         return -ENOTDIR;
     }
 
-    struct filesystem_fat32 *fs = node_data->fs;
-
-    uint32_t cluster = FAT32_CLUSTER_FROM_DIR_ENTRY(node_data->dir_entry);
     if (handle_data->current_cluster == 0) {
-        cluster = FAT32_CLUSTER_FROM_DIR_ENTRY(node_data->dir_entry);
-        if (node_data->dir_entry == &_fat32_placeholder_root) {
-            cluster = fs->boot_sector.root_cluster;
-        }
-        handle_data->current_cluster = cluster;
-    } else {
-        cluster = handle_data->current_cluster;
+        // First read on this handle
+        handle_data->current_cluster = fat32_dir_start_cluster(node_data);
+        handle_data->pos_in_cluster  = 0;
     }
 
-    uint32_t bytes_per_cluster = fs->boot_sector.generic.bytes_per_sector * fs->boot_sector.generic.sectors_per_cluster;
-
-    uint8_t *cluster_buf = kmalloc_heap(bytes_per_cluster);
-    if (!cluster_buf) {
-        kout(KERNEL_WARN, "fat32_load_func(): couldn't allocate cluster_buf (kmalloc_heap() failed) (OOM?)\n");
-        return -ENOMEM;
+    struct fat32_dir_iter it;
+    int init_res = fat32_dir_iter_init(&it, node_data->fs, (uint32_t)handle_data->current_cluster,
+                                       (uint32_t)handle_data->pos_in_cluster);
+    if (init_res < 0) {
+        return init_res;
     }
 
     ssize_t res = 0;
+    struct fat32_dir_item item;
 
-    // printf("FAT32 Directory (start cluster %u):\n", cluster);
-
-    while (cluster < 0x0FFFFFF8 && res < len) {
-        int read_res = fat32_read_entry(fs, cluster, cluster_buf, bytes_per_cluster);
-        if (read_res < 0) {
-            kout(KERNEL_WARN, "fat32_load_func(): fat32_read_entry() failed with errno %d\n", read_res);
-            res = -EIO;
+    while ((size_t)res < len) {
+        int n = fat32_dir_iter_next(&it, &item);
+        if (n < 0) {
+            res = n;
+            goto cleanup;
+        }
+        if (n == 0) {
+            // End of directory
+            handle_data->current_cluster = FAT32_END_OF_CHAIN;
+            handle_data->pos_in_cluster  = 0;
             goto cleanup;
         }
 
-        uint32_t off;
-        // Iterate directory entries in this cluster
-        for (off = handle_data->pos_in_cluster; off + 32 <= bytes_per_cluster; off += 32) {
-            if (fat32_is_long_entry(cluster_buf + off)) {
-                printf("UNHANDLED LONG NAME\n");
-            } else {
-                struct fat32_directory_entry *entry = (struct fat32_directory_entry *)(cluster_buf + off);
-
-                if ((uint8_t)entry->name[0] == 0x00) {
-                    // End of directory
-                    handle_data->current_cluster = 0x0FFFFFF8;
-                    handle_data->pos_in_cluster = 0;
-                    goto cleanup;
-                }
-                if ((uint8_t)entry->name[0] == 0xE5) {
-                    // Deleted entry
-                    continue;
-                }
-                if (entry->attr & FAT_ATTR_VOLUME_ID) {
-                    continue;
-                }
-
-                char name_buf[13] = { 0 };
-                int buf_i         = 0;
-                for (int i = 0; i < 8; i++) {
-                    char c = tolower(entry->name[i]);
-                    if (c != ' ') {
-                        name_buf[buf_i++] = c;
-                    }
-                }
-                int dot_i = buf_i++;
-                for (int i = 8; i < 11; i++) {
-                    char c = tolower(entry->name[i]);
-                    if (c != ' ') {
-                        name_buf[buf_i++] = c;
-                        name_buf[dot_i]   = '.';
-                    }
-                }
-                // Already NULL terminated
-
-                if (!strncmp(name_buf, ".", 2) || !strncmp(name_buf, "..", 3)) {
-                    continue;
-                }
-
-                struct plenjos_dirent *dirent = (struct plenjos_dirent *)((uint8_t *)buf + res);
-                memset(dirent, 0, sizeof(struct plenjos_dirent));
-
-                memcpy(dirent->d_name, name_buf, sizeof(dirent->d_name) - 1); // the -1 keeps the NULL terminator
-                dirent->type = (entry->attr & FAT_ATTR_DIRECTORY) ? DT_DIR : DT_REG;
-
-                res += sizeof(struct plenjos_dirent);
-                if (res > len) {
-                    kout(KERNEL_PANIC, "fat32_directory_read_func(): somehow overwrote the length-aligned buffer!\n");
-                    res = -EIO;
-                    goto cleanup;
-                }
-
-                if (res == len) {
-                    handle_data->pos_in_cluster = off + 32;
-                    goto cleanup;
-                }
-            }
+        if (!strncmp(item.name, ".", 2) || !strncmp(item.name, "..", 3)) {
+            continue;
         }
 
-        handle_data->pos_in_cluster = 0;
+        struct plenjos_dirent *dirent = (struct plenjos_dirent *)((uint8_t *)buf + res);
+        memset(dirent, 0, sizeof(struct plenjos_dirent));
 
-        uint32_t next;
-        if (fat32_next_cluster(fs, cluster, &next) < 0) {
-            handle_data->current_cluster = 0x0FFFFFF8;
-            break;
-        }
-        if (next == 0 || next >= 0x0FFFFFF8) {
-            handle_data->current_cluster = 0x0FFFFFF8;
-            break;
-        }
-        cluster = next;
-        handle_data->current_cluster = cluster;
+        memcpy(dirent->d_name, item.name, sizeof(dirent->d_name) - 1); // the -1 keeps the NULL terminator
+        dirent->type = (item.entry->attr & FAT_ATTR_DIRECTORY) ? DT_DIR : DT_REG;
+
+        res += sizeof(struct plenjos_dirent);
     }
 
+    // The buffer is full; remember where to pick up on the next call
+    handle_data->current_cluster = it.cluster;
+    handle_data->pos_in_cluster  = it.off;
+
 cleanup:
-    kfree_heap(cluster_buf);
+    fat32_dir_iter_free(&it);
     if (res > 0) {
         handle_data->seek_pos += res;
     }
@@ -619,7 +585,7 @@ int fat32_create_child_func(fscache_node_t *parent, const char *name, struct kst
 }
 
 ssize_t fat32_file_read_func(vfs_handle_t *handle, void *buf, size_t buf_len) {
-    vfs_fat32_cache_node_data_t *node_data = (vfs_fat32_cache_node_data_t *)handle->backing_node->internal_data;
+    vfs_fat32_cache_node_data_t *node_data        = (vfs_fat32_cache_node_data_t *)handle->backing_node->internal_data;
     vfs_fat32_handle_instance_data_t *handle_data = (vfs_fat32_handle_instance_data_t *)handle->instance_data;
 
     if (node_data->dir_entry->attr == FAT_ATTR_LONG_NAME) {
@@ -636,7 +602,7 @@ ssize_t fat32_file_read_func(vfs_handle_t *handle, void *buf, size_t buf_len) {
 
     uint32_t cluster;
     if (handle_data->current_cluster == 0) {
-        cluster = FAT32_CLUSTER_FROM_DIR_ENTRY(node_data->dir_entry);
+        cluster                      = FAT32_CLUSTER_FROM_DIR_ENTRY(node_data->dir_entry);
         handle_data->current_cluster = cluster;
     } else {
         cluster = handle_data->current_cluster;
@@ -666,7 +632,7 @@ ssize_t fat32_file_read_func(vfs_handle_t *handle, void *buf, size_t buf_len) {
 
     while (cluster < 0x0FFFFFF8 && res < len) {
         int read_res = fat32_read_entry(fs, cluster, cluster_buf, bytes_per_cluster);
-        
+
         if (read_res < 0) {
             kout(KERNEL_WARN, "fat32_file_read_func(): fat32_read_entry() failed with errno %d\n", read_res);
             if (res == 0) {
@@ -700,7 +666,7 @@ ssize_t fat32_file_read_func(vfs_handle_t *handle, void *buf, size_t buf_len) {
                 to_copy = len - res;
                 memcpy((uint8_t *)buf + res, cluster_buf, to_copy);
                 handle_data->pos_in_cluster += to_copy;
-                res = len;
+                res                          = len;
                 goto cleanup;
             }
             memcpy((uint8_t *)buf + res, cluster_buf, to_copy);
@@ -710,7 +676,10 @@ ssize_t fat32_file_read_func(vfs_handle_t *handle, void *buf, size_t buf_len) {
         uint32_t next;
         int next_res = fat32_next_cluster(fs, cluster, &next);
         if (next_res < 0) {
-            kout(KERNEL_SEVERE_EXTERNAL_FAULT, "fat32_file_read_func(): fat32_next_cluster failed (errno %d); marking as EOF to prevent more broken reads.\n", next_res);
+            kout(KERNEL_SEVERE_EXTERNAL_FAULT,
+                 "fat32_file_read_func(): fat32_next_cluster failed (errno %d); marking as EOF to prevent more broken "
+                 "reads.\n",
+                 next_res);
             handle_data->current_cluster = 0x0FFFFFF8;
             break;
         }
@@ -718,7 +687,7 @@ ssize_t fat32_file_read_func(vfs_handle_t *handle, void *buf, size_t buf_len) {
             handle_data->current_cluster = 0x0FFFFFF8;
             break;
         }
-        cluster = next;
+        cluster                      = next;
         handle_data->current_cluster = next;
     }
 

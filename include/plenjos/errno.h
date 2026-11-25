@@ -22,8 +22,10 @@
 
 // I/O errors
 #define ENOENT       2  // No such file or directory
+#define EINTR        4  // Interrupted System Call
 #define EIO          5  // I/O error
 #define EBADF        9  // Bad file descriptor
+#define EAGAIN       11 // Temporary unavailable; try again
 #define EACCES       13 // Permission denied
 #define ENOTBLK      15 // Not a block device
 #define EBUSY        16

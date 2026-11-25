@@ -11,7 +11,7 @@ CFLAGS := -g -Wall -Wextra -pedantic -std=gnu11 -Wno-vla -m64 -march=x86-64 \
 		   -mno-mmx -mno-sse -mno-sse2 \
            -ffreestanding -fno-stack-protector -O2 -L ../libc/lib -lc
 
-CPPFLAGS := -I ../../include -I src -isystem ../libc/include
+CPPFLAGS := -I ../../include -I src -isystem ../libc/include -isystem ../libplenja/include
 
 # LD = /usr/local/x86_64-elf/bin/x86_64-elf-ld
 LD = $(TOOLCHAIN_PREFIX)ld
@@ -38,12 +38,15 @@ override NASMFILES := $(filter %.asm,$(SRCFILES))
 override PSFFILES := $(filter %.psf,$(SRCFILES))
 override TETRIS_CFILES := apps/tetris/tetris.c apps/tetris/main.c
 override TETRIS_OBJ := $(addprefix obj/,$(TETRIS_CFILES:.c=.c.o))
+override PINT_CFILES := apps/pint/pint.c
+override PINT_OBJ := $(addprefix obj/,$(PINT_CFILES:.c=.c.o))
+override PINT_LIBS := -L ../libplenja/lib -lplenja
 override OBJ := $(addprefix obj/,$(CFILES:.c=.c.o) $(ASFILES:.S=.S.o) $(NASMFILES:.asm=.asm.o) $(PSFFILES:.psf=.psf.o))
 override HEADER_DEPS := $(addprefix obj/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d))
 
 # Default target. This must come first, before header dependencies.
 .PHONY: all
-all: bin/$(OUTPUT) bin/tetris
+all: bin/$(OUTPUT) bin/tetris bin/pint
 
 # Include header dependencies.
 -include $(HEADER_DEPS)
@@ -56,6 +59,10 @@ bin/$(OUTPUT): GNUmakefile linker.lds $(OBJ)
 bin/tetris: GNUmakefile linker.lds $(TETRIS_OBJ)
 	mkdir -p "$$(dirname $@)"
 	$(CC) $(TETRIS_OBJ) $(CFLAGS) $(LDFLAGS) -o $@
+
+bin/pint: GNUmakefile linker.lds $(PINT_OBJ)
+	mkdir -p "$$(dirname $@)"
+	$(CC) $(PINT_OBJ) $(CFLAGS) $(LDFLAGS) $(PINT_LIBS) -o $@
 
 # Compilation rules for *.c files.
 obj/%.c.o: %.c GNUmakefile
