@@ -47,8 +47,14 @@ vm_area_t *vmlookup(void *virt, mm_t *mm) {
 
 // Does everything except mapping pages and inserting into the tree
 static int _vm_prepare_range_nolock(void *virt_start, size_t len, vma_flags_t requested_flags, mm_t *mm,
-                                           uint64_t *pt_flags_out, uint64_t *page_flags_out, ptr_t *start_out,
-                                           ptr_t *end_out, vm_area_t **out) {
+                                    uint64_t *pt_flags_out, uint64_t *page_flags_out, ptr_t *start_out, ptr_t *end_out,
+                                    vm_area_t **out) {
+    // Reject empty ranges and ranges whose end would wrap around to prevent panics on certain values of len, which can
+    // come from userland
+    if (len == 0 || len > UINT64_MAX - (ptr_t)virt_start - (PAGE_LEN - 1)) {
+        return -EINVAL;
+    }
+
     ptr_t start = (ptr_t)virt_start & ~0xFFF;
     ptr_t end   = (start + len + ((ptr_t)virt_start - start) + PAGE_LEN - 1) & ~0xFFF;
     if (_vmlookup_range_is_occupied_nolock(start, end, mm)) {
@@ -68,6 +74,9 @@ static int _vm_prepare_range_nolock(void *virt_start, size_t len, vma_flags_t re
         if (requested_flags & VMA_USER) {
             return -EFAULT;
         }
+    } else {
+        // Straddles user and kernel space or hits the non-canonical hole
+        return -EFAULT;
     }
 
     vm_area_t *vma = fsa_alloc(&_vma_fsa);
@@ -112,10 +121,35 @@ static inline void addr_split(uint64_t virt, uint32_t *pml4, uint32_t *pdpt, uin
     *pt   = ((virt) >> 12) & 0x1FF; // 12-20
 }
 
+// Clears the page table entry for v if the tables exist
+static void _clear_pte_nolock(ptr_t v, mm_t *mm) {
+    uint32_t i_pml4, i_pdpt, i_pd, i_pt;
+    addr_split((uint64_t)v, &i_pml4, &i_pdpt, &i_pd, &i_pt);
+
+    uint64_t entry = ((uint64_t *)mm->pml4)[i_pml4];
+    if (!(entry & PAGE_FLAG_PRESENT)) return;
+    uint64_t *pdpt_table = (uint64_t *)phys_to_virt(entry & PHYSADDR_MASK);
+
+    entry = pdpt_table[i_pdpt];
+    if (!(entry & PAGE_FLAG_PRESENT)) return;
+    uint64_t *pd_table = (uint64_t *)phys_to_virt(entry & PHYSADDR_MASK);
+
+    entry = pd_table[i_pd];
+    if (!(entry & PAGE_FLAG_PRESENT)) return;
+    uint64_t *pt_table = (uint64_t *)phys_to_virt(entry & PHYSADDR_MASK);
+
+    pt_table[i_pt] = 0;
+}
+
+// Frees the frames mapped in [start, failed) and unmaps them. Caller must hold write on mm->lock. Pages were never used
+// so no TLB flush needed.
 void cleanup_frames(ptr_t start, ptr_t failed, mm_t *mm) {
     for (ptr_t v = start; v < failed; v += PAGE_LEN) {
         physptr_t phys = get_physaddr((uint64_t)v, mm);
-        phys_mem_unref_frame(phys_addr_to_frame_struct(phys));
+        if (phys) {
+            phys_mem_unref_frame(phys_addr_to_frame_struct(phys));
+        }
+        _clear_pte_nolock(v, mm);
     }
 }
 
@@ -128,7 +162,8 @@ int vmalloc(void *virt_hint, size_t size, vma_flags_t requested_flags, vm_area_t
     uint64_t pt_flags, page_flags;
     ptr_t start, end;
     vm_area_t *vma = NULL;
-    int res = _vm_prepare_range_nolock(virt_hint, size, requested_flags, mm, &pt_flags, &page_flags, &start, &end, &vma);
+    int res
+        = _vm_prepare_range_nolock(virt_hint, size, requested_flags, mm, &pt_flags, &page_flags, &start, &end, &vma);
     if (res) {
         if (out) *out = NULL;
         goto cleanup;
@@ -319,7 +354,8 @@ int vmmap(physptr_t phys_start, void *virt_start, size_t len, vma_flags_t reques
     uint64_t pt_flags, page_flags;
     ptr_t start, end;
     vm_area_t *vma = NULL;
-    int res = _vm_prepare_range_nolock(virt_start, len, requested_flags, mm, &pt_flags, &page_flags, &start, &end, &vma);
+    int res
+        = _vm_prepare_range_nolock(virt_start, len, requested_flags, mm, &pt_flags, &page_flags, &start, &end, &vma);
     if (res) {
         if (out) *out = NULL;
         goto cleanup;
