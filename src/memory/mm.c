@@ -80,6 +80,8 @@ mm_t *mm_new() {
         mm->pml4->entries[i] = kernel_pml4->entries[i];
     }
 
+    mm->cr3 = virt_to_phys((uint64_t)mm->pml4);
+
     mm_ref(mm);
 
     rbtree_init(&mm->tree, vma_cmp);
