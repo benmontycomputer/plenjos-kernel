@@ -53,14 +53,14 @@
     mov r15, [r15 + GEN_REG_R15]
 %endmacro
 
-extern stack_sched_top
+extern sched_stack_top
 
 %macro switch_to_core_stack 0      ; leaves the core id in edi
     swapgs
     mov  ecx, dword [gs:0x18]
     swapgs
     mov  edi, ecx
-    lea  rdx, [rel stack_sched_top]
+    lea  rdx, [rel sched_stack_top]
     mov  rsp, [rdx + rcx*8]
 %endmacro
 

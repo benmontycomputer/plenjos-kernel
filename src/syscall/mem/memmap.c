@@ -8,7 +8,7 @@
 #include "syscall/syscall_helpers.h"
 
 void *syscall_routine_memmap(void *addr, size_t length, syscall_memmap_flags_t flags, mm_t *mm) {
-    vma_flags_t req_flags = VMA_USER;
+    vma_flags_t req_flags = VMA_USER | VMALLOC_ZERO;
     if (flags & SYSCALL_MEMMAP_FLAG_WR) {
         req_flags |= VMA_RW;
     }

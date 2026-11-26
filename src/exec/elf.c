@@ -50,14 +50,18 @@ int elf_copy(void *dest, void *src, size_t count, mm_t *mm) {
     return 0;
 }
 
-// Validates one PT_LOAD / PT_DYNAMIC program header against the file and the user address range, maps the pages it
-// covers and copies its file contents in.
-static int elf_load_segment(const uint8_t *elf, size_t elf_size, const ELF_program_header_t *phdr, mm_t *mm,
-                            uint64_t voffs, bool *ehdr_mapped) {
-    if (phdr->memsz == 0) {
-        return 0;
-    }
+// page-aligned virtual range [lo, hi) with flags giving permissions for all PT_LOAD touching it
+typedef struct {
+    uint64_t lo, hi;
+    vma_flags_t flags;
+} elf_range_t;
 
+static vma_flags_t elf_vma_flags(uint32_t pf) {
+    return VMA_USER | ((pf & ELF_PHDR_W) ? VMA_RW : 0) | ((pf & ELF_PHDR_EX) ? VMA_EXEC : 0);
+}
+
+// Validates one PT_LOAD program header against the file and the user address range; returns its absolute start.
+static int elf_check_segment(size_t elf_size, const ELF_program_header_t *phdr, uint64_t voffs, uint64_t *start_out) {
     if (phdr->filesz > phdr->memsz || phdr->memsz > ELF_MAX_SEGMENT_MEM) {
         return -ENOEXEC;
     }
@@ -77,29 +81,67 @@ static int elf_load_segment(const uint8_t *elf, size_t elf_size, const ELF_progr
         return -ENOEXEC;
     }
 
-    uint64_t real_start = start & ~(uint64_t)(PAGE_LEN - 1);
-    uint64_t real_len   = (phdr->memsz + PAGE_LEN - 1) & ~(uint64_t)(PAGE_LEN - 1);
+    *start_out = start;
+    return 0;
+}
 
-    vma_flags_t flags = ((phdr->flags & ELF_PHDR_W) ? VMA_RW : 0) | ((phdr->flags & ELF_PHDR_EX) ? VMA_EXEC : 0)
-                        | VMA_USER | VMALLOC_FIXED;
-    int res;
-    if (res = vmalloc((void *)real_start, real_len, flags, NULL, mm)) {
-        kout(KERNEL_WARN, "loadelf(): couldn't map user page at %p, res %d\n", (void *)real_start, res);
-        return res;
-    }
+// Builds the ranges to map, preventing overlapping mmap calls
+static int elf_build_ranges(size_t elf_size, const ELF_program_header_t *phdrs, uint16_t n, uint64_t voffs,
+                            elf_range_t *out) {
+    int cnt = 0;
 
-    if (phdr->filesz) {
-        int res = elf_copy((void *)start, (void *)(elf + phdr->offset), phdr->filesz, mm);
+    for (uint16_t i = 0; i < n; i++) {
+        const ELF_program_header_t *p = &phdrs[i];
+        if (p->type != PT_LOAD || p->memsz == 0) {
+            continue;
+        }
+
+        uint64_t start;
+        int res = elf_check_segment(elf_size, p, voffs, &start);
         if (res) {
             return res;
         }
+
+        elf_range_t r = {
+            .lo    = start & ~(uint64_t)(PAGE_LEN - 1),
+            .hi    = (start + p->memsz + PAGE_LEN - 1) & ~(uint64_t)(PAGE_LEN - 1),
+            .flags = elf_vma_flags(p->flags),
+        };
+
+        // Insertion sort by start address (n <= ELF_MAX_PHDRS)
+        int j = cnt++;
+        while (j > 0 && out[j - 1].lo > r.lo) {
+            out[j] = out[j - 1];
+            j--;
+        }
+        out[j] = r;
     }
 
-    // If this segment holds the start of the file, the ELF header is already mapped as part of it
-    if (phdr->vaddr == 0 && phdr->offset == 0 && phdr->filesz >= sizeof(ELF_header_t)) {
-        *ehdr_mapped = true;
+    // Merge anything that overlaps or shares a page
+    int merged = 0;
+    for (int i = 0; i < cnt; i++) {
+        if (merged > 0 && out[i].lo < out[merged - 1].hi) {
+            if (out[i].hi > out[merged - 1].hi) {
+                out[merged - 1].hi = out[i].hi;
+            }
+            out[merged - 1].flags |= out[i].flags;
+        } else {
+            out[merged++] = out[i];
+        }
     }
 
+    return merged;
+}
+
+// Zeroes an already-mapped user range through the direct map (so .bss and partial pages never expose stale frames).
+static int elf_zero(uint64_t addr, uint64_t len, mm_t *mm) {
+    for (uint64_t off = 0; off < len; off += PAGE_LEN) {
+        uint64_t paddr = get_physaddr(addr + off, mm);
+        if (!paddr) {
+            return -EFAULT;
+        }
+        memset((void *)phys_to_virt(paddr & ~(uint64_t)(PAGE_LEN - 1)), 0, PAGE_LEN);
+    }
     return 0;
 }
 
@@ -149,18 +191,53 @@ int loadelf(void *elf_base, size_t elf_size, mm_t *mm, uint64_t *entry_out, uint
     const ELF_program_header_t *phdrs = (const ELF_program_header_t *)(elf + ehdr->ph_offset);
     bool ehdr_mapped                  = false;
 
+    // Work out every page range first (merging shared pages), then map each range exactly once.
+    elf_range_t *ranges = kmalloc_heap(sizeof(elf_range_t) * ELF_MAX_PHDRS);
+    if (!ranges) {
+        return -ENOMEM;
+    }
+    int nranges = elf_build_ranges(elf_size, phdrs, ehdr->ph_entries, voffs_if_pic, ranges);
+    if (nranges < 0) {
+        return nranges;
+    }
+
+    for (int i = 0; i < nranges; i++) {
+        int res = vmalloc((void *)ranges[i].lo, ranges[i].hi - ranges[i].lo, ranges[i].flags | VMALLOC_FIXED, NULL,
+                          mm);
+        if (res) {
+            kout(KERNEL_WARN, "loadelf(): couldn't map user range %p-%p, res %d\n", (void *)ranges[i].lo,
+                 (void *)ranges[i].hi, res);
+            return res;
+        }
+
+        // vmalloc() doesn't zero the frames it hands out
+        res = elf_zero(ranges[i].lo, ranges[i].hi - ranges[i].lo, mm);
+        if (res) {
+            return res;
+        }
+    }
+
+    // Copy the file contents in. elf_copy() writes through the direct map, so read-only pages are fine.
     for (uint16_t i = 0; i < ehdr->ph_entries; i++) {
         const ELF_program_header_t *phdr = &phdrs[i];
 
-        // PT_DYNAMIC normally lies inside a PT_LOAD segment that was already loaded; elf_map_page() and elf_copy()
-        // are idempotent, so handling it here too is harmless, and still covers a dynamic section outside any PT_LOAD.
-        if (phdr->type != PT_LOAD && phdr->type != PT_DYNAMIC) {
-            continue;
-        }
+        if (phdr->type == PT_LOAD && phdr->filesz) {
+            int res = elf_copy((void *)(phdr->vaddr + voffs_if_pic), (void *)(elf + phdr->offset), phdr->filesz, mm);
+            if (res) {
+                return res;
+            }
 
-        int res = elf_load_segment(elf, elf_size, phdr, mm, voffs_if_pic, &ehdr_mapped);
-        if (res) {
-            return res;
+            // If this segment holds the start of the file, the ELF header is already mapped as part of it
+            if (phdr->vaddr == 0 && phdr->offset == 0 && phdr->filesz >= sizeof(ELF_header_t)) {
+                ehdr_mapped = true;
+            }
+        } else if (phdr->type == PT_DYNAMIC && phdr->memsz) {
+            // Must lie inside a PT_LOAD (so it is already mapped); don't map it again.
+            uint64_t dyn = phdr->vaddr + voffs_if_pic;
+            if (phdr->vaddr >= ELF_USER_TOP - voffs_if_pic || phdr->memsz > ELF_USER_TOP - dyn
+                || !get_physaddr(dyn, mm) || !get_physaddr(dyn + phdr->memsz - 1, mm)) {
+                return -ENOEXEC;
+            }
         }
     }
 

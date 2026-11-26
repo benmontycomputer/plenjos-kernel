@@ -134,6 +134,8 @@ int vmalloc(void *virt_hint, size_t size, vma_flags_t requested_flags, vm_area_t
         goto cleanup;
     }
 
+    bool zero = !!(requested_flags & VMALLOC_ZERO);
+
     uint32_t i_pml4, i_pdpt, i_pd, i_pt;
     uint64_t *pdpt_table, *pd_table, *pt_table;
 
@@ -184,6 +186,9 @@ int vmalloc(void *virt_hint, size_t size, vma_flags_t requested_flags, vm_area_t
             goto cleanup;
         }
         pt_table[i_pt] = ((phys & PHYSADDR_MASK) | page_flags);
+        if (zero) {
+            memset((void *)phys_to_virt(phys), 0, PAGE_LEN);
+        }
 
         // No TLB flush is needed because we are allocating fresh vmem.
     }

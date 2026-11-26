@@ -7,9 +7,6 @@
 
 #define KERNEL_STACK_SIZE 0x10000
 
-extern struct tss tss_obj[MAX_CORES];
-extern uint64_t sched_stack_top[MAX_CORES];
-
 // Add TSS entry structure
 struct tss { // 104 bytes is the minimum size of a TSS
     uint32_t reserved0;
@@ -28,6 +25,9 @@ struct tss { // 104 bytes is the minimum size of a TSS
     uint16_t reserved3;
     uint16_t iopb_offset;
 } __attribute__((packed));
+
+extern struct tss tss_obj[MAX_CORES];
+extern uint64_t sched_stack_top[MAX_CORES];
 
 void tss_init();
 
