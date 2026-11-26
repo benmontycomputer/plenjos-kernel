@@ -17,14 +17,6 @@ static void *routines_data[TOTAL_IRQ]                     = { 0 };
 static uint32_t testint = 0;
 
 void irq_handler(registers_t *regs) {
-    // kout(KERNEL_INFO, "inter %p\n", regs->int_no);
-    uint64_t cr3_phys = get_cr3_addr();
-    if (cr3_phys != kernel_pml4_phys) {
-        panic("\nFATAL ERROR: IRQ from other cr3 %p\n\n", cr3_phys);
-
-        return;
-    }
-
     uint64_t index = regs->int_no - 32;
 
     void (*handler)(registers_t *r, void *data) = routines[index];
