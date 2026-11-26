@@ -211,6 +211,26 @@ void task_reap_finish(task_t *task) {
     fsa_free(&_task_fsa, task);
 }
 
+int waittid(task_t *task, pid_t tid) {
+    lock_tasklist();
+
+    task_t *c = task->children;
+
+    while (c) {
+        if (c->tid == tid) {
+            wq_wait_event_update(&c->exit_wq, c->status & TASK_STATUS_EXITED, unlock_tasklist(), );
+            int res = c->status & TASK_STATUS_MASK_RESULT;
+            task_reap_finish(c);
+            return res;
+        }
+
+        c = c->sibling;
+    }
+
+    unlock_tasklist();
+    return -ECHILD;
+}
+
 vfs_handle_t *task_get_fd(task_t *task, int fd) {
     if (!task) {
         return NULL;

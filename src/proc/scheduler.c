@@ -138,8 +138,23 @@ void rq_add(task_t *task) {
 // NOTE: caller must still call cpu_scheduler_task(); this function does not IPI the current core as the IPI would be
 // received later on and interrupt something else.
 void kill_task(task_t *task) {
-    // TODO: implement
-    panic("kill_task() not implemented!\n");
+    uint32_t curr_core = get_curr_core();
+
+    lock_current();
+
+    task->state = DEAD;
+
+    for (uint32_t i = 0; i < get_n_cores(); i++) {
+        if (current[i] == task) {
+            if (i != curr_core) {
+                atomic_store_explicit(&kill_pending[curr_core], 1, __ATOMIC_RELEASE);
+                send_ipi((uint8_t)cpu_cores[i].lapic_id, IPI_KILL_IRQ + 32);
+                break;
+            }
+        }
+    }
+
+    unlock_current();
 }
 
 // NOTE: this just forces a schedule call; it does NOT update thread state

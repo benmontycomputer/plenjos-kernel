@@ -91,6 +91,10 @@ pid_t syscall_spawn(const char *path, char *const argv[], char *const envp[], si
                           0);
 }
 
+int syscall_waittid(pid_t tid) {
+    return (int)syscall(SYSCALL_WAITTID, (uint64_t)tid, 0, 0, 0, 0, 0);
+}
+
 _Noreturn void syscall_exit() {
     syscall(SYSCALL_EXIT, 0, 0, 0, 0, 0, 0);
 }

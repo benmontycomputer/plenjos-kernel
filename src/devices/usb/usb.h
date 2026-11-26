@@ -65,7 +65,7 @@ struct usb_interface_descriptor {
     uint8_t i_protocol;
 } __attribute__((packed));
 
-#define USB_ENDPOINT_ATTR_MASK_TYPE 0x03
+# define USB_ENDPOINT_ATTR_MASK_TYPE 0x03
 typedef enum usb_endpoint_attr {
     USB_ENDPOINT_ATTR_CONTROL = 0x00,
     USB_ENDPOINT_ATTR_ISO     = 0x01,
@@ -130,7 +130,7 @@ struct usb_device {
     void *host_driver_data;
 };
 
-typedef int (*usb_host_driver_control_transfer_func_t)(usb_device_t *dev, uint8_t *setup_packet, uint8_t *data_buffer,
+typedef int (*usb_host_driver_control_transfer_func_t)(usb_device_t *dev, const uint8_t *setup_packet, uint8_t *data_buffer,
                                                        size_t data_length, bool data_in, uint32_t timeout_ms);
 typedef int (*usb_host_driver_bulk_transfer_func_t)(usb_endpoint_t *endpoint, uint8_t *buffer, size_t length,
                                                     uint32_t timeout_ms);
@@ -162,7 +162,7 @@ struct usb_setup_packet {
  * For all synchronous functions, if timeout_ms = 0, a reasonable default (determined by the host driver) will be used.
  */
 int usb_control_transfer(usb_device_t *dev,
-                         uint8_t *setup_packet /* 8 bytes; physaddr must be sub-4G for some controllers */,
+                         const uint8_t *setup_packet /* 8 bytes; physaddr must be sub-4G for some controllers */,
                          uint8_t *data_buffer, size_t data_length, bool data_in, uint32_t timeout_ms);
 
 /* Data transfers; these will validate endpoint type before passing it off to the host driver */
@@ -170,7 +170,8 @@ int usb_bulk_transfer(usb_endpoint_t *ep, uint8_t *buffer, size_t length, uint32
 int usb_interrupt_transfer(usb_endpoint_t *ep, uint8_t *buffer, size_t length, uint32_t timeout_ms);
 int usb_iso_transfer(usb_endpoint_t *ep, uint8_t *buffer, size_t length, uint32_t timeout_ms);
 
-struct usb_host_driver usb_populate_host_driver(usb_host_driver_control_transfer_func_t ctrl_transfer, usb_host_driver_bulk_transfer_func_t bulk_transfer);
+struct usb_host_driver usb_populate_host_driver(usb_host_driver_control_transfer_func_t ctrl_transfer,
+                                                usb_host_driver_bulk_transfer_func_t bulk_transfer);
 
 usb_device_t *usb_setup_device(usb_device_t *parent, struct usb_bus *bus, uint8_t new_address, uint8_t port,
                                struct usb_host_driver *host_driver, void *host_driver_data);

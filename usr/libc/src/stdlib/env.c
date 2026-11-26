@@ -26,13 +26,12 @@ __attribute__((aligned(0x1000))) //
 fb_info_t fb_info;
 
 void initialize_standard_library(int argc, char *argv[], int envc, char *envp[]) {
-    syscall_get_fb(&fb_info);
-
-    init_heap();
-
     stdin = &_stdin;
     stdout = &_stdout;
     stderr = &_stderr;
+
+    syscall_get_fb(&fb_info);
+    init_heap();
 
     // printf("initialize_standard_library called (argc=%d, argv=%p, envc=%d, envp=%p) \n", argc, argv, envc, envp);
 }

@@ -8,7 +8,7 @@
 
 // A pointer to this indicates that we should check the root directory of the filesystem (fat32 doesn't have an actual
 // entry for the root directory)
-const static struct fat32_directory_entry _fat32_placeholder_root = {
+static struct fat32_directory_entry _fat32_placeholder_root = {
     .attr = FAT_ATTR_DIRECTORY,
 };
 

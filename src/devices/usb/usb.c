@@ -69,7 +69,7 @@ void usb_generate_setup_packet_get_config_full(uint8_t *out, uint16_t len) {
 }
 
 int usb_control_transfer(usb_device_t *dev,
-                         uint8_t *setup_packet /* 8 bytes; physaddr must be sub-4G for some controllers */,
+                         const uint8_t *setup_packet /* 8 bytes; physaddr must be sub-4G for some controllers */,
                          uint8_t *data_buffer, size_t data_length, bool data_in, uint32_t timeout_ms) {
     if (!dev) {
         kout(KERNEL_PANIC, "ERROR: KERNEL FAULT: usb_control_transfer: dev is NULL!\n");
@@ -100,8 +100,7 @@ int usb_bulk_transfer(usb_endpoint_t *ep, uint8_t *buffer, size_t length, uint32
         kout(KERNEL_PANIC, "ERROR: KERNEL FAULT: usb_bulk_transfer: ep->interface->device is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device->host_driver) {
-        kout(KERNEL_PANIC,
-             "ERROR: KERNEL FAULT: usb_bulk_transfer: ep->interface->device->host_driver is NULL!\n");
+        kout(KERNEL_PANIC, "ERROR: KERNEL FAULT: usb_bulk_transfer: ep->interface->device->host_driver is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device->host_driver->bulk_transfer_func) {
         printf("ERROR: usb_bulk_transfer called but the host driver doesn't support it!\n");
@@ -150,8 +149,7 @@ int usb_iso_transfer(usb_endpoint_t *ep, uint8_t *buffer, size_t length, uint32_
         kout(KERNEL_PANIC, "ERROR: KERNEL FAULT: usb_iso_transfer: ep->interface->device is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device->host_driver) {
-        kout(KERNEL_PANIC,
-             "ERROR: KERNEL FAULT: usb_iso_transfer: ep->interface->device->host_driver is NULL!\n");
+        kout(KERNEL_PANIC, "ERROR: KERNEL FAULT: usb_iso_transfer: ep->interface->device->host_driver is NULL!\n");
         return -EIO;
     } else if (!ep->interface->device->host_driver->iso_transfer_func) {
         printf("ERROR: usb_iso_transfer called but the host driver doesn't support it!\n");

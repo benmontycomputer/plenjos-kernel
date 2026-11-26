@@ -96,6 +96,8 @@ struct task {
 task_t *create_task(const char *name, task_t *parent);
 void task_exit(task_t *task);
 
+int waittid(task_t *task, pid_t tid);
+
 vfs_handle_t *task_get_fd(task_t *task, int fd);
 int task_alloc_fd(task_t *task, vfs_handle_t *handle);
 void task_free_fd(task_t *task, int fd);

@@ -209,7 +209,7 @@ static void uhci_free_dev_address(uhci_controller_t *controller, uint8_t addr) {
 }
 
 int uhci_control_transfer(uhci_controller_t *controller, uint8_t device_address, uint8_t ep0_max_packet,
-                          uint8_t *setup_data /* 8 bytes; physaddr must be sub-4G */, uint8_t *data_buffer,
+                          const uint8_t *setup_data /* 8 bytes; physaddr must be sub-4G */, uint8_t *data_buffer,
                           size_t data_length, bool data_in, uint32_t timeout_ms) {
     int res = 0;
 
@@ -479,7 +479,7 @@ void uhci_dev_status_poll_callback(struct timer_timeout *data) {
 static bool uhci_host_driver_populated         = false;
 static struct usb_host_driver uhci_host_driver = (struct usb_host_driver) { 0 };
 
-static int uhci_host_driver_control_transfer_func(usb_device_t *dev, uint8_t *setup_packet, uint8_t *data_buffer,
+static int uhci_host_driver_control_transfer_func(usb_device_t *dev, const uint8_t *setup_packet, uint8_t *data_buffer,
                                                   size_t data_length, bool data_in, uint32_t timeout_ms) {
     return uhci_control_transfer((uhci_host_driver_data_t *)dev->host_driver_data, dev->address,
                                  data_in ? dev->ep0_in.max_packet_size : dev->ep0_out.max_packet_size, setup_packet,

@@ -55,7 +55,7 @@ typedef enum {
     SYSCALL_EXIT_GROUP,
 
     SYSCALL_SPAWN,
-    SYSCALL_WAITPID, // Waits for exit of specified child
+    SYSCALL_WAITTID, // Waits for exit of specified child
 } syscalls_call;
 
 typedef uint8_t syscall_open_flags_t;

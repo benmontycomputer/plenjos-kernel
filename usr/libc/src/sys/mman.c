@@ -8,8 +8,8 @@
 
 int mmap_fixed(void *hint, size_t length) {
     void *res = (void *)syscall_memmap(hint, length, SYSCALL_MEMMAP_FLAG_WR | SYSCALL_MEMMAP_FLAG_FIXED);
-    if (res != 0) {
-        printf("mmap_fixed: syscall failed with res %d\n", (int)res);
+    if (!res) {
+        printf("mmap_fixed: syscall failed for %p (len %lu)\n", hint, length);
         return -1;
     }
 

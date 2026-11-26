@@ -91,9 +91,12 @@ void syscall(registers_t *regs, task_t *task) {
         // arg1: pointer to struct for framebuffer data
         // Map the framebuffer into the currently loaded page table
         // TODO: check if framebuffer is in use
-        /* map_virtual_memory_using_alloc(
-            virt_to_phys((uint64_t)fb), (uint64_t)fb, (uint64_t)fb_scanline * (uint64_t)fb_height,
-            PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node, current_pml4);
+        int res = vmmap(virt_to_phys((uint64_t)fb), (void *)0x4000000000, (uint64_t)fb_scanline * (uint64_t)fb_height, VMA_USER | VMA_RW, NULL, mm);
+        if (res) {
+            printf("syscall_get_fb: vmmap failed (res %d)\n", res);
+            regs->rax = (uint64_t)res;
+            break;
+        }
 
         bool valid = true;
 
@@ -103,28 +106,21 @@ void syscall(registers_t *regs, task_t *task) {
             printf("The fb_info pointer must be page aligned!\n");
             valid = false;
         } else {
-            page_t *page = find_page(arg1, false, current_pml4);
-            if (!page) {
+            if (!vmlookup((void *)arg1, mm)) {
                 printf("Page at %p not mapped, can't write fb value.\n", arg1);
-                valid = false;
-            } else if (!page->user) {
-                printf("Page at %p not user accessible, can't write fb value.\n", arg1);
-                valid = false;
-            } else if (!page->rw) {
-                printf("Page at %p not writeable, can't write fb value.\n", arg1);
                 valid = false;
             }
         }
 
         if (valid) {
-            fb_info_t *out = (fb_info_t *)phys_to_virt(get_physaddr(arg1, current_pml4));
+            fb_info_t *out = (fb_info_t *)phys_to_virt(get_physaddr(arg1, mm));
 
             memset(out, 0, sizeof(fb_info_t));
 
             out->fb_bytes_per_pixel = fb_bytes_per_pixel;
             // out->fb_height = fb_height / 4;
             // out->fb_ptr = fb + (fb_mapped % 4) * (fb_height / 4) * fb_scanline;
-            out->fb_ptr             = fb;
+            out->fb_ptr             = (char *)0x4000000000;
             out->fb_scanline        = fb_scanline;
             out->fb_width           = fb_width;
             out->fb_height          = fb_height;
@@ -135,9 +131,6 @@ void syscall(registers_t *regs, task_t *task) {
         } else {
             regs->rax = 0;
         }
-        break; */
-        // TODO: VMEM: implement
-        regs->rax = -ENOSYS;
         break;
     }
     case SYSCALL_GET_KB: {
@@ -288,29 +281,27 @@ void syscall(registers_t *regs, task_t *task) {
 
         kout(KERNEL_WARN, "spawn: failed to start %s (%d)\n", path, res);
 
-        asm volatile("cli");
         task_exit(spawn_task);
-        asm volatile("sti");
 
         kfree_heap((void *)path);
         regs->rax = (uint64_t)(int64_t)res;
 
         break;
     }
-    case SYSCALL_WAITPID: {
-        pid_t pid = (pid_t)ARG1(regs);
+    case SYSCALL_WAITTID: {
+        pid_t tid = (pid_t)ARG1(regs);
 
-        // TODO
+        regs->rax = (int)waittid(task, tid);
 
         break;
     }
     case SYSCALL_EXIT: {
         task_exit(task);
-        return;
+        cpu_scheduler_task();
     }
     case SYSCALL_EXIT_GROUP: {
         panic("SYSCALL_EXIT_GROUP not implemented!\n");
-        return;
+        break;
     }
     default:
         break;

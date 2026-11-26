@@ -20,6 +20,8 @@
 #define ENOSYS    38 // Function not implemented
 #define EOVERFLOW 75 // Value too large for defined data type
 
+#define ECHILD 10
+
 // I/O errors
 #define ENOENT       2  // No such file or directory
 #define EINTR        4  // Interrupted System Call
