@@ -96,6 +96,11 @@ void enable_ioapic() {
     outb(0x22, 0x70); // select the IOAPIC indirect register
     outb(0x23, 0x01); // sets the IOAPIC indirect register to 1
 
-    map_virtual_memory(IOAPIC_ADDR, 4096, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, kernel_pml4);
+    // TODO: VMEM
+    // map_virtual_memory(IOAPIC_ADDR, 4096, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, kernel_pml4);
     IOAPIC_ADDR = phys_to_virt(IOAPIC_ADDR);
+    int res;
+    if (res = vmmap(virt_to_phys(IOAPIC_ADDR), (void *)IOAPIC_ADDR, PAGE_LEN, VMA_RW, NULL, kernel_mm)) {
+        panic("enable_ioapic(): vmmap failed with res %d!\n", res);
+    }
 }

@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+// TODO: automatic interrupt enable/disable for rwlock and maybe even mutex?
+
 typedef atomic_flag mutex;
 
 #define MUTEX_INIT (mutex)ATOMIC_FLAG_INIT

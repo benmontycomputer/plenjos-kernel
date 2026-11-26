@@ -6,15 +6,10 @@
 // becomes a freestanding userland library
 #include "stdio.h"
 
-int mmap(void *addr, size_t length) {
-    if (addr == NULL) {
-        printf("mmap: addr cannot be NULL\n");
-        return -1;
-    }
-
-    int res = (int)syscall_memmap(addr, length, SYSCALL_MEMMAP_FLAG_WR);
+int mmap_fixed(void *hint, size_t length) {
+    void *res = (void *)syscall_memmap(hint, length, SYSCALL_MEMMAP_FLAG_WR | SYSCALL_MEMMAP_FLAG_FIXED);
     if (res != 0) {
-        printf("mmap: syscall failed with res %d\n", res);
+        printf("mmap_fixed: syscall failed with res %d\n", (int)res);
         return -1;
     }
 

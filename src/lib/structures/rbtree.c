@@ -12,7 +12,7 @@ void rbtree_init(rbtree_t *tree, int (*cmp)(const rbnode_t *a, const rbnode_t *b
     tree->size = 0;
 }
 
-void rbtree_destroy(rbtree_t *tree, void (*free_data)(void *data), void (*free_node)(rbnode_t *node)) {
+void rbtree_destroy(rbtree_t *tree, void (*free_node)(rbnode_t *node)) {
     // TODO
 }
 

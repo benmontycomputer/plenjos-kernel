@@ -51,25 +51,20 @@ bstnode_t *bstree_find_comparable_or_closest_predecessor(bstree_t *tree, bstnode
     }
 
     bstnode_t *curr = tree->root;
-    int cmp         = 0;
+    bstnode_t *pred = NULL;
 
     while (curr) {
-        cmp = tree->cmp(comparable_node, curr);
-
+        int cmp = tree->cmp(comparable_node, curr);
         if (cmp < 0) {
             curr = curr->left;
         } else if (cmp > 0) {
-            if (!curr->right) {
-                // Preserve curr and return it
-                break;
-            }
+            pred = curr;
             curr = curr->right;
         } else {
-            break;
+            return curr;
         }
     }
-
-    return curr;
+    return pred;
 }
 
 bstnode_t *bstree_find_min(bstree_t *tree) {

@@ -96,6 +96,6 @@ int ide_unlock_bus(struct ide_device *dev);
 
 // This also serves to lock the bus (as long as 0 is returned)
 int ide_select_bus(struct ide_device *dev);
-int ide_wait_for_irq(struct ide_device *dev);
+void ide_wait_for_irq(struct ide_device *dev);
 
 #endif // __KERNEL_SUPPORT_DEV_STORAGE_IDE

@@ -26,12 +26,12 @@
 #define ELF_USER_TOP 0x0000800000000000ULL
 
 // Copies count bytes from src into the (already mapped) user range starting at dest in the given address space.
-int elf_copy(void *dest, void *src, size_t count, pml4_t *current_pml4) {
+int elf_copy(void *dest, void *src, size_t count, mm_t *mm) {
     uint64_t offs = 0;
 
     while (offs < count) {
         uint64_t addr  = (uint64_t)dest + offs;
-        uint64_t paddr = get_physaddr(addr, current_pml4);
+        uint64_t paddr = get_physaddr(addr, mm);
 
         if (!paddr) {
             return -EFAULT;
@@ -50,39 +50,9 @@ int elf_copy(void *dest, void *src, size_t count, pml4_t *current_pml4) {
     return 0;
 }
 
-// Makes sure the page containing vaddr_page (page-aligned) is mapped in pml4.
-// A new page is zeroed. A page that is already mapped (because an earlier segment shares it) keeps its contents, and
-// the permissions of both segments are merged instead of the later one silently replacing the earlier one.
-static int elf_map_page(uint64_t vaddr_page, uint8_t flags, pml4_t *pml4) {
-    if (!get_physaddr(vaddr_page, pml4)) {
-        // alloc_virtual_memory() returns the frame's physical address, or 1 on failure
-        uint64_t p = alloc_virtual_memory(vaddr_page, flags, pml4);
-        if (p < PAGE_LEN) {
-            return -ENOMEM;
-        }
-
-        memset((void *)phys_to_virt(p), 0, PAGE_LEN);
-        return 0;
-    }
-
-    page_t *page = find_page(vaddr_page, false, pml4);
-    if (!page) {
-        return -ENOMEM;
-    }
-
-    if (!(flags & ALLOCATE_VM_RO)) {
-        page->rw = 1;
-    }
-    if (flags & ALLOCATE_VM_EX) {
-        page->nx = 0;
-    }
-
-    return 0;
-}
-
 // Validates one PT_LOAD / PT_DYNAMIC program header against the file and the user address range, maps the pages it
 // covers and copies its file contents in.
-static int elf_load_segment(const uint8_t *elf, size_t elf_size, const ELF_program_header_t *phdr, pml4_t *pml4,
+static int elf_load_segment(const uint8_t *elf, size_t elf_size, const ELF_program_header_t *phdr, mm_t *mm,
                             uint64_t voffs, bool *ehdr_mapped) {
     if (phdr->memsz == 0) {
         return 0;
@@ -107,22 +77,19 @@ static int elf_load_segment(const uint8_t *elf, size_t elf_size, const ELF_progr
         return -ENOEXEC;
     }
 
-    uint64_t first_page = start & ~(uint64_t)(PAGE_LEN - 1);
-    uint64_t end        = (start + phdr->memsz + PAGE_LEN - 1) & ~(uint64_t)(PAGE_LEN - 1);
+    uint64_t real_start = start & ~(uint64_t)(PAGE_LEN - 1);
+    uint64_t real_len   = (phdr->memsz + PAGE_LEN - 1) & ~(uint64_t)(PAGE_LEN - 1);
 
-    uint8_t flags = ((phdr->flags & ELF_PHDR_W) ? 0 : ALLOCATE_VM_RO) | ((phdr->flags & ELF_PHDR_EX) ? ALLOCATE_VM_EX : 0)
-                    | ALLOCATE_VM_USER;
-
-    for (uint64_t page = first_page; page < end; page += PAGE_LEN) {
-        int res = elf_map_page(page, flags, pml4);
-        if (res) {
-            kout(KERNEL_WARN, "loadelf(): couldn't map user page at %p (%d)\n", (void *)page, res);
-            return res;
-        }
+    vma_flags_t flags = ((phdr->flags & ELF_PHDR_W) ? VMA_RW : 0) | ((phdr->flags & ELF_PHDR_EX) ? VMA_EXEC : 0)
+                        | VMA_USER | VMALLOC_FIXED;
+    int res;
+    if (res = vmalloc((void *)real_start, real_len, flags, NULL, mm)) {
+        kout(KERNEL_WARN, "loadelf(): couldn't map user page at %p, res %d\n", (void *)real_start, res);
+        return res;
     }
 
     if (phdr->filesz) {
-        int res = elf_copy((void *)start, (void *)(elf + phdr->offset), phdr->filesz, pml4);
+        int res = elf_copy((void *)start, (void *)(elf + phdr->offset), phdr->filesz, mm);
         if (res) {
             return res;
         }
@@ -141,8 +108,8 @@ static int elf_load_segment(const uint8_t *elf, size_t elf_size, const ELF_progr
 // elf_size is the size of the buffer at elf_base; nothing outside it is ever read.
 // Returns 0 on success (entry point in *entry_out), or a negative errno (-ENOEXEC for a file that isn't a valid
 // executable). On failure, pages that were already mapped stay mapped; the caller should tear the process down.
-int loadelf(void *elf_base, size_t elf_size, pml4_t *pml4, uint64_t *entry_out, uint64_t voffs_if_pic) {
-    if (!elf_base || !pml4 || !entry_out) {
+int loadelf(void *elf_base, size_t elf_size, mm_t *mm, uint64_t *entry_out, uint64_t voffs_if_pic) {
+    if (!elf_base || !mm || !entry_out) {
         return -EINVAL;
     }
 
@@ -191,20 +158,21 @@ int loadelf(void *elf_base, size_t elf_size, pml4_t *pml4, uint64_t *entry_out, 
             continue;
         }
 
-        int res = elf_load_segment(elf, elf_size, phdr, pml4, voffs_if_pic, &ehdr_mapped);
+        int res = elf_load_segment(elf, elf_size, phdr, mm, voffs_if_pic, &ehdr_mapped);
         if (res) {
             return res;
         }
     }
 
-    if (!ehdr_mapped && !get_physaddr(voffs_if_pic, pml4)) {
+    if (!ehdr_mapped && !get_physaddr(voffs_if_pic, mm)) {
         // No segment covers the start of the file; the dynamic linker still needs to find the headers there.
-        int res = elf_map_page(voffs_if_pic, ALLOCATE_VM_RO | ALLOCATE_VM_USER, pml4);
-        if (res) {
+        int res;
+        if (res = vmalloc((void *)voffs_if_pic, PAGE_LEN, VMA_USER, NULL, mm)) {
+            kout(KERNEL_WARN, "loadelf(): failed to allocate ehdr start (res %d)\n", res);
             return res;
         }
 
-        res = elf_copy((void *)voffs_if_pic, (void *)elf, sizeof(ELF_header_t), pml4);
+        res = elf_copy((void *)voffs_if_pic, (void *)elf, sizeof(ELF_header_t), mm);
         if (res) {
             return res;
         }

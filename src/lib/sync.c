@@ -4,67 +4,32 @@
 #include "lib/stdio.h"
 #include "proc/scheduler.h"
 
-int wait_for_completion(completion_t *c, uint64_t timeout_ms) {
-    bool ints = irq_save();
-
-    thread_t *thread = cores_threads[get_curr_core()];
-
-    if (!thread) {
-        panic("wait_for_completion() called in non-thread context!\n");
-    }
-
-    mutex_lock(&c->lock);
-
-    if (c->waiting) {
-        panic("wait_for_completion(): multiple waiters!\n");
-    } else {
-        c->waiting = thread;
-    }
-
-    while (c->cnt == 0) {
-        // TODO: timeout
-        block(&c->lock, thread);
-    }
-
-    c->cnt--;
-    c->waiting = NULL;
-
-    mutex_unlock(&c->lock);
-
-    irq_restore(ints);
+void wait_for_completion(completion_t *c) {
+    wq_wait_event_update(
+        &c->wq, c->cnt != 0,
+        do {
+            if (c->wq.waiting) {
+                panic("wait_for_completion(): multiple waiters!\n");
+            }
+        } while (0),
+        c->cnt--);
 }
 
 void complete(completion_t *c) {
-    bool ints = irq_save();
-
-    mutex_lock(&c->lock);
-
-    c->cnt++;
-    thread_t *t = c->waiting;
-    c->waiting  = NULL;
-    // skips a thread that was killed while blocked
-    if (t && t->state == BLOCKED) {
-        lock_thread_rq();
-        thread_ready(t);
-        unlock_thread_rq();
-    }
-
-    mutex_unlock(&c->lock);
-
-    irq_restore(ints);
+    wq_signal(&c->wq, c->cnt++, false);
 }
 
 void wq_wake_locked(wait_queue_t *wq, bool all) {
     while (wq->waiting) {
-        thread_t *t = wq->waiting;
-        wq->waiting = t->rq_next;
-        t->rq_next  = NULL;
+        task_t *t   = wq->waiting;
+        wq->waiting = t->q_next;
+        t->q_next   = NULL;
 
-        // Skip threads killed while waiting
+        // Skip tasks killed while waiting
         if (t->state == BLOCKED) {
-            lock_thread_rq();
-            thread_ready(t);
-            unlock_thread_rq();
+            lock_rq();
+            task_ready(t);
+            unlock_rq();
         }
 
         if (!all) break;
@@ -88,16 +53,16 @@ void wq_wake_all(wait_queue_t *wq) {
 }
 
 void wq_sleep_locked(wait_queue_t *wq) {
-    thread_t *thread = cores_threads[get_curr_core()];
-    if (!thread) panic("wait_for_completion() called in non-thread context!\n");
+    task_t *task = current[get_curr_core()];
+    if (!task) panic("wait_for_completion() called in non-thread context!\n");
 
-    thread->rq_next = NULL;
+    task->q_next = NULL;
 
-    thread_t **waiting = &wq->waiting;
-    while (*waiting) waiting = &(*waiting)->rq_next;
-    *waiting = thread;
+    task_t **waiting = &wq->waiting;
+    while (*waiting) waiting = &(*waiting)->q_next;
+    *waiting = task;
 
-    block(&wq->lock, thread);
+    block(wq, task);
 }
 
 void excl_lock_acquire(excl_lock_t *lock) {
@@ -116,4 +81,24 @@ void excl_lock_release(excl_lock_t *lock) {
     wq_wake_locked(&lock->wq, false);
     mutex_unlock(&lock->wq.lock);
     irq_restore(_i);
+}
+
+void rwsem_acquire_read(rwsem_t *rwsem) {
+    wq_wait_event_update(&rwsem->wq, !(rwsem->writer || rwsem->writers_waiting > 0), , rwsem->readers++);
+}
+
+void rwsem_release_read(rwsem_t *rwsem) {
+    wq_signal_if_0(&rwsem->wq, --rwsem->readers, false);
+}
+
+void rwsem_acquire_write(rwsem_t *rwsem) {
+    wq_wait_event_update(
+        &rwsem->wq, !(rwsem->writer || rwsem->readers > 0), rwsem->writers_waiting++, do {
+            rwsem->writers_waiting--;
+            rwsem->writer = true;
+        } while (0));
+}
+
+void rwsem_release_write(rwsem_t *rwsem) {
+    wq_signal(&rwsem->wq, rwsem->writer = false, true);
 }

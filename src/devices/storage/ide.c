@@ -2,6 +2,7 @@
 
 #ifdef __KERNEL_SUPPORT_DEV_STORAGE_IDE
 
+# include "arch/x86_64/apic/apic.h"
 # include "arch/x86_64/irq.h"
 # include "devices/io/ports.h"
 # include "kernel.h"
@@ -272,6 +273,8 @@ void ide_irq_routine(registers_t *regs, void *data) {
             "lost. Are we moving too slowly?\n",
             (int)channel->irq_no, (int)channel->irq_done.cnt);
     }
+
+    apic_send_eoi();
 }
 
 void ide_init() {
@@ -316,10 +319,11 @@ int ide_select_bus(struct ide_device *dev) {
     return 0;
 }
 
+// I'm pretty sure the following comment is not true
 // TODO: by allowing interrupts to run, this actually causes code to jump into an interrupt handler with rsp set to the
 // tss stack for the core, which is somewhere above the current stack, so the stack **will** get corrupted
-int ide_wait_for_irq(struct ide_device *dev) {
-    return wait_for_completion(&dev->channel->irq_done, -1ULL);
+void ide_wait_for_irq(struct ide_device *dev) {
+    wait_for_completion(&dev->channel->irq_done);
 }
 
 #endif // __KERNEL_SUPPORT_DEV_STORAGE_IDE

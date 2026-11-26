@@ -3,14 +3,13 @@
 #include "arch/x86_64/apic/apic.h"
 #include "arch/x86_64/apic/ioapic.h"
 #include "arch/x86_64/common.h"
-#include "arch/x86_64/cpuid/cpuid.h"
+#include "arch/x86_64/gdt/tss.h"
 #include "arch/x86_64/irq.h"
 #include "cpu/cpu.h"
 #include "lib/special_mem/fixed_size_allocator.h"
 #include "lib/stdio.h"
 #include "memory/mm.h"
-#include "proc/proc.h"
-#include "proc/thread.h"
+#include "proc/task.h"
 #include "syscall/syscall.h"
 #include "timer/pit.h"
 
@@ -39,17 +38,17 @@ struct kernel_task {
 
 fixed_size_allocator_t _ktask_fsa = FSA_DEFAULT(sizeof(kernel_task_t));
 
-thread_t *cores_threads[MAX_CORES] = { 0 };
+task_t *current[MAX_CORES];
 
-static thread_t ktask_thread_placeholder = { 0 };
-static proc_t kthread_proc               = { 0 };
+static task_t ktask_placeholder = { 0 };
+static task_t ktask             = { 0 };
 
-thread_t *thread_rq     = NULL;
+task_t *rq              = NULL;
 kernel_task_t *ktask_rq = NULL;
 
-static atomic_flag cores_threads_lock = ATOMIC_FLAG_INIT;
-static atomic_flag thread_rq_lock     = ATOMIC_FLAG_INIT;
-static atomic_flag ktask_rq_lock      = ATOMIC_FLAG_INIT;
+static mutex current_lock  = MUTEX_INIT;
+static mutex rq_lock       = MUTEX_INIT;
+static mutex ktask_rq_lock = MUTEX_INIT;
 
 // Set by kill_process_threads() for a remote core that is still running
 static _Atomic bool kill_pending[MAX_CORES];
@@ -59,148 +58,94 @@ static uint64_t volatile scheduler_ticks;
 // How long kill_process_threads() waits for a remote core to acknowledge before giving up and warning
 #define KILL_ACK_SPIN_LIMIT 200000000ULL
 
-void lock_cores_threads() {
-    while (atomic_flag_test_and_set_explicit(&cores_threads_lock, __ATOMIC_ACQUIRE)) {
-        // Wait
-        __builtin_ia32_pause();
-    }
+extern void kcontext_block(uint64_t *saved_rsp, mutex *m);
+
+__attribute__((noreturn)) //
+extern void kcontext_resume(uint64_t saved_rsp);
+
+void lock_current() {
+    mutex_lock(&current_lock);
 }
 
-void unlock_cores_threads() {
-    atomic_flag_clear_explicit(&cores_threads_lock, __ATOMIC_RELEASE);
+void unlock_current() {
+    mutex_unlock(&current_lock);
 }
 
-void lock_thread_rq() {
-    while (atomic_flag_test_and_set_explicit(&thread_rq_lock, __ATOMIC_ACQUIRE)) {
-        // Wait
-        __builtin_ia32_pause();
-    }
+void lock_rq() {
+    mutex_lock(&rq_lock);
 }
 
-void unlock_thread_rq() {
-    atomic_flag_clear_explicit(&thread_rq_lock, __ATOMIC_RELEASE);
+void unlock_rq() {
+    mutex_unlock(&rq_lock);
 }
 
 void lock_ktask_rq() {
-    while (atomic_flag_test_and_set_explicit(&ktask_rq_lock, __ATOMIC_ACQUIRE)) {
-        // Wait
-        __builtin_ia32_pause();
-    }
+    mutex_lock(&ktask_rq_lock);
 }
 
 void unlock_ktask_rq() {
-    atomic_flag_clear_explicit(&ktask_rq_lock, __ATOMIC_RELEASE);
+    mutex_unlock(&ktask_rq_lock);
 }
 
-thread_t *thread_rq_pop() {
-    if (!thread_rq) {
+task_t *rq_pop() {
+    if (!rq) {
         return NULL;
     }
 
-    thread_t *res = thread_rq;
+    task_t *res = rq;
 
-    thread_rq    = thread_rq->rq_next;
-    res->rq_next = NULL;
+    rq          = rq->q_next;
+    res->q_next = NULL;
 
     return res;
 }
 
-thread_t *thread_rq_remove(thread_t *thread) {
-    if (!thread_rq) {
+task_t *rq_remove(task_t *task) {
+    if (!rq) {
         return NULL;
     }
 
-    thread_t **link = &thread_rq;
+    task_t **link = &rq;
 
-    while (*link && *link != thread) {
-        link = &((*link)->rq_next);
+    while (*link && *link != task) {
+        link = &((*link)->q_next);
     }
 
     if (*link) {
-        *link = (*link)->rq_next;
+        *link = (*link)->q_next;
 
-        thread->rq_next = NULL;
+        task->q_next = NULL;
 
-        return thread;
+        return task;
     } else {
         // Shouldn't happen
         return NULL;
     }
 }
 
-void thread_rq_add(thread_t *thread) {
-    thread->rq_next = NULL;
+void rq_add(task_t *task) {
+    task->q_next = NULL;
 
-    thread_t **link = &thread_rq;
+    task_t **link = &rq;
 
     while (*link) {
-        link = &((*link)->rq_next);
+        link = &((*link)->q_next);
     }
 
-    *link = thread;
+    *link = task;
 }
 
 // NOTE: caller must still call cpu_scheduler_task(); this function does not IPI the current core as the IPI would be
 // received later on and interrupt something else.
-void kill_process_threads(proc_t *proc) {
-    uint32_t cores_to_kill[MAX_CORES];
-    size_t cores_to_kill_count = 0;
-
-    uint32_t curr_core = get_curr_core();
-
-    lock_cores_threads();
-    lock_thread_rq();
-
-    thread_t *thread = proc->threads;
-    while (thread) {
-        thread_rq_remove(thread);
-        thread->state = DEAD;
-        thread        = thread->next;
-    }
-
-    // TODO: how to eliminate any other references to this thread (scheduled I/O, wakeups, etc.)?
-
-    unlock_thread_rq();
-
-    for (size_t i = 0; i < MAX_CORES; i++) {
-        if (cores_threads[i] && (cores_threads[i]->parent == proc)) {
-            cores_threads[i]->state = DEAD;
-            cores_threads[i]        = NULL;
-
-            if (i != curr_core) {
-                atomic_store_explicit(&kill_pending[i], true, __ATOMIC_RELEASE);
-                cores_to_kill[cores_to_kill_count++] = i;
-            }
-        }
-    }
-
-    unlock_cores_threads();
-
-    for (size_t i = 0; i < cores_to_kill_count; i++) {
-        // The target core must be able to acquire cores_threads_lock in its IPI handler.
-        printf("Process exit called on core %d, switching core %d to another thread...\n", curr_core, cores_to_kill[i]);
-        send_ipi(cpu_cores[cores_to_kill[i]].lapic_id, IPI_KILL_IRQ + 32);
-    }
-
-    // Wait for the targeted cores to leave the dying threads
-    for (size_t i = 0; i < cores_to_kill_count; i++) {
-        uint64_t spins = 0;
-
-        while (atomic_load_explicit(&kill_pending[cores_to_kill[i]], __ATOMIC_ACQUIRE)) {
-            if (++spins > KILL_ACK_SPIN_LIMIT) {
-                printf("WARN: kill_process_threads(): core %d did not acknowledge the kill IPI in time; continuing "
-                       "anyway.\n",
-                       cores_to_kill[i]);
-                break;
-            }
-            __builtin_ia32_pause();
-        }
-    }
+void kill_task(task_t *task) {
+    // TODO: implement
+    panic("kill_task() not implemented!\n");
 }
 
 // NOTE: this just forces a schedule call; it does NOT update thread state
 // It only does anything if kill_process_threads() flagged this core; otherwise it keeps running
 void ipi_kill_routine(registers_t *regs, void *data) {
+    // TODO: is this all corrent?
     uint32_t curr_core = get_curr_core();
 
     if (!cpu_cores[curr_core].online) {
@@ -226,82 +171,63 @@ void ipi_kill_routine(registers_t *regs, void *data) {
 // TODO: differentiate between wakeup and preempt? or change wakeup to preempt?
 // TODO: rename this to yield
 void ipi_wakeup_routine(registers_t *regs, void *data) {
-    // kout(KERNEL_INFO, "Received IPI wakeup on core %d\n", get_curr_core());
+    apic_send_eoi();
 
     uint32_t curr_core = get_curr_core();
 
-    /* if (cores_threads[curr_core] == &ktask_thread_placeholder) {
-        return;
-    } */
-
-    lock_cores_threads();
+    lock_current();
 
     // Check again w/ lock acquired
-    if (cores_threads[curr_core] == &ktask_thread_placeholder) {
-        unlock_cores_threads();
+    if (current[curr_core] == &ktask_placeholder || current[curr_core] == &ktask) {
+        unlock_current();
         return;
     }
 
-    if (cores_threads[curr_core]) {
+    if (current[curr_core]) {
         // Don't preempt kernel code
+        // TODO: get rid of this
         if ((regs->iret_cs & 3) == 0) {
-            unlock_cores_threads();
+            unlock_current();
             return;
         }
 
-        if (cores_threads[curr_core]->state == RUNNING) {
-            cores_threads[curr_core]->state = READY;
+        task_t *task       = current[curr_core];
+        current[curr_core] = NULL;
+        unlock_current();
 
-            memcpy(&cores_threads[curr_core]->regs, regs, sizeof(*regs));
-
-            lock_thread_rq();
-            thread_rq_add(cores_threads[curr_core]);
-            unlock_thread_rq();
+        lock_rq();
+        if (task->state == RUNNING) {
+            task->state = READY;
+            rq_add(task);
         }
-        cores_threads[curr_core] = NULL;
+        kcontext_block(&task->thread_state.rsp, &rq_lock);
+    } else {
+        unlock_current();
+
+        cpu_scheduler_task();
     }
-
-    unlock_cores_threads();
-
-    // Won't return; have to send this
-    apic_send_eoi();
-
-    cpu_scheduler_task();
 }
 
 void syscall_dispatch(registers_t *regs) {
     uint32_t curr_core = get_curr_core();
 
-    lock_cores_threads();
+    lock_current();
 
-    thread_t *thread = cores_threads[curr_core];
-    if (!thread || thread == &ktask_thread_placeholder) {
-    for (int i = 0; i < get_n_cores(); i++) {
-        printf("core %d: thread=%p state=%d\n", i, cores_threads[i],
-               cores_threads[i] ? cores_threads[i]->state : -1);
+    task_t *task = current[curr_core];
+    if (!task || task == &ktask) {
+        for (int i = 0; i < get_n_cores(); i++) {
+            printf("core %d: task=%p tid=%d state=%d\n", i, current[i], current[i] ? current[i]->tid : -1ULL,
+                   current[i] ? current[i]->state : -1);
         }
-    panic("syscall_dispatch() core %u (lapic %u) no thread; rax=%lu rip=%p rsp=%p\n",
-          curr_core, get_curr_lapic_id() /* or your lapic id read */,
-          regs->rax, regs->iret_rip, regs->iret_rsp);
-}
-
-    unlock_cores_threads();
-
-    if (!thread->parent) {
-        panic("syscall(): couldn't get proc!\n");
+        panic("syscall_dispatch() core %u (lapic %u) no thread; rax=%lu rip=%p rsp=%p\n", curr_core,
+              get_curr_lapic_id() /* or your lapic id read */, regs->rax, regs->iret_rip, regs->iret_rsp);
     }
 
-    // NOTE: regs->cr3 is WRONG and must be corrected here
-    pml4_t *current_pml4 = (pml4_t *)thread->parent->pml4;
-    regs->cr3            = get_physaddr((uint64_t)current_pml4, kernel_pml4);
-
-    // TODO: if we want to add a field to indicate that a thread is in kernel mode, update that here
+    unlock_current();
 
     asm volatile("sti");
-    syscall(regs, thread, current_pml4);
+    syscall(regs, task);
     asm volatile("cli");
-
-    // TODO: if we want to add a field to indicate that a thread is in kernel mode, update that here
 }
 
 // TODO: more efficient way to wakeup than just sending to all cores
@@ -317,33 +243,33 @@ void send_wakeup_ipi() {
     }
 }
 
-void thread_ready(thread_t *thread) {
-    if (thread->state == READY || thread->state == RUNNING) {
-        panic("thread_ready() called on thread %u which was already %s\n", thread->tid, thread->state == RUNNING ? "running" : "ready");
+void task_ready(task_t *task) {
+    if (task->state == READY || task->state == RUNNING) {
+        panic("task_ready() called on task %u which was already %s\n", task->tid,
+              task->state == RUNNING ? "running" : "ready");
     }
-    thread->state = READY;
-    thread_rq_add(thread);
+    task->state = READY;
+    rq_add(task);
 
     // TODO: should this be part of scheduler tick or something?
     send_wakeup_ipi();
 }
 
-void thread_ready_safe(thread_t *thread) {
-    bool interrupts = are_interrupts_enabled();
-    if (interrupts) {
-        asm volatile("cli");
-    }
-    lock_thread_rq();
-    thread_ready(thread);
-    unlock_thread_rq();
-    if (interrupts) {
-        asm volatile("sti");
-    }
+void task_ready_safe(task_t *task) {
+    bool _i = irq_save();
+    lock_rq();
+    task_ready(task);
+    unlock_rq();
+    irq_restore(_i);
+}
+
+void populate_ktask(mm_t *mm) {
+    ktask.mm        = NULL;
+    ktask.mm_to_use = mm;
+    current[0]      = &ktask;
 }
 
 void start_scheduler() {
-    kthread_proc.pml4 = kernel_pml4;
-
     cpu_cores[0].online = true;
 }
 
@@ -354,32 +280,25 @@ void stop_scheduler() {
     }
 }
 
-__attribute__((noreturn)) //
-extern void _finalize_task_switch(registers_t *regs);
-extern void kcontext_block(uint64_t *saved_rsp, mutex *m);
-
-__attribute__((noreturn)) //
-extern void kcontext_resume(uint64_t saved_rsp);
-
-// Marks the thread as blocked and waits for it to be woken, only releasing the mutex at the last second and reacquiring
+// Marks the task as blocked and waits for it to be woken, only releasing the mutex at the last second and reacquiring
 // it upon wake
-void block(mutex *m, thread_t *thread) {
+void block(wait_queue_t *wq, task_t *task) {
     bool irq = irq_save();
-    lock_cores_threads();
-    thread->state = BLOCKED;
-    cores_threads[get_curr_core()] = NULL;
-    unlock_cores_threads();
+    lock_current();
+    task->state              = BLOCKED;
+    task->blocked_by         = wq;
+    current[get_curr_core()] = NULL;
+    unlock_current();
 
-    kcontext_block(&thread->kctx_rsp, m);
+    kcontext_block(&task->thread_state.rsp, &wq->lock);
 
-    mutex_lock(m);
+    mutex_lock(&wq->lock);
     irq_restore(irq);
 }
 
 __attribute__((noreturn)) //
 void cpu_scheduler_task_c(uint32_t curr_core) {
     // Clear the core's current process and tell kill_process_threads() that this core has left the old thread.
-    cpu_cores[curr_core].kernel_gs_base->proc = 0;
     atomic_store_explicit(&kill_pending[curr_core], false, __ATOMIC_RELEASE);
 
     if (!cpu_cores[curr_core].online) {
@@ -399,25 +318,19 @@ void cpu_scheduler_task_c(uint32_t curr_core) {
 
         unlock_ktask_rq();
 
-        lock_cores_threads();
-
-        cores_threads[curr_core] = &ktask_thread_placeholder;
-
-        unlock_cores_threads();
+        lock_current();
+        current[curr_core] = &ktask_placeholder;
+        unlock_current();
 
         asm volatile("sti");
-
         // Execute the kernel task. Interrupts are enabled in this function so the interrupt core can still get
         // interrupts that might e.g. schedule ktasks that could then be processed on another core.
         func(arg);
-
         asm volatile("cli"); // Disable interrupts just in case func() enabled them
 
-        lock_cores_threads();
-
-        cores_threads[curr_core] = NULL;
-
-        unlock_cores_threads();
+        lock_current();
+        current[curr_core] = NULL;
+        unlock_current();
 
         lock_ktask_rq();
     }
@@ -425,49 +338,38 @@ void cpu_scheduler_task_c(uint32_t curr_core) {
     unlock_ktask_rq();
 
     // Pick the thread and mark it RUNNING under the lock, and keep using the local copy afterwards. Otherwise a
-    // concurrent kill_process_threads() could mark it DEAD and clear cores_threads[] between the unlock and our
+    // concurrent kill_process_threads() could mark it DEAD and clear current[] between the unlock and our
     // write, and we would overwrite DEAD with RUNNING and resume a thread that is being freed.
-    lock_cores_threads();
-    lock_thread_rq();
-    thread_t *thread         = thread_rq_pop();
-    cores_threads[curr_core] = thread;
-    if (thread) {
-        thread->state = RUNNING;
+    lock_current();
+    lock_rq();
+    task_t *task       = rq_pop();
+    current[curr_core] = task;
+    if (task) {
+        task->state = RUNNING;
     }
-    unlock_thread_rq();
-    unlock_cores_threads();
+    unlock_rq();
+    unlock_current();
 
-    if (thread) {
+    if (task) {
         // For syscalls
-        cpu_cores[curr_core].kernel_gs_base->syscall_stack = (uint64_t)thread->kstack_top;
+        cpu_cores[curr_core].kernel_gs_base->syscall_stack = (uint64_t)task->kstack_top;
+        // For interrupts/exceptions taken from user mode
+        tss_obj[curr_core].rsp0                            = (uint64_t)task->kstack_top;
 
-        if (thread->kctx_rsp) {
-            uint64_t rsp     = thread->kctx_rsp;
-            thread->kctx_rsp = 0;
-
-            // TODO: is this needed? I don't think so.
-            set_cr3_addr(kernel_pml4_phys); // it blocked in kernel mode, on the kernel page tables
-            kcontext_resume(rsp);
-        } else {
-            // printf("Starting thread %p on core %d\n", thread->tid, curr_core);
-            // The thread's regs are the first item in the struct
-            // Check if kernel page table needs to be flushed
-            if (get_physaddr((uint64_t)&thread->regs, kernel_pml4) == 0x0) {
-                ipi_tlb_flush_routine(NULL, NULL);
-            }
-
-            // The thread's regs are the first item in the struct
-            /* printf("Thread info: regs addr %p, regs phys addr %p %p, stack %p, proc %p\n", &thread->regs,
-                get_physaddr((uint64_t)&thread->regs, thread->parent->pml4),
-                get_physaddr((uint64_t)&thread->regs, kernel_pml4), thread->regs.iret_rsp, thread->parent); */
-
-            _finalize_task_switch((registers_t *)&thread->regs);
+        if (get_cr3_addr() != task->mm_to_use->cr3) {
+            set_cr3_addr(task->mm_to_use->cr3);
         }
+
+        kcontext_resume(task->thread_state.rsp);
     }
 
     for (;;) {
         asm volatile("sti");
         asm volatile("hlt");
+        asm volatile("cli");
+        if (ktask_rq || rq) {
+            cpu_scheduler_task();
+        }
     }
 }
 

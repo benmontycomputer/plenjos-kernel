@@ -5,7 +5,6 @@
 #include "arch/x86_64/irq.h"
 #include "kernel.h"
 #include "lib/stdio.h"
-#include "memory/kmalloc.h"
 #include "memory/mm.h"
 #include "proc/scheduler.h"
 
@@ -34,6 +33,7 @@ extern void request_console();
 extern int _printf_internal(const char *format, va_list list);
 
 static int kout_panic(kernel_msg_level_t msg_level, const char *format, ...) {
+    if (msg_level == KERNEL_PANIC) debug_serial = false;
     va_list list;
     va_start(list, format);
 
@@ -41,17 +41,7 @@ static int kout_panic(kernel_msg_level_t msg_level, const char *format, ...) {
 
     va_end(list);
 
-    if (msg_level == KERNEL_PANIC) {
-        debug_serial = !debug_serial;
-
-        va_start(list, format);
-
-        res = _printf_internal(format, list);
-
-        va_end(list);
-
-        debug_serial = !debug_serial;
-    }
+    return 0;
 }
 
 // The below function will print some debug message for page fault
@@ -78,10 +68,10 @@ void page_fault_handler(registers_t *regs) {
     if (present || reserved) kout_panic(KERNEL_PANIC, ") at address %p\n", faulting_address);
     else
         kout_panic(KERNEL_PANIC, ") at address %p, paddr %p\n", faulting_address,
-             get_physaddr(faulting_address, (pml4_t *)phys_to_virt(get_cr3_addr())));
+                   get_physaddr(faulting_address, current[get_curr_core()]->mm_to_use));
 
     kout_panic(KERNEL_PANIC, "RIP: %p, RSP: %p, RFLAGS: %p, CR3: %p\n", regs->iret_rip, regs->iret_rsp,
-         regs->iret_rflags, regs->cr3);
+               regs->iret_rflags, get_cr3_addr());
 }
 
 void gpf_handler(registers_t *regs) {
@@ -138,21 +128,12 @@ void dump_machine_check_msrs() {
 __attribute__((noreturn)) void exception_handler(registers_t *regs) {
     // asm volatile ("cli; hlt"); // Completely hangs the computer
 
-    uint64_t cr3 = get_cr3_addr();
-
-    bool is_user = (regs->iret_cs & CS_MASK) == USER_CS;
+    bool is_user                 = (regs->iret_cs & CS_MASK) == USER_CS;
     kernel_msg_level_t msg_level = (regs->iret_cs != USER_CS) ? KERNEL_PANIC : USER_FAULT;
-
-    if (cr3 != kernel_pml4_phys) {
-        set_cr3_addr(kernel_pml4_phys);
-
-        uint64_t regs_phys = get_physaddr((uint64_t)regs, (pml4_t *)phys_to_virt(cr3));
-        regs               = (registers_t *)phys_to_virt(regs_phys);
-    }
 
     // release_console();
 
-    if (!is_user) {
+    if (!is_user && smp_loaded) {
         stop_scheduler();
     }
 
@@ -160,12 +141,12 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
 
     kout_panic(msg_level, "\nCORE %d", curr_core);
 
-    if (is_user && cores_threads[curr_core] && cores_threads[curr_core]->parent) {
-        kout_panic(msg_level, ", TID %d, PID %d", cores_threads[curr_core]->tid, cores_threads[curr_core]->parent->pid);
+    if (is_user && current[curr_core]) {
+        kout_panic(msg_level, ", TID %d, TGID %d", (int)current[curr_core]->tid, (int)current[curr_core]->tgid);
     }
 
     kout_panic(msg_level, ", CS %x", regs->iret_cs);
-    kout_panic(msg_level, ", CR3 %p:", cr3);
+    kout_panic(msg_level, ", CR3 %p:", get_cr3_addr());
 
     if (regs->int_no == 14) {
         kout_panic(msg_level, "\nPAGE FAULT\n");
@@ -194,20 +175,17 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
             kout_panic(msg_level, "  [%p] = %p\n", (uint64_t)(rsp + i), rsp[i]);
         }
     } else {
-        pml4_t *pml4 = (pml4_t *)phys_to_virt(regs->cr3 & ~0xFFF);
-
         kout_panic(msg_level, "User mode exception occurred at RIP: %p\n", regs->iret_rip);
 
         uint64_t *rsp = (uint64_t *)regs->iret_rsp;
         kout_panic(msg_level, "Stack (rsp = %p) Contents(First 26) :\n", (uint64_t)rsp);
 
         for (int i = 0; i < 26; i++) {
-            uint64_t stack_phys_addr = get_physaddr((uint64_t)(rsp + i), pml4);
+            uint64_t stack_phys_addr = get_physaddr((uint64_t)(rsp + i), current[curr_core]->mm_to_use);
             if (stack_phys_addr == 0) {
                 kout_panic(msg_level, "  [%p] = Invalid Address\n", (uint64_t)(rsp + i));
             } else {
-                kout_panic(msg_level, "  [%p] = %p\n", (uint64_t)(rsp + i),
-                     *(uint64_t *)phys_to_virt(stack_phys_addr));
+                kout_panic(msg_level, "  [%p] = %p\n", (uint64_t)(rsp + i), *(uint64_t *)phys_to_virt(stack_phys_addr));
             }
         }
     }
@@ -215,15 +193,12 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
     if (!is_user) {
         panic("Unrecoverable kernel exception! System halted!\n");
     } else {
-        thread_t *thread = cores_threads[get_curr_core()];
-        if (thread) {
-            pid_t pid = thread->parent->pid;
-            pid_t tid = thread->tid;
+        task_t *task = current[get_curr_core()];
+        if (task) {
+            kout_panic(msg_level, "Faulting task: TID %p, TGID %p\n", task->tid, task->tgid);
+            kout_panic(msg_level, "Killing offending task...\n");
 
-            kout_panic(msg_level, "Faulting process: PID %p, TID %p\n", pid, tid);
-            kout_panic(msg_level, "Killing offending process...\n");
-
-            process_exit(thread->parent);
+            task_exit(task);
 
             cpu_scheduler_task();
         }
@@ -248,7 +223,6 @@ static bool vectors[IDT_MAX_DESCRIPTORS];
 
 void idt_load() {
     asm volatile("lidt %0" : : "m"(idtr)); // load the new IDT
-    asm volatile("sti");                   // set the interrupt flag
 }
 
 void idt_init() {
@@ -260,9 +234,6 @@ void idt_init() {
         vectors[vector] = true;
         // kout(KERNEL_INFO, "Registering interrupt %d.\n", vector);
     }
-
-    // syscall should be callable from all rings, unlike other interrupts
-    idt_set_descriptor(128, isr_stub_table[128], 0b11101110);
 
     idt_load();
 

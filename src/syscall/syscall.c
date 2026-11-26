@@ -12,8 +12,8 @@
 #include "plenjos/dev/fb.h"
 #include "plenjos/errno.h"
 #include "plenjos/syscall.h"
-#include "proc/proc.h"
 #include "proc/scheduler.h"
+#include "proc/task.h"
 #include "syscall/fs/syscall_fs.h"
 #include "syscall/mem/memmap.h"
 #include "syscall/syscall_helpers.h"
@@ -76,13 +76,13 @@ extern int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
     return true;
 } */
 
-void syscall(registers_t *regs, thread_t *thread, pml4_t *current_pml4) {
-    proc_t *proc = thread->parent;
-
+void syscall(registers_t *regs, task_t *task) {
     uint64_t call = CALL(regs);
 
+    mm_t *mm = task->mm_to_use;
+
     if (call >= SYSCALL_FS_FIRST && call <= SYSCALL_FS_LAST) {
-        syscall_handle_fs_call(regs, proc, current_pml4);
+        syscall_handle_fs_call(regs, task, mm);
         goto ret;
     }
 
@@ -91,7 +91,7 @@ void syscall(registers_t *regs, thread_t *thread, pml4_t *current_pml4) {
         // arg1: pointer to struct for framebuffer data
         // Map the framebuffer into the currently loaded page table
         // TODO: check if framebuffer is in use
-        map_virtual_memory_using_alloc(
+        /* map_virtual_memory_using_alloc(
             virt_to_phys((uint64_t)fb), (uint64_t)fb, (uint64_t)fb_scanline * (uint64_t)fb_height,
             PAGE_FLAG_PRESENT | PAGE_FLAG_USER | PAGE_FLAG_WRITE, alloc_paging_node, current_pml4);
 
@@ -135,6 +135,9 @@ void syscall(registers_t *regs, thread_t *thread, pml4_t *current_pml4) {
         } else {
             regs->rax = 0;
         }
+        break; */
+        // TODO: VMEM: implement
+        regs->rax = -ENOSYS;
         break;
     }
     case SYSCALL_GET_KB: {
@@ -177,7 +180,7 @@ void syscall(registers_t *regs, thread_t *thread, pml4_t *current_pml4) {
         uint64_t size                = ARG2(regs);
         syscall_memmap_flags_t flags = ARG3(regs);
 
-        regs->rax = (uint64_t)syscall_routine_memmap((void *)virt, (size_t)size, flags, current_pml4);
+        regs->rax = (uint64_t)syscall_routine_memmap((void *)virt, (size_t)size, flags, mm);
 
         break;
     }
@@ -195,17 +198,17 @@ void syscall(registers_t *regs, thread_t *thread, pml4_t *current_pml4) {
                    buffer_size);
             regs->rax = (uint64_t)-ENOMEM;
         } else {
-            regs->rax = (uint64_t)copy_to_kernel_buf(buf_tmp, buffer, buffer_size, current_pml4);
+            regs->rax = (uint64_t)copy_to_kernel_buf(buf_tmp, buffer, buffer_size, mm);
 
             if (regs->rax != 0) {
-                printf("syscall_routine: failed to copy data from user buffer %p for process %s (pid %p), errno %d\n",
-                       buffer, proc->name, proc->pid, (int)regs->rax);
+                printf("syscall_routine: failed to copy data from user buffer %p for task %s (tid %p), errno %d\n",
+                       buffer, task->name, task->tid, (int)regs->rax);
                 kfree_heap(buf_tmp);
                 break;
             }
 
             regs->rax = (uint64_t)syscall_routine_memmap_from_buffer((void *)virt, (size_t)size, flags, buf_tmp,
-                                                                     buffer_size, current_pml4);
+                                                                     buffer_size, mm);
             kfree_heap(buf_tmp);
         }
 
@@ -214,7 +217,7 @@ void syscall(registers_t *regs, thread_t *thread, pml4_t *current_pml4) {
     // case SYSCALL_MEMMAP_FILE:
     case SYSCALL_PRINT: {
         const char *str_ptr = NULL;
-        regs->rax           = handle_string_arg(current_pml4, ARG1(regs), &str_ptr);
+        regs->rax           = handle_string_arg(ARG1(regs), &str_ptr, mm);
 
         if (str_ptr) {
             printf("%s", str_ptr);
@@ -250,7 +253,7 @@ void syscall(registers_t *regs, thread_t *thread, pml4_t *current_pml4) {
     }
     case SYSCALL_SPAWN: {
         const char *path = NULL;
-        regs->rax        = handle_string_arg(current_pml4, ARG1(regs), &path);
+        regs->rax        = handle_string_arg(ARG1(regs), &path, mm);
 
         if (!path) {
             break;
@@ -258,29 +261,27 @@ void syscall(registers_t *regs, thread_t *thread, pml4_t *current_pml4) {
 
         // TODO: argc, argv, envp and envc
 
-        // loadelf(linker_elf_buf, shell_proc->pml4, &linker_entry, LINKER_OFFS);
-
-        proc_t *spawn_proc = create_proc("spawn", proc);
-        if (!spawn_proc) {
+        task_t *spawn_task = create_task("spawn", task);
+        if (!spawn_task) {
             kfree_heap((void *)path);
             regs->rax = (uint64_t)(int64_t)-ENOMEM;
             break;
         }
 
-        int res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_READ, 0, 0, &spawn_proc->fds[0]);
+        int res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_READ, 0, 0, &spawn_task->fds[0]);
         if (!res) {
-            res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &spawn_proc->fds[1]);
+            res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &spawn_task->fds[1]);
         }
         if (!res) {
-            res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &spawn_proc->fds[2]);
+            res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &spawn_task->fds[2]);
         }
         if (!res) {
-            // The child may run and exit before execute() returns, so don't touch spawn_proc afterwards.
-            pid_t child_pid = spawn_proc->pid;
-            res             = execute(path, spawn_proc);
+            // The child may run and exit before execute() returns, so don't touch spawn_task afterwards.
+            pid_t child_tid = spawn_task->tid;
+            res             = execute(path, spawn_task);
             if (!res) {
                 kfree_heap((void *)path);
-                regs->rax = (uint64_t)child_pid;
+                regs->rax = (uint64_t)child_tid;
                 break;
             }
         }
@@ -288,7 +289,7 @@ void syscall(registers_t *regs, thread_t *thread, pml4_t *current_pml4) {
         kout(KERNEL_WARN, "spawn: failed to start %s (%d)\n", path, res);
 
         asm volatile("cli");
-        process_exit(spawn_proc);
+        task_exit(spawn_task);
         asm volatile("sti");
 
         kfree_heap((void *)path);
@@ -299,20 +300,16 @@ void syscall(registers_t *regs, thread_t *thread, pml4_t *current_pml4) {
     case SYSCALL_WAITPID: {
         pid_t pid = (pid_t)ARG1(regs);
 
-        
+        // TODO
 
         break;
     }
-    case SYSCALL_EXIT_THREAD: {
-        asm volatile("cli");
-        release_thread(thread);
-        asm volatile("sti");
+    case SYSCALL_EXIT: {
+        task_exit(task);
         return;
     }
-    case SYSCALL_EXIT_PROCESS: {
-        asm volatile("cli");
-        process_exit(proc);
-        asm volatile("sti");
+    case SYSCALL_EXIT_GROUP: {
+        panic("SYSCALL_EXIT_GROUP not implemented!\n");
         return;
     }
     default:

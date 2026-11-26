@@ -1,8 +1,8 @@
 #include "syscall/fs/syscall_fs.h"
 
-ssize_t syscall_routine_getdents(int fd, void *buf, size_t count, proc_t *proc, pml4_t *current_pml4) {
+ssize_t syscall_routine_getdents(int fd, void *buf, size_t count, task_t *task, mm_t *mm) {
     vfs_handle_t *handle = NULL;
-    ssize_t res          = syscall_fs_helper_get_dir_handle(fd, proc, &handle);
+    ssize_t res          = syscall_fs_helper_get_dir_handle(fd, task, &handle);
     if (res < 0) {
         printf("syscall_routine_getdents: failed to get directory handle\n");
         return res;
@@ -11,9 +11,9 @@ ssize_t syscall_routine_getdents(int fd, void *buf, size_t count, proc_t *proc, 
     void *buf_tmp = kmalloc_heap(count);
 
     if (!buf_tmp) {
-        printf("syscall_routine_getdents: failed to allocate temporary buffer for read of %p bytes for process %s (pid "
+        printf("syscall_routine_getdents: failed to allocate temporary buffer for read of %p bytes for task %s (tid "
                "%p)\n",
-               count, proc->name, proc->pid);
+               count, task->name, task->tid);
         return -ENOMEM;
     }
 
@@ -24,11 +24,11 @@ ssize_t syscall_routine_getdents(int fd, void *buf, size_t count, proc_t *proc, 
     res = vfs_read(handle, buf_tmp, count_adj);
 
     if (res > 0) {
-        int check = copy_to_user_buf(buf, buf_tmp, res, false, current_pml4);
+        int check = copy_to_user_buf(buf, buf_tmp, res, false, mm);
         if (check < 0) {
             printf(
-                "syscall_routine_getdents: failed to copy data to user buffer %p for process %s (pid %p), errno %d\n",
-                buf, proc->name, proc->pid, check);
+                "syscall_routine_getdents: failed to copy data to user buffer %p for task %s (tid %p), errno %d\n",
+                buf, task->name, task->tid, check);
             kfree_heap(buf_tmp);
             return (ssize_t)check;
         }
@@ -38,7 +38,7 @@ ssize_t syscall_routine_getdents(int fd, void *buf, size_t count, proc_t *proc, 
     return res;
 }
 
-int syscall_routine_mkdir(const char *restrict path, mode_t mode, proc_t *proc) {
+int syscall_routine_mkdir(const char *restrict path, mode_t mode, task_t *task) {
     int res = 0;
 
     char *path_abs = kmalloc_heap(PATH_MAX);
@@ -47,19 +47,19 @@ int syscall_routine_mkdir(const char *restrict path, mode_t mode, proc_t *proc) 
         return -ENOMEM;
     }
 
-    res = handle_relative_path(path, proc, path_abs);
+    res = handle_relative_path(path, task, path_abs);
     if (res < 0) {
-        printf("syscall_routine_mkdir: failed to handle relative path %s for process %s (pid %p), errno %d\n", path,
-               proc->name, proc->pid, res);
+        printf("syscall_routine_mkdir: failed to handle relative path %s for task %s (tid %p), errno %d\n", path,
+               task->name, task->tid, res);
         kfree_heap(path_abs);
         return res;
     }
 
-    res = vfs_mkdir(path_abs, (struct kstat) { .uid = proc->uid, .gid = 0 /* TODO: use egid here */, .mode = mode });
+    res = vfs_mkdir(path_abs, (struct kstat) { .uid = task->uid, .gid = 0 /* TODO: use egid here */, .mode = mode });
     kfree_heap(path_abs);
     return res;
 }
 
-int syscall_routine_rmdir(const char *restrict path, proc_t *proc) {
+int syscall_routine_rmdir(const char *restrict path, task_t *task) {
     return -ENOSYS;
 }

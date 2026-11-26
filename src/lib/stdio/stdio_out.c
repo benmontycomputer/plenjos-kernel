@@ -73,6 +73,7 @@ void printf_ch(char ch) {
     if (debug_serial) {
         write_serial(ch);
     } else {
+        write_serial(ch);
         printf_ch_fb(ch);
     }
 }
@@ -452,6 +453,8 @@ static inline void set_level(kernel_msg_level_t level) {
 int kout(kernel_msg_level_t level, const char *format, ...) {
     if (level == KERNEL_PANIC) {
         /* Bypass the lock */
+        /* Make sure the message reaches BOTH serial and screen */
+        debug_serial = false;
     } else {
         request_console();
     }
@@ -466,12 +469,6 @@ int kout(kernel_msg_level_t level, const char *format, ...) {
     va_end(list);
 
     if (level == KERNEL_PANIC) {
-        /* Make sure the message reaches BOTH serial and screen */
-        debug_serial = !debug_serial;
-        va_start(list, format);
-        _printf_internal(format, list);
-        va_end(list);
-
         panic_nomsg();
     } else {
         printf_str(TEXT_RESET, -1);
@@ -486,6 +483,11 @@ int kout(kernel_msg_level_t level, const char *format, ...) {
 int kout_nolock(kernel_msg_level_t level, const char *format, ...) {
     set_level(level);
 
+    if (level == KERNEL_PANIC) {
+        /* Make sure the message reaches BOTH serial and screen */
+        debug_serial = false;
+    }
+
     va_list list;
     va_start(list, format);
 
@@ -494,12 +496,6 @@ int kout_nolock(kernel_msg_level_t level, const char *format, ...) {
     va_end(list);
 
     if (level == KERNEL_PANIC) {
-        /* Make sure the message reaches BOTH serial and screen */
-        debug_serial = !debug_serial;
-        va_start(list, format);
-        _printf_internal(format, list);
-        va_end(list);
-
         panic_nomsg();
     } else {
         printf_str(TEXT_RESET, -1);
@@ -510,18 +506,13 @@ int kout_nolock(kernel_msg_level_t level, const char *format, ...) {
 
 _Noreturn void panic(const char *format, ...) {
     set_level(KERNEL_PANIC);
+    debug_serial = false;
 
     va_list list;
     va_start(list, format);
 
     _printf_internal(format, list);
 
-    va_end(list);
-
-    /* Make sure the message reaches BOTH serial and screen */
-    debug_serial = !debug_serial;
-    va_start(list, format);
-    _printf_internal(format, list);
     va_end(list);
 
     panic_nomsg();

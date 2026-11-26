@@ -2,6 +2,7 @@
 
 #ifdef __KERNEL_SUPPORT_DEV_USB_HOST_UHCI
 
+# include "arch/x86_64/apic/apic.h"
 # include "arch/x86_64/common.h"
 # include "arch/x86_64/irq.h"
 # include "devices/io/ports.h"
@@ -52,7 +53,7 @@ static void uhci_free_td_chain(struct uhci_td *td_start) {
 }
 
 static inline int link_td(struct uhci_td *prev, struct uhci_td *next) {
-    uint32_t phys = get_physaddr32((uint64_t)next, kernel_pml4);
+    uint32_t phys = get_physaddr32((uint64_t)next, kernel_mm);
 
     if (phys == 0) {
         return -1;
@@ -81,7 +82,7 @@ int uhci_insert_qh(uhci_controller_t *controller, struct uhci_qh *qh) {
 
     controller->qh_1ms.horiz_link_ptr
         = (struct uhci_frame_list_entry) { .enable   = 0,
-                                           .ptr      = get_physaddr32((uint64_t)qh, kernel_pml4) >> 4,
+                                           .ptr      = get_physaddr32((uint64_t)qh, kernel_mm) >> 4,
                                            .type     = UHCI_FRAME_LIST_ENTRY_TYPE_QH,
                                            .reserved = 0 };
 
@@ -136,11 +137,11 @@ int uhci_remove_qh(uhci_controller_t *controller, struct uhci_qh *qh) {
         td->next_td.ptr       = 0;
     }
 
-    uint32_t qh_phys = get_physaddr32((uint64_t)qh, kernel_pml4);
+    uint32_t qh_phys                            = get_physaddr32((uint64_t)qh, kernel_mm);
     volatile struct uhci_frame_list_entry *link = &controller->qh_1ms.horiz_link_ptr;
     while (!link->enable) {
         if (((uint32_t)link->ptr << 4) == qh_phys) {
-            *link = qh->horiz_link_ptr;   /* splice it out */
+            *link = qh->horiz_link_ptr; /* splice it out */
             break;
         }
         link = &((struct uhci_qh *)phys_to_virt((uint64_t)link->ptr << 4))->horiz_link_ptr;
@@ -238,7 +239,7 @@ int uhci_control_transfer(uhci_controller_t *controller, uint8_t device_address,
     setup_td->next_td.terminate = 1;
     setup_td->packet_header     = UHCI_TD_HEADER(UHCI_TD_PID_SETUP, device_address, 0, 0, 8);
     setup_td->status            = UHCI_TD_ACTIVE;
-    setup_td->buffer_pointer    = get_physaddr32((physptr_t)setup_data, kernel_pml4);
+    setup_td->buffer_pointer    = get_physaddr32((physptr_t)setup_data, kernel_mm);
     if (setup_td->buffer_pointer == 0) {
         printf("uhci: ERROR: setup_data physaddr is NULL or above 4GB limit for UHCI.\n");
         uhci_free_td(setup_td);
@@ -250,7 +251,7 @@ int uhci_control_transfer(uhci_controller_t *controller, uint8_t device_address,
 
     qh->element_link_ptr.enable = 0;
     qh->element_link_ptr.type   = UHCI_FRAME_LIST_ENTRY_TYPE_TD;
-    qh->element_link_ptr.ptr    = (get_physaddr32((uint64_t)setup_td, kernel_pml4)) >> 4;
+    qh->element_link_ptr.ptr    = (get_physaddr32((uint64_t)setup_td, kernel_mm)) >> 4;
 
     /* Data */
     struct uhci_td *prev = setup_td;
@@ -281,9 +282,10 @@ int uhci_control_transfer(uhci_controller_t *controller, uint8_t device_address,
                 = UHCI_TD_HEADER(data_in ? UHCI_TD_PID_IN : UHCI_TD_PID_OUT, device_address, 0, toggle, pkt_len);
             td_next->status = UHCI_TD_ACTIVE | UHCI_TD_SPD;
 
-            td_next->buffer_pointer = get_physaddr32((uint64_t)data_buffer + off, kernel_pml4);
+            td_next->buffer_pointer = get_physaddr32((uint64_t)data_buffer + off, kernel_mm);
             if (td_next->buffer_pointer == 0) {
-                printf("ERROR: uhci_control_transfer: buffer pointer is NULL or above-4G (data_buffer=%p, off=%p).\n", (void *)data_buffer, (void *)off);
+                printf("ERROR: uhci_control_transfer: buffer pointer is NULL or above-4G (data_buffer=%p, off=%p).\n",
+                       (void *)data_buffer, (void *)off);
                 res = -EINVAL;
                 goto cleanup;
             }
@@ -389,7 +391,7 @@ int uhci_bulk_transfer(usb_endpoint_t *endpoint, uint8_t *buffer, size_t length,
             qh->data_first_td           = (uint64_t)td_next;
             qh->element_link_ptr.enable = 0;
             qh->element_link_ptr.type   = UHCI_FRAME_LIST_ENTRY_TYPE_TD;
-            qh->element_link_ptr.ptr    = (get_physaddr32((uint64_t)td_next, kernel_pml4)) >> 4;
+            qh->element_link_ptr.ptr    = (get_physaddr32((uint64_t)td_next, kernel_mm)) >> 4;
         }
 
         td_next->next_td.terminate = 1;
@@ -397,7 +399,7 @@ int uhci_bulk_transfer(usb_endpoint_t *endpoint, uint8_t *buffer, size_t length,
             = UHCI_TD_HEADER(data_in ? UHCI_TD_PID_IN : UHCI_TD_PID_OUT, dev_addr, ep_no, toggle, packet_len);
         td_next->status = UHCI_TD_ACTIVE | UHCI_TD_SPD;
 
-        td_next->buffer_pointer = get_physaddr32((uint64_t)buffer + offs, kernel_pml4);
+        td_next->buffer_pointer = get_physaddr32((uint64_t)buffer + offs, kernel_mm);
         if (td_next->buffer_pointer == 0) {
             printf("ERROR: uhci_bulk_transfer: buffer pointer is NULL or above-4G.\n");
             res = -EINVAL;
@@ -559,6 +561,8 @@ void uhci_irq_routine(registers_t *regs, void *data) {
     uint16_t status = uhci_read_register(controller, UHCI_IO_USBSTS);
     uhci_write_register(controller, UHCI_IO_USBSTS, status & 0x07); /* Clear INT, ERR, etc. */
 
+    apic_send_eoi();
+
     printf("uhci: irq: status = %.4x", status);
 }
 
@@ -675,11 +679,11 @@ int uhci_init(uhci_controller_t *controller, pci_device_t *pci_dev) {
 
     /* 32 -> 16 -> 8 -> 4 -> 2 -> 1 ms queue heads */
     controller->qh_1ms.horiz_link_ptr.ptr  = 0;
-    controller->qh_2ms.horiz_link_ptr.ptr  = get_physaddr32((uint64_t)&controller->qh_1ms, kernel_pml4) >> 4;
-    controller->qh_4ms.horiz_link_ptr.ptr  = get_physaddr32((uint64_t)&controller->qh_2ms, kernel_pml4) >> 4;
-    controller->qh_8ms.horiz_link_ptr.ptr  = get_physaddr32((uint64_t)&controller->qh_4ms, kernel_pml4) >> 4;
-    controller->qh_16ms.horiz_link_ptr.ptr = get_physaddr32((uint64_t)&controller->qh_8ms, kernel_pml4) >> 4;
-    controller->qh_32ms.horiz_link_ptr.ptr = get_physaddr32((uint64_t)&controller->qh_16ms, kernel_pml4) >> 4;
+    controller->qh_2ms.horiz_link_ptr.ptr  = get_physaddr32((uint64_t)&controller->qh_1ms, kernel_mm) >> 4;
+    controller->qh_4ms.horiz_link_ptr.ptr  = get_physaddr32((uint64_t)&controller->qh_2ms, kernel_mm) >> 4;
+    controller->qh_8ms.horiz_link_ptr.ptr  = get_physaddr32((uint64_t)&controller->qh_4ms, kernel_mm) >> 4;
+    controller->qh_16ms.horiz_link_ptr.ptr = get_physaddr32((uint64_t)&controller->qh_8ms, kernel_mm) >> 4;
+    controller->qh_32ms.horiz_link_ptr.ptr = get_physaddr32((uint64_t)&controller->qh_16ms, kernel_mm) >> 4;
 
     controller->qh_1ms.horiz_link_ptr.type  = UHCI_FRAME_LIST_ENTRY_TYPE_QH;
     controller->qh_2ms.horiz_link_ptr.type  = UHCI_FRAME_LIST_ENTRY_TYPE_QH;
@@ -703,27 +707,27 @@ int uhci_init(uhci_controller_t *controller, pci_device_t *pci_dev) {
         if ((i % 32) == 0) {
             controller->frame_list_base[i].enable = 0;
             controller->frame_list_base[i].type   = UHCI_FRAME_LIST_ENTRY_TYPE_QH;
-            controller->frame_list_base[i].ptr    = get_physaddr32((uint64_t)&controller->qh_32ms, kernel_pml4) >> 4;
+            controller->frame_list_base[i].ptr    = get_physaddr32((uint64_t)&controller->qh_32ms, kernel_mm) >> 4;
         } else if ((i % 16 == 0)) {
             controller->frame_list_base[i].enable = 0;
             controller->frame_list_base[i].type   = UHCI_FRAME_LIST_ENTRY_TYPE_QH;
-            controller->frame_list_base[i].ptr    = get_physaddr32((uint64_t)&controller->qh_16ms, kernel_pml4) >> 4;
+            controller->frame_list_base[i].ptr    = get_physaddr32((uint64_t)&controller->qh_16ms, kernel_mm) >> 4;
         } else if ((i % 8 == 0)) {
             controller->frame_list_base[i].enable = 0;
             controller->frame_list_base[i].type   = UHCI_FRAME_LIST_ENTRY_TYPE_QH;
-            controller->frame_list_base[i].ptr    = get_physaddr32((uint64_t)&controller->qh_8ms, kernel_pml4) >> 4;
+            controller->frame_list_base[i].ptr    = get_physaddr32((uint64_t)&controller->qh_8ms, kernel_mm) >> 4;
         } else if ((i % 4 == 0)) {
             controller->frame_list_base[i].enable = 0;
             controller->frame_list_base[i].type   = UHCI_FRAME_LIST_ENTRY_TYPE_QH;
-            controller->frame_list_base[i].ptr    = get_physaddr32((uint64_t)&controller->qh_4ms, kernel_pml4) >> 4;
+            controller->frame_list_base[i].ptr    = get_physaddr32((uint64_t)&controller->qh_4ms, kernel_mm) >> 4;
         } else if ((i % 2 == 0)) {
             controller->frame_list_base[i].enable = 0;
             controller->frame_list_base[i].type   = UHCI_FRAME_LIST_ENTRY_TYPE_QH;
-            controller->frame_list_base[i].ptr    = get_physaddr32((uint64_t)&controller->qh_2ms, kernel_pml4) >> 4;
+            controller->frame_list_base[i].ptr    = get_physaddr32((uint64_t)&controller->qh_2ms, kernel_mm) >> 4;
         } else {
             controller->frame_list_base[i].enable = 0;
             controller->frame_list_base[i].type   = UHCI_FRAME_LIST_ENTRY_TYPE_QH;
-            controller->frame_list_base[i].ptr    = get_physaddr32((uint64_t)&controller->qh_1ms, kernel_pml4) >> 4;
+            controller->frame_list_base[i].ptr    = get_physaddr32((uint64_t)&controller->qh_1ms, kernel_mm) >> 4;
         }
     }
 
@@ -798,7 +802,7 @@ int uhci_init(uhci_controller_t *controller, pci_device_t *pci_dev) {
 /* TODO: consider using mass-allocated blocks instead of individual kmalloc_heap calls */
 void *uhci_alloc_td() {
     void *td = kmalloc_heap(sizeof(struct uhci_td));
-    if (td && !get_physaddr32((uint64_t)td, kernel_pml4)) {
+    if (td && !get_physaddr32((uint64_t)td, kernel_mm)) {
         printf("ERROR: uhci: couldn't allocate td below 4G.\n");
         kfree_heap(td); /* Don't need to check for td == NULL because we know td >> 32 is non-zero */
         return NULL;
@@ -811,7 +815,7 @@ void *uhci_alloc_td() {
 
 void *uhci_alloc_qh() {
     void *qh = kmalloc_heap(sizeof(struct uhci_qh));
-    if (qh && !get_physaddr32((uint64_t)qh, kernel_pml4)) {
+    if (qh && !get_physaddr32((uint64_t)qh, kernel_mm)) {
         printf("ERROR: uhci: couldn't allocate qh below 4G.\n");
         kfree_heap(qh); /* Don't need to check for qh == NULL because we know qh >> 32 is non-zero */
         return NULL;

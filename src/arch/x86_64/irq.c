@@ -12,7 +12,7 @@
 // TODO: IMPORTANT?: PERFORMANCE: map this into userspace so we can check for routine existence without switching page
 // tables
 static void (*routines[TOTAL_IRQ])(registers_t *, void *) = { 0 };
-static void *routines_data[TOTAL_IRQ]             = { 0 };
+static void *routines_data[TOTAL_IRQ]                     = { 0 };
 
 static uint32_t testint = 0;
 
@@ -30,8 +30,7 @@ void irq_handler(registers_t *regs) {
     void (*handler)(registers_t *r, void *data) = routines[index];
 
     if (handler) handler(regs, routines_data[index]);
-
-    apic_send_eoi();
+    else apic_send_eoi();
 }
 
 void irq_register_routine(int index, void (*routine)(registers_t *r, void *data), void *data) {

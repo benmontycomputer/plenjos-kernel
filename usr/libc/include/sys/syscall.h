@@ -23,8 +23,8 @@ int syscall_close(int fd);
 
 uint64_t syscall_get_fb(fb_info_t *out_fb_info);
 
-int syscall_memmap(void *addr, size_t length, syscall_memmap_flags_t flags);
-int syscall_memmap_from_buffer(void *addr, size_t length, syscall_memmap_flags_t flags, void *buffer,
+void *syscall_memmap(void *hint, size_t length, syscall_memmap_flags_t flags);
+void *syscall_memmap_from_buffer(void *hint, size_t length, syscall_memmap_flags_t flags, void *buffer,
                                size_t buffer_length);
 
 void syscall_sleep(uint32_t ms);
@@ -42,7 +42,7 @@ int syscall_mount(const char *dev, const char *target);
 
 pid_t syscall_spawn(const char *path, char *const argv[], char *const envp[], size_t argc, size_t envc);
 
-_Noreturn void syscall_exit_thread();
-_Noreturn void syscall_exit_process();
+_Noreturn void syscall_exit();
+_Noreturn void syscall_exit_group();
 
 #endif /* _LIBC_SYSCALL_H */

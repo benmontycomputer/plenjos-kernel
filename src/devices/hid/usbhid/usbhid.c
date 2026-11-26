@@ -45,6 +45,8 @@ int usbhid_set_protocol(usb_interface_t *iface, bool use_report) {
 
     usb_control_transfer(iface->device, use_report ? usbhid_set_protocol_report : usbhid_set_protocol_boot, NULL, 0,
                          false, 0);
+
+    return 0;
 }
 
 int usbhid_bind_driver(usb_interface_t *iface) {

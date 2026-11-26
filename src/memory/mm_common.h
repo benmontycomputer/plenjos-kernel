@@ -2,6 +2,8 @@
 
 #include "kernel.h"
 #include "lib/structures/rbtree.h"
+#include "lib/sync.h"
+#include "lib/structures/list.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -53,11 +55,6 @@
 
 #define PHYSADDR_MASK 0x000FFFFFFFFFF000ULL
 
-// Virtual memory allocation types
-#define ALLOCATE_VM_EX   0x1
-#define ALLOCATE_VM_RO   0x2
-#define ALLOCATE_VM_USER 0x4
-
 // Paging memory manager
 typedef struct dir_entry {    // 64 bit; pml4, pdpr and pd entry
     uint64_t present     : 1; // always 1
@@ -101,6 +98,15 @@ typedef paging_node_t pd_t;
 typedef paging_node_t pdpt_t;
 typedef paging_node_t pml4_t;
 
+typedef uint8_t vma_flags_t;
+
+#define VMA_RW   0x01
+#define VMA_USER 0x02
+#define VMA_EXEC 0x04
+
+// For vmalloc() only
+#define VMALLOC_FIXED 0x80
+
 // Physical memory manager
 typedef struct kernel_memory_map {
     size_t mem_entry_count;
@@ -108,18 +114,27 @@ typedef struct kernel_memory_map {
 } kernel_memory_map_t;
 
 typedef struct mm {
-    rbtree_t tree;
+    uint64_t cr3; // Must be first
+
+    pml4_t *pml4;
+
+    atomic_int ref_cnt;
+    rwsem_t lock;
+
+    rbtree_t tree; // For userspace mappings only [0x0 - 0x00007FFFFFFFFFFF]
 } mm_t;
 
 typedef struct vm_area vm_area_t;
 
 struct vm_area {
+    rbnode_t node;
+
     ptr_t start;
     ptr_t end;
 
-    rbnode_t node;
-
     mm_t *mm;
+
+    vma_flags_t flags;
 
     /**
      * Got this idea from linux; this stores the largest gap of free virtual memory to the left of this area.

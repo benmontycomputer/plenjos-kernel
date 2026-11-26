@@ -59,4 +59,4 @@ struct ELF_program_header {
 typedef struct ELF_header ELF_header_t;
 typedef struct ELF_program_header ELF_program_header_t;
 
-int loadelf(void *elf_base, size_t elf_size, pml4_t *pml4, uint64_t *entry_out, uint64_t voffs_if_pic);
+int loadelf(void *elf_base, size_t elf_size, mm_t *mm, uint64_t *entry_out, uint64_t voffs_if_pic);

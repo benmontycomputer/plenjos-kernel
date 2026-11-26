@@ -76,7 +76,10 @@ static heap_segment_info_t *heap_add_segment(size_t len) {
     if (pg_addr & (PAGE_LEN - 1)) { pg_addr = (pg_addr + PAGE_LEN - 1) & ~((uint64_t)(PAGE_LEN - 1)); }
 
     /* Map the pages */
-    mmap((void *)pg_addr, pages * PAGE_LEN);
+    int res = mmap_fixed((void *)pg_addr, pages * PAGE_LEN);
+    if (res) {
+        return NULL;
+    }
 
     heap_segment_info_t *new_segment = (heap_segment_info_t *)pg_addr;
 
@@ -152,6 +155,10 @@ void *malloc(size_t size) {
     }
 
     heap_segment_info_t *seg = heap_add_segment(size);
+    if (!seg) {
+        unlock_heap();
+        return NULL;
+    }
     seg->free = false;
 
     unlock_heap();

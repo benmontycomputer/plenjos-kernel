@@ -12,7 +12,7 @@
 
 struct timer_timeout timer_timeouts[TIMER_MAX_TIMEOUTS] = { 0 };
 
-static void thread_wakeup_callback(struct timer_timeout *timeout) {
+static void task_wakeup_callback(struct timer_timeout *timeout) {
     completion_t *data = (completion_t *)timeout->data;
 
     complete(data);
@@ -107,14 +107,14 @@ uint64_t ksleep_nonblocking_ms(uint64_t milliseconds, uint32_t priority) {
 }
 
 void kthread_sleep_finish(struct timer_timeout *timeout) {
-    thread_ready_safe((thread_t *)timeout->data);
+    task_ready_safe((task_t *)timeout->data);
 }
 
 uint64_t kthread_sleep_ms(uint64_t ms) {
     completion_t c = COMPLETION_INIT;
 
-    set_timeout(ms, thread_wakeup_callback, &c);
-    wait_for_completion(&c, -1);
+    set_timeout(ms, task_wakeup_callback, &c);
+    wait_for_completion(&c);
 
     return 0;
 }

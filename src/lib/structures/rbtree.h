@@ -20,9 +20,13 @@ typedef struct rbtree {
 } rbtree_t;
 
 void rbtree_init(rbtree_t *tree, int (*cmp)(const rbnode_t *a, const rbnode_t *b));
-void rbtree_destroy(rbtree_t *tree, void (*free_data)(void *data), void (*free_node)(rbnode_t *node));
+void rbtree_destroy(rbtree_t *tree, void (*free_node)(rbnode_t *node));
 int rbtree_insert(rbtree_t *tree, rbnode_t *data);
-rbnode_t *rbtree_find(rbtree_t *tree, rbnode_t *comparable_node); /* Uses compare function for equality, NOT pointer equality */
+
+/* These use compare function for equality, NOT pointer equality */
+rbnode_t *rbtree_find(rbtree_t *tree, rbnode_t *comparable_node);
+rbnode_t *rbtree_find_or_closest_predecessor(rbtree_t *tree, rbnode_t *comparable_node);
+
 rbnode_t *rbtree_find_min(rbtree_t *tree);
 rbnode_t *rbtree_find_max(rbtree_t *tree);
 int rbtree_remove(rbtree_t *tree, rbnode_t *remove);

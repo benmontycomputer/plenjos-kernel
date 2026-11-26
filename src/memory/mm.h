@@ -16,21 +16,21 @@ void init_memory_manager();
 extern pml4_t *kernel_pml4;
 extern uint64_t kernel_pml4_phys;
 
+extern mm_t *kernel_mm;
+
 uint64_t get_cr3_addr();
 void set_cr3_addr(uint64_t cr3);
 void init_paging();
+void populate_kernel_half_pml4();
 
 inline int is_userspace(uint64_t virt) {
     return (virt >= KERNEL_START_ADDR) ? 0 : 1;
 }
 
-page_t *find_page_using_alloc(uint64_t virt, bool autocreate, uint64_t *alloc_func(), int user, pml4_t *pml4);
-page_t *find_page(uint64_t virt, bool autocreate, pml4_t *pml4);
+physptr_t get_physaddr(uint64_t virt, mm_t *mm);
+uint32_t get_physaddr32(uint64_t virt, mm_t *mm);
 
-physptr_t get_physaddr(uint64_t virt, pml4_t *pml4);
-uint32_t get_physaddr32(uint64_t virt, pml4_t *pml4);
-
-void free_page_table(pml4_t *pml4_virt);
+void free_user_page_table(pml4_t *pml4_virt);
 
 // Physical memory manager
 extern struct kernel_memory_map memmap;
@@ -54,12 +54,21 @@ inline uint64_t virt_to_phys(uint64_t virt) {
 
 uint64_t *alloc_paging_node();
 
-void map_virtual_memory_using_alloc(uint64_t phys_start, uint64_t virt_start, size_t len, uint64_t flags,
-                                    uint64_t *alloc_func(), pml4_t *pml4);
-void map_virtual_memory(uint64_t phys_addr, size_t size, uint64_t flags, pml4_t *pml4);
+vm_area_t *vmlookup(void *virt, mm_t *mm);
+int vmmap(physptr_t phys_start, void *virt_start, size_t len, vma_flags_t requested_flags, vm_area_t **out, mm_t *mm);
+int vmalloc(void *virt_hint, size_t size, vma_flags_t requested_flags, vm_area_t **out, mm_t *mm);
+void vmfree(vm_area_t *vma, mm_t *mm);
+
+void flush_tlb_range(ptr_t start, ptr_t end, mm_t *mm);
 
 // Returns the physical address of the allocated memory
-uint64_t alloc_virtual_memory(uint64_t virt, uint8_t flags, pml4_t *pml4);
-void free_virtual_memory(uint64_t virt, pml4_t *pml4);
+// uint64_t alloc_virtual_memory(uint64_t virt, uint8_t flags, mm_t *mm);
+// void free_virtual_memory(uint64_t virt, mm_t *mm);
+
+mm_t *mm_new();
+
+// These return the old val
+int mm_ref(mm_t *mm);
+int mm_unref(mm_t *mm);
 
 #endif

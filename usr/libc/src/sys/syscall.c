@@ -52,14 +52,14 @@ uint64_t syscall_get_fb(fb_info_t *out_fb_info) {
     return syscall(SYSCALL_GET_FB, (uint64_t)out_fb_info, 0, 0, 0, 0, 0);
 }
 
-int syscall_memmap(void *addr, size_t length, syscall_memmap_flags_t flags) {
-    return (int)syscall(SYSCALL_MEMMAP, (uint64_t)addr, (uint64_t)length, (uint64_t)flags, 0, 0, 0);
+void *syscall_memmap(void *hint, size_t length, syscall_memmap_flags_t flags) {
+    return (void *)syscall(SYSCALL_MEMMAP, (uint64_t)hint, (uint64_t)length, (uint64_t)flags, 0, 0, 0);
 }
 
-int syscall_memmap_from_buffer(void *addr, size_t length, syscall_memmap_flags_t flags, void *buffer,
-                               size_t buffer_length) {
-    return (int)syscall(SYSCALL_MEMMAP_FROM_BUFFER, (uint64_t)addr, (uint64_t)length, (uint64_t)flags, (uint64_t)buffer,
-                        (uint64_t)buffer_length, 0);
+void *syscall_memmap_from_buffer(void *hint, size_t length, syscall_memmap_flags_t flags, void *buffer,
+                                 size_t buffer_length) {
+    return (void *)syscall(SYSCALL_MEMMAP_FROM_BUFFER, (uint64_t)hint, (uint64_t)length, (uint64_t)flags,
+                           (uint64_t)buffer, (uint64_t)buffer_length, 0);
 }
 
 void syscall_sleep(uint32_t ms) {
@@ -87,14 +87,14 @@ int syscall_mount(const char *dev, const char *target) {
 }
 
 pid_t syscall_spawn(const char *path, char *const argv[], char *const envp[], size_t argc, size_t envc) {
-    return (pid_t)syscall(SYSCALL_SPAWN, (uint64_t)path, (uint64_t)argv, (uint64_t)envp, (uint64_t)argc,
-                          (uint64_t)envc, 0);
+    return (pid_t)syscall(SYSCALL_SPAWN, (uint64_t)path, (uint64_t)argv, (uint64_t)envp, (uint64_t)argc, (uint64_t)envc,
+                          0);
 }
 
-_Noreturn void syscall_exit_thread() {
-    syscall(SYSCALL_EXIT_THREAD, 0, 0, 0, 0, 0, 0);
+_Noreturn void syscall_exit() {
+    syscall(SYSCALL_EXIT, 0, 0, 0, 0, 0, 0);
 }
 
-_Noreturn void syscall_exit_process() {
-    syscall(SYSCALL_EXIT_PROCESS, 0, 0, 0, 0, 0, 0);
+_Noreturn void syscall_exit_group() {
+    syscall(SYSCALL_EXIT_GROUP, 0, 0, 0, 0, 0, 0);
 }

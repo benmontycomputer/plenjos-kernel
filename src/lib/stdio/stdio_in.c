@@ -5,6 +5,6 @@
 #include "devices/kconsole.h"
 #include "lib/stdio.h"
 
-char *gets(char *str) {
+/* char *gets(char *str) {
     
-}
+} */

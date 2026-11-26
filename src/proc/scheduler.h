@@ -1,27 +1,26 @@
 #pragma once
 
 #include "cpu/cpu.h"
-#include "proc/proc.h"
-#include "proc/thread.h"
+#include "proc/task.h"
 
 typedef void (*kernel_task_func_t)(void *);
 
-extern thread_t *cores_threads[MAX_CORES];
-extern proc_t *init_proc;
+extern task_t *current[MAX_CORES];
+extern task_t *init_task;
 
-void kill_process_threads(proc_t *proc);
+void kill_task(task_t *task);
 
 void ipi_kill_routine(registers_t *regs, void *data);
 void ipi_wakeup_routine(registers_t *regs, void *data);
 
 // These DO NOT acquire the lock; it must be done by the caller
-void thread_ready(thread_t *thread);
+void task_ready(task_t *task);
 
 // This DOES acquire the lock, as well as disabling interrupts
-void thread_ready_safe(thread_t *thread);
+void task_ready_safe(task_t *task);
 
-void lock_thread_rq();
-void unlock_thread_rq();
+void lock_rq();
+void unlock_rq();
 
 __attribute__((noreturn)) //
 extern void cpu_scheduler_task();
@@ -29,8 +28,9 @@ extern void cpu_scheduler_task();
 // IMPORTANT: interrupts must remain DISABLED for the duration of this function, or its stack could get overwritten.
 int delegate_kernel_task(kernel_task_func_t func, void *arg);
 
+void populate_ktask(mm_t *mm);
 void start_scheduler();
 
 void stop_scheduler();
 
-void block(mutex *m, thread_t *thread);
+void block(wait_queue_t *wq, task_t *task);

@@ -15,52 +15,9 @@
     push rcx
     push rbx
     push rax
-
-    mov rax, cr4         ; save control registers
-    push rax
-    mov rax, cr3
-    push rax
-    mov rax, cr2
-    push rax
-    mov rax, cr0
-    push rax
-
-    ; Save segment registers
-    xor rax, rax ; zeroes out rax
-    mov ax, ds
-    push rax
-    mov ax, es
-    push rax
-    ; push fs
-    ; push gs
-    mov ax, fs
-    push rax
-    mov ax, gs
-    push rax
 %endmacro
 
 %macro isr_restore_ctx 0
-    ; Restore segment registers
-    ; pop gs
-    ; pop fs
-    pop rax
-    ; mov gs, ax ; don't actually modify this
-    pop rax
-    ; mov fs, ax ; don't actually modify this
-    pop rax
-    mov es, ax
-    pop rax
-    mov ds, ax
-
-    pop rax             ; restore control registers
-    mov cr0, rax
-    pop rax
-    mov cr2, rax
-    pop rax
-    mov cr3, rax
-    pop rax
-    mov cr4, rax
-
     ; Restore general-purpose registers
     pop rax
     pop rbx
@@ -317,11 +274,6 @@ syscall_entry:
     mov [gs:SCRATCH_RAX], rax   ; save rax
     mov [gs:SCRATCH_RSP], rsp   ; save rsp
 
-    mov rax, cr3
-    mov [gs:SCRATCH_CR3], rax   ; save cr3
-    mov rax, [gs:0x20]
-    mov cr3, rax                ; load kernel page table
-
     mov rsp, [gs:0x10]          ; load the user thread's kernel syscall stack
 
     ; Build the stack frame for iretq
@@ -338,8 +290,6 @@ syscall_entry:
     push 0x80                   ; dummy int_no
 
     isr_save_ctx
-
-    ; Note: regs->cr3 is NOT correct at this point and should not be used by syscall handler. Syscall handler MUST correct it before returning.
 
     mov rdi, rsp                ; pass registers_t *
     cld

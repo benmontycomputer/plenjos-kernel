@@ -20,22 +20,22 @@
 #include <stdint.h>
 
 void init_x86_64() {
-    asm volatile("cli");
-
     write_tsc_aux(0);
 
-    setup_bs_gs_base();
+    idt_init();
 
+    setup_bs_gs_base();
     gdt_tss_init();
     acpi_init();
 
     enable_apic();
     enable_ioapic();
+    kout(KERNEL_INFO, "ioapic enabled.\n");
 
     uint32_t bsp_flags = (0 << 8) | (0 << 13) | (0 << 15); // Flags for the BSP
     ioapic_route_all_irq(get_curr_lapic_id(), bsp_flags);
 
-    idt_init();
+    asm volatile("sti");
 
     are_interrupts_enabled() ? kout(KERNEL_INFO, "Interrupts confirmed enabled.\n")
                              : kout(KERNEL_WARN, "Couldn't confirm interrupts enabled.\n");
@@ -44,7 +44,7 @@ void init_x86_64() {
                       : kout(KERNEL_WARN, "Couldn't confirm APIC enabled.\n");
 
     // hpet_init();
-    pit_init(); // Interrupts are enabled by this
+    pit_init();
     apic_calibrate_timer();
     apic_start_timer();
 

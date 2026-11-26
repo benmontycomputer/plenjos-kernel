@@ -5,4 +5,4 @@
 
 #include "types.h"
 
-int mmap(void *addr, size_t length);
+int mmap_fixed(void *addr, size_t length);

@@ -10,7 +10,7 @@
 #include "plenjos/stat.h"
 #include "plenjos/syscall.h"
 #include "plenjos/sysmacros.h"
-#include "proc/proc.h"
+#include "proc/task.h"
 
 #include <stdint.h>
 

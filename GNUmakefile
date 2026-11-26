@@ -66,6 +66,7 @@ override CFLAGS += \
     -std=gnu11 \
 	-Wvla \
 	-Werror=vla \
+	-Werror=return-type \
 	-pedantic \
     -ffreestanding \
     -fno-stack-protector \

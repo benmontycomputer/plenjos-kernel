@@ -59,6 +59,8 @@ uint64_t apic_timer_tpms;
 static volatile uint64_t apic_timer_ticks[MAX_CORES] = { 0 };
 
 void apic_timer_irq_handler(registers_t *regs, void *data) {
+    apic_send_eoi();
+
     uint32_t curr_core = get_curr_core();
     apic_timer_ticks[curr_core]++;
 

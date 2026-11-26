@@ -2,7 +2,7 @@
 
 #include "plenjos/limits.h"
 #include "plenjos/syscall.h"
-#include "proc/proc.h"
+#include "proc/task.h"
 #include "vfs/fscache.h"
 #include "vfs/vfs.h"
 

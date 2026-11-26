@@ -7,44 +7,30 @@
 #include "plenjos/errno.h"
 #include "syscall/syscall_helpers.h"
 
-int syscall_routine_memmap(void *addr, size_t length, syscall_memmap_flags_t flags, pml4_t *current_pml4) {
-    uint64_t voffs = (uint64_t)addr - ((uint64_t)addr % PAGE_LEN);
-    if ((uint64_t)addr % PAGE_LEN != 0) {
-        length += (uint64_t)addr % PAGE_LEN;
+void *syscall_routine_memmap(void *addr, size_t length, syscall_memmap_flags_t flags, mm_t *mm) {
+    vma_flags_t req_flags = VMA_USER;
+    if (flags & SYSCALL_MEMMAP_FLAG_WR) {
+        req_flags |= VMA_RW;
     }
-    if (length % PAGE_LEN != 0) {
-        length += PAGE_LEN - (length % PAGE_LEN);
+    if (flags & SYSCALL_MEMMAP_FLAG_EX) {
+        req_flags |= VMA_EXEC;
     }
-
-    for (; voffs < (uint64_t)addr + length; voffs += PAGE_LEN) {
-        if (get_physaddr(voffs, current_pml4)) {
-            printf("WARNING: the pml4 table at vaddr %p already has %p mapped.\n", current_pml4, voffs);
-            return -EEXIST;
-            // TODO: handle this better
-            // However, this must throw an error to prevent syscall_routine_memmap_from_buffer from using its write
-            // override on an existing mapping
-        }
-        uint64_t frame = find_next_free_frame();
-        if (!frame) {
-            printf("Failed to find free frame for vaddr %p\n", voffs);
-            return -ENOMEM;
-        }
-        memset((void *)phys_to_virt(frame), 0, PAGE_LEN);
-        map_virtual_memory_using_alloc(frame, voffs, PAGE_LEN,
-                                       PAGE_FLAG_PRESENT | PAGE_FLAG_USER
-                                           | (flags & SYSCALL_MEMMAP_FLAG_WR ? PAGE_FLAG_WRITE : 0)
-                                           | (flags & SYSCALL_MEMMAP_FLAG_EX ? 0 : PAGE_FLAG_NX),
-                                       alloc_paging_node, current_pml4);
+    if (flags & SYSCALL_MEMMAP_FLAG_FIXED) {
+        req_flags |= VMALLOC_FIXED;
     }
 
-    return 0;
+    vm_area_t *vma = NULL;
+    if (vmalloc(addr, length, req_flags, &vma, mm)) {
+        return NULL;
+    }
+    return (void *)vma->start;
 }
 
-int syscall_routine_memmap_from_buffer(void *addr, size_t length, syscall_memmap_flags_t flags, void *buffer,
-                                       size_t buffer_length, pml4_t *current_pml4) {
-    int res = syscall_routine_memmap(addr, length, flags, current_pml4);
-    if (res != 0) {
-        return res;
+void *syscall_routine_memmap_from_buffer(void *addr_req, size_t length, syscall_memmap_flags_t flags, void *buffer,
+                                       size_t buffer_length, mm_t *mm) {
+    void *addr = syscall_routine_memmap(addr_req, length, flags, mm);
+    if (!addr) {
+        return NULL;
     }
 
     uint64_t end = (uint64_t)addr + length;
@@ -56,12 +42,12 @@ int syscall_routine_memmap_from_buffer(void *addr, size_t length, syscall_memmap
 
     // We mapped these pages just now (otherwise the memmap routine would have errored), so we can override the write
     // check
-    copy_to_user_buf(addr, buffer, to_copy, true, current_pml4);
+    copy_to_user_buf(addr, buffer, to_copy, true, mm);
 
     return 0;
 }
 
-int syscall_routine_memprotect(void *addr, size_t length, syscall_memmap_flags_t flags, pml4_t *current_pml4) {
+/* int syscall_routine_memprotect(void *addr, size_t length, syscall_memmap_flags_t flags, pml4_t *current_pml4) {
     uint64_t voffs = (uint64_t)addr - ((uint64_t)addr % PAGE_LEN);
     if ((uint64_t)addr % PAGE_LEN != 0) {
         length += (uint64_t)addr % PAGE_LEN;
@@ -126,4 +112,4 @@ int syscall_routine_memprotect(void *addr, size_t length, syscall_memmap_flags_t
     }
 
     return 0;
-}
+} */

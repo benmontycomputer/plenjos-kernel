@@ -9,9 +9,8 @@
 #include "memory/kmalloc.h"
 #include "memory/mm.h"
 #include "memory/vmdump.h"
-#include "proc/proc.h"
 #include "proc/scheduler.h"
-#include "proc/thread.h"
+#include "proc/task.h"
 #include "syscall/syscall.h"
 #include "timer/pit.h"
 #include "vfs/fscache.h"
@@ -148,12 +147,12 @@ void hcf(void) {
 }
 
 _Noreturn void panic_nomsg() {
-    stop_scheduler();
+    if (smp_loaded)
+        stop_scheduler();
     hcf();
 }
 
-proc_t *init_proc;
-static thread_t bootstrap_kthread = { 0 };
+task_t *init_task;
 
 // The following will be our kernel's entry point.
 // If renaming kmain() to something else, make sure to change the
@@ -183,6 +182,13 @@ void kmain(void) {
     // kernel_pml4);
 
     init_memory_manager();
+    // Ensure lock functions see a (non-switchable) thread context
+    populate_ktask(kernel_mm);
+    // Setup the GDT
+#if ARCH(X86_64)
+    init_x86_64();
+#endif
+
     init_kernel_heap();
 
     if (!executable_addr_request.response) {
@@ -192,15 +198,8 @@ void kmain(void) {
     kernel_load_phys = executable_addr_request.response->physical_base;
     kernel_load_virt = executable_addr_request.response->virtual_base;
 
-    debug_serial = true;
-
     // TODO: integrate this into device manager
     init_serial();
-
-// Setup the GDT
-#if ARCH(X86_64)
-    init_x86_64();
-#endif
 
     kout(KERNEL_INFO, "Debugging to serial output now...\n");
     kout(KERNEL_INFO, "KERNEL CMDLINE: %s\n", executable_cmdline_request.response->cmdline);
@@ -208,14 +207,14 @@ void kmain(void) {
          executable_file_request.response->executable_file->mbr_disk_id);
 
     load_smp();
-    cores_threads[0] = &bootstrap_kthread;
-    bootstrap_kthread.tid = -1;
 
     start_scheduler();
 
     vfs_init();
 
     device_manager_init();
+
+    kout(KERNEL_INFO, "\nDevice manager initalized.\n\n");
 
     // Boot with "vmdump" on the kernel command line (limine.conf) to print the live kernel page tables
     if (vm_dump_requested(executable_cmdline_request.response->cmdline)) {
@@ -224,24 +223,26 @@ void kmain(void) {
 
     clear();
 
-    init_proc = create_proc("init", NULL);
+    init_task = create_task("init", NULL);
 
-    int res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_READ, 0, 0, &init_proc->fds[0]);
+    int res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_READ, 0, 0, &init_task->fds[0]);
     if (res) {
         kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stdin\n", res);
     }
 
-    res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &init_proc->fds[1]);
+    res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &init_task->fds[1]);
     if (res) {
         kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stdout\n", res);
     }
 
-    res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &init_proc->fds[2]);
+    res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &init_task->fds[2]);
     if (res) {
         kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stderr\n", res);
     }
 
-    execute("/bin/init", init_proc);
+    debug_serial = true;
+
+    execute("/bin/init", init_task);
 
     cpu_scheduler_task();
 }
@@ -258,7 +259,7 @@ void populate_string_hexnum(char *buf, size_t len, const char *str, uint32_t hex
 
     char *buf_end = buf + str_len;
 
-    int started   = 0;
+    int started = 0;
 
     for (int shift = 28; shift >= 0; shift -= 4) {
         uint32_t nibble = (hex >> shift) & 0xF;

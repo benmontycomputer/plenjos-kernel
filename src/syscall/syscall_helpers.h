@@ -1,14 +1,12 @@
 #pragma once
 
-#include <stdint.h>
-#include <stddef.h>
-
-#include "plenjos/limits.h"
-#include "proc/proc.h"
-
 #include "kernel.h"
-
 #include "memory/mm_common.h"
+#include "plenjos/limits.h"
+#include "proc/task.h"
+
+#include <stddef.h>
+#include <stdint.h>
 
 #define CALL(regs) (((registers_t *)regs)->rax)
 #define ARG1(regs) (((registers_t *)regs)->rdi)
@@ -18,14 +16,14 @@
 #define ARG5(regs) (((registers_t *)regs)->r8)
 #define ARG6(regs) (((registers_t *)regs)->r9)
 
-int copy_to_user_buf(void *dest, void *src, size_t count, bool override_write_check, pml4_t *current_pml4);
-int copy_to_kernel_buf(void *dest, void *src, size_t count, pml4_t *current_pml4);
+int copy_to_user_buf(void *dest, void *src, size_t count, bool override_write_check, mm_t *mm);
+int copy_to_kernel_buf(void *dest, void *src, size_t count, mm_t *mm);
 
 // This must be freed!
-int handle_string_arg(pml4_t *current_pml4, uint64_t user_ptr, const char **out);
+int handle_string_arg(uint64_t user_ptr, const char **out, mm_t *mm);
 
 // Out must be at least PATH_MAX bytes
-int handle_relative_path(const char *rel, proc_t *proc, char *out);
+int handle_relative_path(const char *rel, task_t *task, char *out);
 
 // Out must be at least PATH_MAX bytes
 // Simplifies the path by removing ., .., and extra / characters

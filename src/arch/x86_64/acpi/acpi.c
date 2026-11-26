@@ -66,7 +66,14 @@ void *find_acpi_table(const char *sig) {
 uint64_t acpi_map_table_mem(uint64_t phys, size_t size) {
     uint64_t offset = phys & 0xFFF;
 
-    map_virtual_memory(phys - offset, (uint64_t)size + offset, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, kernel_pml4);
+    // TODO: VMEM: strong uncacheable?
+    // map_virtual_memory(phys - offset, (uint64_t)size + offset, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, kernel_pml4);
+    if (!vmlookup((void *)phys_to_virt(phys - offset), kernel_mm)) {
+        int res;
+        if (res = vmmap((physptr_t)phys - offset, (void *)phys_to_virt(phys - offset), size + offset, VMA_RW, NULL, kernel_mm)) {
+            panic("acpi_map_table_mem(): vmmap failed with error %d!\n", res);
+        }
+    }
 
     return phys_to_virt(phys);
 }
@@ -83,7 +90,7 @@ void acpi_init() {
     rsdp = (RSDP_t *)acpi_map_table_mem((uint64_t)rsdp_resp->address, sizeof(XSDT_t));
 
     if (rsdp->revision > 0) {
-        rsdp_extended = (RSDP_EXTENDED_t *)rsdp_extended;
+        rsdp_extended = (RSDP_EXTENDED_t *)rsdp;
 
         xsdt_global = (XSDT_t *)acpi_map_table_mem(rsdp_extended->xsdt_addr, sizeof(XSDT_t));
 
@@ -127,8 +134,14 @@ void acpi_init() {
 
     // Map the memory for the local apic (each cpu has one, but the address is the same)
     kout(KERNEL_INFO, "lapic addr: %p\n\n", madt_header_global->lapic_address);
-    map_virtual_memory(madt_header_global->lapic_address, 4096, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, kernel_pml4);
+    // TODO: VMEM
+    // map_virtual_memory(madt_header_global->lapic_address, 4096, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, kernel_pml4);
     LAPIC_BASE = phys_to_virt(madt_header_global->lapic_address);
+    // TODO: strong uncacheable?
+    int res = vmmap(madt_header_global->lapic_address, (void *)LAPIC_BASE, PAGE_LEN, VMA_RW, NULL, kernel_mm);
+    if (res) {
+        panic("acpi_init(): vmmap failed with res %d!\n", res);
+    }
 
     void *fapc = find_acpi_table("FACP");
 

@@ -79,7 +79,7 @@ void ipi_tlb_shootdown_routine(registers_t *regs, void *data) {
 
     // Write the value of CR3 back to itself, which will flush the TLB
     asm volatile("mov %0, %%cr3" : : "r"(cr3) : "memory");
-    // apic_send_eoi();
+    apic_send_eoi();
 }
 
 void ipi_tlb_flush_routine(registers_t *regs, void *data) {
@@ -90,7 +90,7 @@ void ipi_tlb_flush_routine(registers_t *regs, void *data) {
 
     // Write the value of CR3 back to itself, which will flush the TLB
     asm volatile("mov %0, %%cr3" : : "r"(cr3) : "memory");
-    // apic_send_eoi();
+    apic_send_eoi();
 }
 
 void write_tsc_aux(uint32_t core) {
@@ -144,7 +144,7 @@ void setup_other_cores() {
 
     for (uint32_t i = 1; i < MAX_CORES; i++) {
         gs_bases[i]         = 0;
-        cores_threads[i]    = NULL;
+        current[i]          = NULL;
         cpu_cores[i].online = false;
     }
 

@@ -31,11 +31,6 @@ phys_mem_free_frame_t *phys_mem_frame_map;
 phys_mem_free_frame_t *phys_mem_frame_map_next_free;
 uint64_t phys_mem_frame_map_size;
 
-uint64_t *test_alloc() {
-    printf("alloc called");
-    hcf();
-}
-
 uint64_t phys_mem_total_frames   = 0;
 uint64_t last_useable_phys_frame = 0;
 
@@ -132,16 +127,16 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
 
     printf("Physical memory frame map linked list setup complete.\n");
 
-    for (size_t i = 0; i < memmap.mem_entry_count; i++) {
+    /* for (size_t i = 0; i < memmap.mem_entry_count; i++) {
         uint64_t base   = memmap.mem_entries[i]->base;
         uint64_t length = memmap.mem_entries[i]->length;
         uint64_t type   = memmap.mem_entries[i]->type;
 
         if (type == LIMINE_MEMMAP_FRAMEBUFFER) {
-            /* map_virtual_memory_using_alloc(base, phys_to_virt(base), length, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,
-                                           test_alloc, kernel_pml4); */
+            map_virtual_memory_using_alloc(base, phys_to_virt(base), length, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,
+                                           test_alloc, kernel_pml4);
         }
-    }
+    } */
 
     // phys_mem_frame_map_next_free = (phys_mem_free_frame_t
     // *)decode_struct_frame_ptr(phys_mem_frame_map_next_free->next_free);

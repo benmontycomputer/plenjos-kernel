@@ -58,7 +58,8 @@ _Noreturn void exit(int status) {
 
     // TODO: once FILE is buffered, flush stdio buffers here
     // TODO: pass exit status code
-    syscall_exit_process();
+    // TODO: exit group
+    syscall_exit();
 }
 
 char *getenv(const char *name) {

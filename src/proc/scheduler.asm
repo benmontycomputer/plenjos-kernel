@@ -53,39 +53,19 @@
     mov r15, [r15 + GEN_REG_R15]
 %endmacro
 
-global _finalize_task_switch
-_finalize_task_switch:
-    cli
-    ; Build the iretq frame on the current stack (should always be the per-core kernel stack)
-    mov r15, rdi                  ; the thread's registers_t
-    mov rdi, [r15 + CR_REG_CR3]
-    mov cr3, rdi                  ; load the new thread's page tables (the kernel and the kernel stacks stay mapped)
-    mov rbp, [r15 + GEN_REG_RBP]
-    xor rax, rax
-    mov ax, 0x23                  ; user data segment; 0x20 | 0x3
-    mov ds, ax
-    mov es, ax
-    push qword 0x23               ; SS
-    push qword [r15 + REG_IRET_RSP]
-    push qword [r15 + REG_IRET_RFLAGS]
-    push qword 0x1B               ; CS: user code segment; 0x18 | 0x3
-    push qword [r15 + REG_IRET_RIP]
-    load_task_general_registers
-    iretq
+extern stack_sched_top
 
 %macro switch_to_core_stack 0      ; leaves the core id in edi
     swapgs
     mov  ecx, dword [gs:0x18]
     swapgs
     mov  edi, ecx
-    lea  rdx, [rel tss_obj]
-    imul rcx, rcx, 0x68
-    mov  rsp, [rdx + rcx + 0x4]
+    lea  rdx, [rel stack_sched_top]
+    mov  rsp, [rdx + rcx*8]
 %endmacro
 
 global cpu_scheduler_task
 extern cpu_scheduler_task_c
-extern tss_obj
 cpu_scheduler_task:
     cli
     switch_to_core_stack
@@ -127,3 +107,10 @@ kcontext_resume:
     pop  rbx
     pop  rbp
     ret                         ; returns into block(), right after kcontext_block
+
+global user_task_hook
+user_task_hook:
+    pop rdx
+    pop rsi
+    pop rdi
+    iretq

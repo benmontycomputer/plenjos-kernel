@@ -1,20 +1,15 @@
+#include "lib/stdio.h"
+#include "memory/kmalloc.h"
+#include "plenjos/errno.h"
 #include "syscall/fs/syscall_fs.h"
 #include "syscall/syscall_helpers.h"
-
-#include "proc/proc.h"
-#include "vfs/vfs.h"
 #include "vfs/fscache.h"
+#include "vfs/vfs.h"
 
-#include "memory/kmalloc.h"
-
-#include "lib/stdio.h"
-
-#include "plenjos/errno.h"
-
-ssize_t syscall_routine_read(int fd, void *buf, size_t count, proc_t *proc, pml4_t *current_pml4) {
+ssize_t syscall_routine_read(int fd, void *buf, size_t count, task_t *task, mm_t *mm) {
     vfs_handle_t *handle = NULL;
 
-    ssize_t res = (ssize_t)syscall_fs_helper_get_not_dir_handle(fd, proc, &handle);
+    ssize_t res = (ssize_t)syscall_fs_helper_get_not_dir_handle(fd, task, &handle);
     if (res < 0) {
         printf("syscall_routine_read: failed to get non-directory handle\n");
         return res;
@@ -23,8 +18,8 @@ ssize_t syscall_routine_read(int fd, void *buf, size_t count, proc_t *proc, pml4
     void *buf_tmp = kmalloc_heap(count);
 
     if (!buf_tmp) {
-        printf("syscall_routine_read: failed to allocate temporary buffer for read of %p bytes for process %s (pid %p)\n",
-               count, proc->name, proc->pid);
+        printf("syscall_routine_read: failed to allocate temporary buffer for read of %p bytes for task %s (tid %p)\n",
+               count, task->name, task->tid);
         return -ENOMEM;
     }
 
@@ -33,10 +28,10 @@ ssize_t syscall_routine_read(int fd, void *buf, size_t count, proc_t *proc, pml4
     // TODO: Sockets, etc. should BLOCK by default
 
     if (res > 0) {
-        int check = copy_to_user_buf(buf, buf_tmp, res, false, current_pml4);
+        int check = copy_to_user_buf(buf, buf_tmp, res, false, mm);
         if (check < 0) {
-            printf("syscall_routine_read: failed to copy data to user buffer %p for process %s (pid %p), errno %d\n", buf,
-                   proc->name, proc->pid, check);
+            printf("syscall_routine_read: failed to copy data to user buffer %p for task %s (tid %p), errno %d\n", buf,
+                   task->name, task->tid, check);
             kfree_heap(buf_tmp);
             return (ssize_t)check;
         }
@@ -46,10 +41,10 @@ ssize_t syscall_routine_read(int fd, void *buf, size_t count, proc_t *proc, pml4
     return res;
 }
 
-ssize_t syscall_routine_write(int fd, const void *buf, size_t count, proc_t *proc) {
+ssize_t syscall_routine_write(int fd, const void *buf, size_t count, task_t *task) {
     vfs_handle_t *handle = NULL;
 
-    ssize_t res = (ssize_t)syscall_fs_helper_get_not_dir_handle(fd, proc, &handle);
+    ssize_t res = (ssize_t)syscall_fs_helper_get_not_dir_handle(fd, task, &handle);
     if (res < 0) {
         printf("syscall_routine_write: failed to get non-directory handle\n");
         return res;
@@ -58,10 +53,10 @@ ssize_t syscall_routine_write(int fd, const void *buf, size_t count, proc_t *pro
     return vfs_write(handle, buf, count);
 }
 
-off_t syscall_routine_lseek(int fd, off_t offset, int whence, proc_t *proc) {
+off_t syscall_routine_lseek(int fd, off_t offset, int whence, task_t *task) {
     vfs_handle_t *handle = NULL;
 
-    off_t res = (off_t)syscall_fs_helper_get_handle_and_check_backing_node(fd, proc, &handle);
+    off_t res = (off_t)syscall_fs_helper_get_handle_and_check_backing_node(fd, task, &handle);
     if (res < 0) {
         printf("syscall_routine_lseek: failed to get handle with backing node\n");
         return res;

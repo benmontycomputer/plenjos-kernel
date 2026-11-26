@@ -118,15 +118,16 @@ int load_library_from_disk(const char *path, uint64_t *out_index) {
         if (p->type != PT_LOAD) continue;
 
         // Map with full permissions; we will adjust later if needed
-        int res = syscall_memmap_from_buffer((void *)(base + p->vaddr), (size_t)p->memsz,
-                                             SYSCALL_MEMMAP_FLAG_WR | SYSCALL_MEMMAP_FLAG_EX,
-                                             (void *)(file_buf + p->offset), (size_t)p->filesz);
+        void *res
+            = syscall_memmap_from_buffer((void *)(base + p->vaddr), (size_t)p->memsz,
+                                         SYSCALL_MEMMAP_FLAG_WR | SYSCALL_MEMMAP_FLAG_EX | SYSCALL_MEMMAP_FLAG_FIXED,
+                                         (void *)(file_buf + p->offset), (size_t)p->filesz);
 
-        if (res < 0) {
+        if (!res) {
             syscall_print("load_library_from_disk: failed to map PT_LOAD segment from buffer\n");
             syscall_print_ptr((uint64_t)res);
             // TODO: unmap previously mapped segments
-            return res;
+            return -EIO;
         }
     }
 
