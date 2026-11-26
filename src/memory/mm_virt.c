@@ -220,6 +220,8 @@ void vmfree(vm_area_t *vma, mm_t *mm) {
     uint32_t i_pml4, i_pdpt, i_pd, i_pt;
     uint64_t *pdpt_table, *pd_table, *pt_table;
 
+    bool should_unref = !(vma->flags & VMA_NON_ANON);
+
     for (ptr_t v = vma->start; v < vma->end; v += PAGE_LEN) {
         uint64_t phys = get_physaddr((uint64_t)v, mm);
 
@@ -227,7 +229,7 @@ void vmfree(vm_area_t *vma, mm_t *mm) {
             kout(KERNEL_PANIC, "free_virtual_memory(): couldn't get mapping for virt %p (mm %p)\n", v, mm);
         }
 
-        phys_mem_unref_frame(phys_addr_to_frame_struct(phys));
+        if (should_unref) phys_mem_unref_frame(phys_addr_to_frame_struct(phys));
 
         addr_split((uint64_t)v, &i_pml4, &i_pdpt, &i_pd, &i_pt);
 
@@ -322,6 +324,8 @@ int vmmap(physptr_t phys_start, void *virt_start, size_t len, vma_flags_t reques
         if (out) *out = NULL;
         goto cleanup;
     }
+
+    vma->flags |= VMA_NON_ANON;
 
     uint32_t i_pml4, i_pdpt, i_pd, i_pt;
     uint64_t *pdpt_table, *pd_table, *pt_table;

@@ -104,6 +104,8 @@ typedef uint8_t vma_flags_t;
 #define VMA_USER 0x02
 #define VMA_EXEC 0x04
 
+#define VMA_NON_ANON 0x20 // If this is set, don't unref the frame on vmfree()
+
 // For vmalloc() only
 #define VMALLOC_ZERO  0x40
 #define VMALLOC_FIXED 0x80

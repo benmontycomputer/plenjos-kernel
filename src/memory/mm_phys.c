@@ -52,6 +52,7 @@ uint64_t find_next_free_frame() {
 
     if ((!frame) || frame >= (phys_mem_frame_map + phys_mem_frame_map_size)) {
         printf("No free frames! Last one: %p.\n", fm2);
+        mutex_unlock(&phys_mem_lock);
         return 0;
         // hcf();
     }
