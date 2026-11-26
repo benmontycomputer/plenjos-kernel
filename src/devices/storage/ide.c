@@ -253,11 +253,10 @@ void ide_irq_routine(registers_t *regs, void *data) {
 
     if (!mutex_is_locked(&channel->lock)) {
         // Spurious IRQ?
-        kout_nolock(
-            KERNEL_WARN,
-            "KERNEL ERROR/WARN: IDE bus w/ IRQ %d isn't locked, but an IRQ was fired. Spurious IRQ or programming "
-            "error?\n",
-            (int)channel->irq_no);
+        kout(KERNEL_WARN,
+             "KERNEL ERROR/WARN: IDE bus w/ IRQ %d isn't locked, but an IRQ was fired. Spurious IRQ or programming "
+             "error?\n",
+             (int)channel->irq_no);
         return;
     }
 
@@ -267,11 +266,10 @@ void ide_irq_routine(registers_t *regs, void *data) {
 
     // Increment IRQ processing count
     if (channel->irq_done.cnt > 1) {
-        kout_nolock(
-            KERNEL_WARN,
-            "KERNEL ERROR/WARN: IDE bus w/ IRQ %d has multiple (%d) IRQs being processed simultaneously. IRQs may be "
-            "lost. Are we moving too slowly?\n",
-            (int)channel->irq_no, (int)channel->irq_done.cnt);
+        kout(KERNEL_WARN,
+             "KERNEL ERROR/WARN: IDE bus w/ IRQ %d has multiple (%d) IRQs being processed simultaneously. IRQs may be "
+             "lost. Are we moving too slowly?\n",
+             (int)channel->irq_no, (int)channel->irq_done.cnt);
     }
 
     apic_send_eoi();

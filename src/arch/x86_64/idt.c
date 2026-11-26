@@ -129,7 +129,7 @@ __attribute__((noreturn)) void exception_handler(registers_t *regs) {
     // asm volatile ("cli; hlt"); // Completely hangs the computer
 
     bool is_user                 = (regs->iret_cs & CS_MASK) == USER_CS;
-    kernel_msg_level_t msg_level = (regs->iret_cs != USER_CS) ? KERNEL_PANIC : USER_FAULT;
+    kernel_msg_level_t msg_level = is_user ? USER_FAULT : KERNEL_PANIC;
 
     // release_console();
 

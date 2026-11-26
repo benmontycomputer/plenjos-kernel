@@ -1,3 +1,4 @@
+#include "arch/x86_64/common.h"
 #include "devices/kconsole.h"
 #include "kernel.h"
 #include "lib/lock.h"
@@ -10,6 +11,7 @@
 #include <stdint.h>
 
 static mutex console_access = MUTEX_INIT;
+static bool console_access_irq = 0;
 
 extern char *fb;
 extern int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
@@ -25,11 +27,14 @@ static uint64_t console_pos;
 static bool cursor;
 
 void request_console() {
+    bool _i = irq_save();
     mutex_lock(&console_access);
+    console_access_irq = _i;
 }
 
 void release_console() {
     mutex_unlock(&console_access);
+    irq_restore(console_access_irq);
 }
 
 void scroll_console() {
@@ -247,8 +252,8 @@ void printf_octal(uint32_t octal, uint16_t pad_to) {
     int digit_count = 0;
 
     while (adj || digit_count == 0) {
-        digits[digit_count++] = (char)('0' + (adj & 0x7));
-        adj >>= 3;
+        digits[digit_count++]   = (char)('0' + (adj & 0x7));
+        adj                   >>= 3;
     }
 
     while (digit_count < pad_to) {

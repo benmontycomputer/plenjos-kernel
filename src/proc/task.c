@@ -373,14 +373,14 @@ int execute(const char *path, task_t *task) {
         return res;
     }
 
-    task->thread_state.ds = USER_DS;
-    task->thread_state.es = USER_DS;
-    task->thread_state.fs = USER_DS;
-    task->thread_state.gs = USER_DS;
+    task->thread_state.ds = USER_DS | 3;
+    task->thread_state.es = USER_DS | 3;
+    task->thread_state.fs = USER_DS | 3;
+    task->thread_state.gs = USER_DS | 3;
 
     // TODO: user stack (must find an open address for it as well, because multiple tasks may share a page table)
     vm_area_t *user_stack = NULL;
-    if (res = vmalloc((void *)0x0000800000000000UL - 0x100000, 0x100000, VMA_USER | VMA_RW, &user_stack, task->mm)) {
+    if (res = vmalloc((void *)0x0000800000000000UL - 0x100000, 0x100000, VMA_USER | VMA_RW | VMALLOC_ZERO, &user_stack, task->mm)) {
         kout(KERNEL_WARN, "execute(): couldn't alloc user stack (res %d)!\n", res);
         return res;
     }
@@ -422,13 +422,15 @@ int execute(const char *path, task_t *task) {
     stack_push_qword((uint64_t)str_usr_addr, &rsp);
     stack_push_qword((uint64_t)argc, &rsp);
 
-    stack_push_qword((uint64_t)USER_DS, (uint64_t **)&task->thread_state.rsp);       // SS
-    stack_push_qword((uint64_t)rsp, (uint64_t **)&task->thread_state.rsp);           // RSP
+    uint64_t user_rsp = ustack_top - ((uint64_t)rsp_og - (uint64_t)rsp);
+
+    stack_push_qword((uint64_t)USER_DS | 3, (uint64_t **)&task->thread_state.rsp);   // SS
+    stack_push_qword(user_rsp, (uint64_t **)&task->thread_state.rsp);                // RSP
     stack_push_qword((uint64_t)DEFAULT_FLAGS, (uint64_t **)&task->thread_state.rsp); // RFLAGS
-    stack_push_qword((uint64_t)USER_CS, (uint64_t **)&task->thread_state.rsp);       // CS
+    stack_push_qword((uint64_t)USER_CS | 3, (uint64_t **)&task->thread_state.rsp);   // CS
     stack_push_qword((uint64_t)linker_entry, (uint64_t **)&task->thread_state.rsp);  // RIP
 
-    stack_push_qword((uint64_t)rsp, (uint64_t **)&task->thread_state.rsp);         // for rdi
+    stack_push_qword(user_rsp, (uint64_t **)&task->thread_state.rsp);              // for rdi
     stack_push_qword((uint64_t)LINKER_OFFS, (uint64_t **)&task->thread_state.rsp); // for rsi; linker base addr
     stack_push_qword((uint64_t)0x400000ULL, (uint64_t **)&task->thread_state.rsp); // for rdx; shell binary base addr
 
