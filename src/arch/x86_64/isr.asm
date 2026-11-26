@@ -95,17 +95,7 @@ isr_stub_%+%2:
     mov rdi, rsp                    ; Pass the current stack pointer to `pic_irq_handler`
     cld
 
-    ; Read from kernel GSBASE inside the swapgs
-    push rax
-    swapgs
-    mov rax, [gs:0x20]               ; kernel pml4 (physical address)
-    swapgs
-    mov cr3, rax
-    pop rax
-
     call irq_handler
-
-    ; isr_restore_ctx reloads the cr3 that was active when we were interrupted
 
     isr_restore_ctx
 
