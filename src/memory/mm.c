@@ -18,7 +18,7 @@ mm_t *kernel_mm                       = &_kernel_mm;
 __attribute__((used, section(".limine_requests"))) //
 static volatile struct limine_memmap_request memmap_request = { .id = LIMINE_MEMMAP_REQUEST, .revision = 3 };
 
-int vma_cmp(const rbnode_t *a, const rbnode_t *b) {
+static int vma_cmp(const rbnode_t *a, const rbnode_t *b) {
     vm_area_t *va = (vm_area_t *)a;
     vm_area_t *vb = (vm_area_t *)b;
 
@@ -93,7 +93,7 @@ int mm_ref(mm_t *mm) {
     return atomic_fetch_add(&mm->ref_cnt, 1);
 }
 
-void mm_free_node(rbnode_t *node) {
+static void mm_free_node(rbnode_t *node) {
     vm_area_t *vma = (vm_area_t *)node;
 
     // TODO: free the vmarea

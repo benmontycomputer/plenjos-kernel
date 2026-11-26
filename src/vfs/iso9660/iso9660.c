@@ -6,18 +6,18 @@
 #include "plenjos/errno.h"
 #include "vfs/fscache.h"
 
-int iso9660_load_func(fscache_node_t *node, const char *name, fscache_node_t *out);
-int iso9660_unload_func(fscache_node_t *node);
-ssize_t iso9660_directory_read_func(vfs_handle_t *handle, void *buf, size_t len);
-int iso9660_create_child_func(fscache_node_t *parent, const char *name, struct kstat stat, fscache_node_t *node);
-ssize_t iso9660_file_read_func(vfs_handle_t *handle, void *buf, size_t len);
+static int iso9660_load_func(fscache_node_t *node, const char *name, fscache_node_t *out);
+static int iso9660_unload_func(fscache_node_t *node);
+static ssize_t iso9660_directory_read_func(vfs_handle_t *handle, void *buf, size_t len);
+static int iso9660_create_child_func(fscache_node_t *parent, const char *name, struct kstat stat, fscache_node_t *node);
+static ssize_t iso9660_file_read_func(vfs_handle_t *handle, void *buf, size_t len);
 
-const vfs_ops_block_t iso9660_file_fsops = {
+static const vfs_ops_block_t iso9660_file_fsops = {
     .read        = iso9660_file_read_func,
     .load_node   = iso9660_load_func,
     .unload_node = iso9660_unload_func,
 };
-const vfs_ops_block_t iso9660_directory_fsops = {
+static const vfs_ops_block_t iso9660_directory_fsops = {
     .read         = iso9660_directory_read_func,
     .load_node    = iso9660_load_func,
     .create_child = iso9660_create_child_func,
@@ -29,7 +29,7 @@ const vfs_ops_block_t iso9660_directory_fsops = {
  * are in both path table and directory records).
  */
 
-size_t iso9660_normalize_name(char *out, size_t out_size, const uint8_t *in, size_t in_len) {
+static size_t iso9660_normalize_name(char *out, size_t out_size, const uint8_t *in, size_t in_len) {
     size_t o = 0;
     size_t i = 0;
 
@@ -72,12 +72,12 @@ size_t iso9660_normalize_name(char *out, size_t out_size, const uint8_t *in, siz
     return o;
 }
 
-ssize_t iso9660_file_read_func(vfs_handle_t *handle, void *buf, size_t len) {
+static ssize_t iso9660_file_read_func(vfs_handle_t *handle, void *buf, size_t len) {
     if (!handle || !buf) return -EINVAL;
 
     if (len == 0) return 0;
 
-    if (!handle->backing_node || !handle->instance_data) return -EIO;
+    if (!handle->backing_node) return -EIO;
 
     vfs_iso9660_cache_node_data_t *node_data = (vfs_iso9660_cache_node_data_t *)handle->backing_node->internal_data;
 
@@ -131,7 +131,7 @@ ssize_t iso9660_file_read_func(vfs_handle_t *handle, void *buf, size_t len) {
     return (ssize_t)copied;
 }
 
-ssize_t iso9660_directory_read_func(vfs_handle_t *handle, void *buf, size_t len) {
+static ssize_t iso9660_directory_read_func(vfs_handle_t *handle, void *buf, size_t len) {
     if (handle == NULL || buf == NULL) {
         return -EINVAL;
     }
@@ -261,7 +261,7 @@ ssize_t iso9660_directory_read_func(vfs_handle_t *handle, void *buf, size_t len)
     return (ssize_t)total_bytes_read;
 }
 
-int iso9660_unload_func(fscache_node_t *node) {
+static int iso9660_unload_func(fscache_node_t *node) {
     if (!node) {
         return -EINVAL;
     }
@@ -274,7 +274,7 @@ int iso9660_unload_func(fscache_node_t *node) {
     return 0;
 }
 
-int iso9660_load_func(fscache_node_t *node, const char *name, fscache_node_t *out) {
+static int iso9660_load_func(fscache_node_t *node, const char *name, fscache_node_t *out) {
     if (!node || !name || !out) {
         return -EINVAL;
     }
@@ -369,7 +369,7 @@ int iso9660_load_func(fscache_node_t *node, const char *name, fscache_node_t *ou
     return -ENOENT;
 }
 
-int iso9660_create_child_func(fscache_node_t *parent, const char *name, struct kstat stat, fscache_node_t *node) {
+static int iso9660_create_child_func(fscache_node_t *parent, const char *name, struct kstat stat, fscache_node_t *node) {
     // To be implemented
     return -ENOSYS;
 }

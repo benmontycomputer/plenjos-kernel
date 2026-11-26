@@ -101,7 +101,7 @@ enum {
     CPUID_FEAT_EDX_PBE          = 1 << 31
 };
 
-bool cpuHasMSR();
+bool cpuHasMSR(void);
 
 uint64_t read_msr(uint32_t msr);
 void write_msr(uint32_t msr, uint64_t val);

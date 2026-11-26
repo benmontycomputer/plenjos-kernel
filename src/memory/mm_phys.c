@@ -39,12 +39,6 @@ uint32_t phys_mem_unref_frame(phys_mem_free_frame_t *frame) {
 
 phys_mem_free_frame_t *fm2 = NULL;
 
-uint64_t *alloc() {
-    printf("alloc called in mm_phys");
-    hcf();
-    return NULL;
-}
-
 uint64_t find_next_free_frame() {
     mutex_lock(&phys_mem_lock);
 

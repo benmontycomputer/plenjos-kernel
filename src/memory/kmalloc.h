@@ -8,11 +8,11 @@
 
 void *kmalloc_heap(uint64_t size);
 
-void init_kernel_heap();
+void init_kernel_heap(void);
 
 // Aligned to page tables
 // void *kmalloc_a(uint64_t size, bool align);
 
-void kfree_heap(void *ptr);
+void kfree_heap(const void *ptr);
 
 #endif

@@ -269,7 +269,9 @@ int fscache_request_node(const char *path, uid_t uid, fscache_node_t **out) {
                 if (cur->fsops && cur->fsops->load_node) {
                     load_res = cur->fsops->load_node(cur, token, child);
                 } else {
-                    kout(KERNEL_WARN, "fscache_request_node(): ran into node with no load_node func (name %s, path %s, mode %o)\n", cur->name, path, cur->stat.mode);
+                    kout(KERNEL_WARN,
+                         "fscache_request_node(): ran into node with no load_node func (name %s, path %s, mode %o)\n",
+                         cur->name, path, cur->stat.mode);
                 }
 
                 if (load_res != 0) {
@@ -438,7 +440,7 @@ int fscache_init() {
 }
 
 void fscache_node_populate(fscache_node_t *node, fscache_flags_t flags, const char *name, struct kstat stat,
-                           vfs_ops_block_t *fsops) {
+                           const vfs_ops_block_t *fsops) {
     if (!node) return;
 
     node->flags = flags;

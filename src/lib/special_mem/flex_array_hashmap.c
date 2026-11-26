@@ -5,15 +5,15 @@
 
 static fixed_size_allocator_t _fah_fsa = FSA_DEFAULT(sizeof(fixed_size_allocator_t));
 
-int _fah_key_compare_func(void *a, void *b, void *data) {
+static int _fah_key_compare_func(void *a, void *b, const void *data) {
     key_func_t key_func = (key_func_t)data;
     return strncmp(key_func(a), key_func(b), (size_t)-1);
 }
 
 // TODO: get a better hash func
-uint64_t string_hash64_func_default(void *data) {
-    uint64_t res = 0;
-    char *cur    = (char *)data;
+static uint64_t string_hash64_func_default(const void *data) {
+    uint64_t res    = 0;
+    const char *cur = (const char *)data;
     while (*cur) {
         res += *cur++;
     }
@@ -37,7 +37,7 @@ int fah_insert(flex_array_hashmap_t *fah, void *data, void **out_old) {
 
     void *out_old_tmp = NULL;
 
-    int res = list_append_or_replace(*slot, data, _fah_key_compare_func, fah->key_func, &out_old_tmp);
+    int res = list_append_or_replace(*slot, data, _fah_key_compare_func, (const void *)fah->key_func, &out_old_tmp);
     if (res != 0) {
         kout(KERNEL_WARN, "fah_insert(): list_append_or_replace with error %d%s\n", res,
              (res == -ENOMEM) ? "(OOM?)" : "");
@@ -46,7 +46,7 @@ int fah_insert(flex_array_hashmap_t *fah, void *data, void **out_old) {
         if (!out_old_tmp) {
             // New item added
             fah->item_count++;
-            list_append(fah->keys_list, key);
+            list_append(fah->keys_list, (void *)key);
         }
     }
     // TODO: load factor; rebalance
@@ -54,7 +54,7 @@ int fah_insert(flex_array_hashmap_t *fah, void *data, void **out_old) {
 }
 
 void *fah_get(flex_array_hashmap_t *fah, const char *key) {
-    uint64_t bucket_idx = fah->key_hash_func(key) % fah->fa_size;
+    uint64_t bucket_idx = fah->key_hash_func((void *)key) % fah->fa_size;
     list_t **slot       = (list_t **)ptr_flex_array_get_slot(fah->fa, bucket_idx);
 
     if (!*slot) {
@@ -70,7 +70,7 @@ void *fah_get(flex_array_hashmap_t *fah, const char *key) {
     return NULL;
 }
 
-int fah_each(flex_array_hashmap_t *fah, size_t start, ssize_t len, void (each_func)(void *item, void *func_args),
+int fah_each(flex_array_hashmap_t *fah, size_t start, ssize_t len, void(each_func)(void *item, void *func_args),
              void *func_args) {
     ll_data_t *keys_data = (ll_data_t *)fah->keys_list->data;
     slnode_t *node       = keys_data->head;

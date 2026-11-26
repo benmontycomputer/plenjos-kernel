@@ -10,4 +10,4 @@
 #include "plenjos/stat.h"
 
 void syscall(registers_t *regs, task_t *task);
-void syscall_init_cpu();
+void syscall_init_cpu(void);

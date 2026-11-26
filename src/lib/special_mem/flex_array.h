@@ -22,7 +22,7 @@ inline void *_flex_array_get_slot(void *arr, size_t slot, size_t page_capacity, 
         pg--;
     }
 
-    return arr + (offset * item_size);
+    return (void *)((uint64_t)arr + (offset * item_size));
 }
 
 inline void *_flex_array_set(void *arr, size_t idx, size_t page_capacity, size_t item_size) {

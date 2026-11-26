@@ -41,11 +41,11 @@ static int kout_panic(kernel_msg_level_t msg_level, const char *format, ...) {
 
     va_end(list);
 
-    return 0;
+    return res;
 }
 
 // The below function will print some debug message for page fault
-void page_fault_handler(registers_t *regs) {
+static void page_fault_handler(registers_t *regs) {
     // A page fault has occurred.
     // Retrieve the faulting address from the CR2 register.
     uint64_t faulting_address;
@@ -74,7 +74,7 @@ void page_fault_handler(registers_t *regs) {
                regs->iret_rflags, get_cr3_addr());
 }
 
-void gpf_handler(registers_t *regs) {
+static void gpf_handler(registers_t *regs) {
     kout_panic(KERNEL_PANIC, "%s\n", "gpf error");
     kout_panic(KERNEL_PANIC, "received interrupt: %d\n", regs->int_no);
     kout_panic(KERNEL_PANIC, "Error Code: %p\n", regs->err_code);
@@ -95,7 +95,7 @@ void gpf_handler(registers_t *regs) {
 #define IA32_MC_ADDR(i)   (0x0402 + ((i) * 4))
 #define IA32_MC_MISC(i)   (0x0403 + ((i) * 4))
 
-void dump_machine_check_msrs() {
+static void dump_machine_check_msrs() {
     uint64_t val;
 
     val            = read_msr(IA32_MCG_CAP);

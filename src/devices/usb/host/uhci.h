@@ -264,8 +264,8 @@ int uhci_init(uhci_controller_t *controller, pci_device_t *pci_dev);
 
 int uhci_insert_qh(uhci_controller_t *controller, struct uhci_qh *qh);
 
-void *uhci_alloc_td();
-void *uhci_alloc_qh();
+void *uhci_alloc_td(void);
+void *uhci_alloc_qh(void);
 
 void uhci_free_td(void *td);
 void uhci_free_qh(void *qh);

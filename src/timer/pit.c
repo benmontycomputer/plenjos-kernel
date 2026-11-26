@@ -3,16 +3,16 @@
 #include "pit.h"
 
 #include "arch/x86_64/apic/apic.h"
+#include "arch/x86_64/apic/ioapic.h"
 #include "arch/x86_64/common.h"
 #include "arch/x86_64/irq.h"
-#include "arch/x86_64/apic/ioapic.h"
 #include "devices/io/ports.h"
 #include "lib/stdio.h"
 #include "timer.h"
 
 volatile uint64_t pit_count;
 
-void pit_timer_callback(void *data) {
+static void pit_timer_callback(void *data) {
     struct timer_timeout *timeout = (struct timer_timeout *)data;
 
     if (timeout->callback) {
@@ -23,7 +23,7 @@ void pit_timer_callback(void *data) {
     atomic_store(&(timeout->milliseconds), 0);
 }
 
-void pit_irq(registers_t *regs, void *data) {
+static void pit_irq(registers_t *regs, void *data) {
     if (pit_count >= UINT64_MAX) pit_count = 0;
 
     pit_count++;
@@ -55,17 +55,17 @@ void pit_irq(registers_t *regs, void *data) {
     apic_send_eoi();
 }
 
-void pit_timer_install() {
+static void pit_timer_install() {
     irq_register_routine(0, pit_irq, NULL);
     irq_register_routine(2, pit_irq, NULL);
 }
 
-void pit_timer_remove() {
+static void pit_timer_remove() {
     irq_unregister_routine(0);
     irq_unregister_routine(2);
 }
 
-void set_pit_count(unsigned count) {
+static void set_pit_count(unsigned count) {
     // Set low byte
     outb(0x40, count & 0xFF);          // Low byte
     outb(0x40, (count & 0xFF00) >> 8); // High byte

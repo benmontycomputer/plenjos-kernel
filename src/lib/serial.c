@@ -29,7 +29,7 @@ int init_serial() {
    return 0;
 }
 
-int serial_received() {
+static int serial_received() {
    return inb(PORT + 5) & 1;
 }
 
@@ -39,7 +39,7 @@ char read_serial() {
    return inb(PORT);
 }
 
-int is_transmit_empty() {
+static int is_transmit_empty() {
    return inb(PORT + 5) & 0x20;
 }
 

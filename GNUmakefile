@@ -63,15 +63,31 @@ endif
 override CFLAGS += \
     -Wall \
     -Wextra \
-    -std=gnu11 \
+    -std=gnu23 \
 	-Wvla \
 	-Werror=vla \
 	-Werror=return-type \
+	-Werror=discarded-qualifiers \
 	-pedantic \
     -ffreestanding \
     -fno-stack-protector \
 	-Wframe-larger-than=1024 \
 	-Werror=frame-larger-than=1024 \
+	-Werror=implicit-function-declaration \
+	-Werror=incompatible-pointer-types \
+	-Werror=int-conversion \
+	-Werror=pointer-to-int-cast \
+	-Werror=address \
+	-Werror=array-bounds \
+	-Werror=stringop-overflow \
+	-Werror=missing-prototypes \
+	-Werror=strict-prototypes \
+	-Werror=parentheses \
+	-Werror=sign-compare \
+	-Werror=type-limits \
+	-Werror=implicit-fallthrough \
+	-Werror=strict-aliasing \
+	-Werror=pointer-arith \
     -fno-stack-check \
 	-fno-omit-frame-pointer \
     -fno-lto \
@@ -210,6 +226,8 @@ uefi_run:
 		-usb \
 		-device usb-kbd \
 		-device usb-mouse \
+		-display cocoa,zoom-to-fit=on \
+		-full-screen \
         -no-reboot
 
 uefi_run_gdb:
@@ -227,6 +245,8 @@ uefi_run_gdb:
 		-usb \
 		-device usb-kbd \
 		-device usb-mouse \
+		-display cocoa,zoom-to-fit=on \
+		-full-screen \
 		-no-reboot \
 		-no-shutdown \
 		-s -S

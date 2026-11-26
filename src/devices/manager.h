@@ -111,8 +111,8 @@ typedef enum {
 
 typedef enum { DEVICE_CLASS_CONTROLLER, DEVICE_CLASS_ } device_class_t;
 
-void mount_devfs();
+void mount_devfs(void);
 
-int device_manager_init();
+int device_manager_init(void);
 endpoint_t *register_device_endpoint(char *name, endpoint_driver_t *driver, uint64_t minor, device_t *hw_dev,
                                      void *func_args);

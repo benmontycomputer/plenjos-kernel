@@ -17,7 +17,7 @@
 __attribute__((used, section(".limine_requests"))) //
 static volatile struct limine_rsdp_request rsdp_request = { .id = LIMINE_RSDP_REQUEST, .revision = 0 };
 
-bool checksum_sdt(ACPISDTHeader_t *tableHeader) {
+static bool checksum_sdt(ACPISDTHeader_t *tableHeader) {
     unsigned char sum = 0;
 
     for (uint32_t i = 0; i < tableHeader->Length; i++) {
@@ -37,7 +37,7 @@ RSDP_EXTENDED_t *rsdp_extended = NULL;
 
 bool ps2_detected = false;
 
-int get_entry_count() {
+static int get_entry_count(void) {
     if (xsdt_global) return (xsdt_global->h.Length - sizeof(xsdt_global->h)) / 8;
     else return (rsdt_global->h.Length - sizeof(rsdt_global->h)) / 4;
 }
@@ -63,14 +63,14 @@ void *find_acpi_table(const char *sig) {
 
 // bool use_xsdt = false;
 
-uint64_t acpi_map_table_mem(uint64_t phys, size_t size) {
+static uint64_t acpi_map_table_mem(uint64_t phys, size_t size) {
     uint64_t offset = phys & 0xFFF;
 
     // TODO: VMEM: strong uncacheable?
     // map_virtual_memory(phys - offset, (uint64_t)size + offset, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, kernel_pml4);
     if (!vmlookup((void *)phys_to_virt(phys - offset), kernel_mm)) {
         int res;
-        if (res = vmmap((physptr_t)phys - offset, (void *)phys_to_virt(phys - offset), size + offset, VMA_RW, NULL, kernel_mm)) {
+        if ((res = vmmap((physptr_t)phys - offset, (void *)phys_to_virt(phys - offset), size + offset, VMA_RW, NULL, kernel_mm))) {
             panic("acpi_map_table_mem(): vmmap failed with error %d!\n", res);
         }
     }

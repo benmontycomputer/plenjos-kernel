@@ -14,10 +14,6 @@
 
 bool in_console_mode = true;
 
-int get_scan_code() {
-    return inb(PS2_DATA);
-}
-
 // This could be more memory efficient if stored as a bitmap
 uint8_t is_key_pressed[32] = { 0 };
 
@@ -69,7 +65,7 @@ static uint8_t get_mods() {
     return mods;
 }
 
-void keyboard_irq_routine(registers_t *regs, void *data) {
+static void keyboard_irq_routine(registers_t *regs, void *data) {
     uint8_t in = inb(PS2_DATA);
 
     kbd_buffer_state_t *buf_state = data;
@@ -220,11 +216,11 @@ static int ps2_reset_device(int port) {
     return 0;
 }
 
-void register_keyboard_irq(void *data) {
+static void register_keyboard_irq(void *data) {
     irq_register_routine(KEYBOARD_IRQ, keyboard_irq_routine, data);
 }
 
-void unregister_keyboard_irq() {
+static void unregister_keyboard_irq() {
     irq_unregister_routine(KEYBOARD_IRQ);
 }
 

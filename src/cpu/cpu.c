@@ -20,10 +20,10 @@
 
 // TODO: do we want to enable sse/sse2/avx instructions?
 
-__attribute__((used, section(".limine_requests"))) static volatile LIMINE_BASE_REVISION(0);
+__attribute__((used, section(".limine_requests"))) static volatile LIMINE_BASE_REVISION(0)
 
-__attribute__((used, section(".limine_requests"))) //
-static volatile struct limine_mp_request mp_request = { .id = LIMINE_MP_REQUEST, .revision = 3 };
+    __attribute__((used, section(".limine_requests"))) //
+    static volatile struct limine_mp_request mp_request = { .id = LIMINE_MP_REQUEST, .revision = 3 };
 
 volatile struct limine_mp_response *mp_response;
 
@@ -97,7 +97,7 @@ void write_tsc_aux(uint32_t core) {
     write_msr(IA32_TSC_AUX_MSR, core);
 }
 
-void setup_other_core(struct limine_mp_info *mp_info) {
+static void setup_other_core(struct limine_mp_info *mp_info) {
     set_cr3_addr(kernel_pml4_phys);
 
     asm volatile("cli");
@@ -137,7 +137,7 @@ void setup_other_core(struct limine_mp_info *mp_info) {
     }
 }
 
-void setup_other_cores() {
+static void setup_other_cores() {
     if (!mp_response) {
         panic("No mp info. Can't setup other cores. Halt!\n");
     }
@@ -161,12 +161,12 @@ void setup_other_cores() {
     }
 }
 
-int get_n_cores() {
+uint32_t get_n_cores() {
     if (!mp_response) {
         panic("No mp info. Can't get CPU count. Halt!\n");
     }
 
-    return (int)mp_response->cpu_count;
+    return (uint32_t)mp_response->cpu_count;
 }
 
 uint32_t get_curr_core() {

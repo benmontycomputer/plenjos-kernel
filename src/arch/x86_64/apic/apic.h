@@ -21,10 +21,10 @@
 extern uint64_t LAPIC_BASE;
 
 void cpu_set_apic_base(uint64_t apic);
-void enable_apic();
-bool is_apic_enabled();
-void apic_send_eoi();
-void apic_calibrate_timer(); // BSP only
-void apic_start_timer();     // All cores
+void enable_apic(void);
+bool is_apic_enabled(void);
+void apic_send_eoi(void);
+void apic_calibrate_timer(void); // BSP only
+void apic_start_timer(void);     // All cores
 
 void send_ipi(uint8_t apic_id, uint8_t vector);

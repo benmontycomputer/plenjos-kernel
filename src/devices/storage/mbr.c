@@ -87,7 +87,7 @@ void drive_read_mbr(struct DRIVE *drive, struct MBR *mbr_out) {
         return;
     }
 
-    if (res < sizeof(struct MBR)) {
+    if (res < (ssize_t)sizeof(struct MBR)) {
         kout(KERNEL_EXTERNAL_FAULT, "Error: Incomplete MBR read from drive (expected %u bytes, got %d bytes)\n",
              sizeof(struct MBR), res);
         kfree_heap(full_buf);

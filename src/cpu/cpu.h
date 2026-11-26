@@ -26,16 +26,16 @@ extern volatile struct limine_mp_response *mp_response;
 
 extern volatile bool smp_loaded;
 
-void setup_bs_gs_base();
+void setup_bs_gs_base(void);
 
-void load_smp();
+void load_smp(void);
 
-uint32_t get_curr_core();
-uint32_t get_curr_lapic_id();
+uint32_t get_curr_core(void);
+uint32_t get_curr_lapic_id(void);
 
 void ipi_tlb_shootdown_routine(registers_t *regs, void *data);
 void ipi_tlb_flush_routine(registers_t *regs, void *data);
 
-int get_n_cores();
+uint32_t get_n_cores(void);
 
 void write_tsc_aux(uint32_t core);

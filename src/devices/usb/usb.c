@@ -57,12 +57,12 @@ static const uint8_t setup_packet_get_report[8] = {
 };
 */
 
-void usb_generate_setup_packet_set_address(uint8_t *out, uint8_t new_address) {
+static void usb_generate_setup_packet_set_address(uint8_t *out, uint8_t new_address) {
     memcpy(out, setup_packet_set_address, 8);
     out[2] = new_address;
 }
 
-void usb_generate_setup_packet_get_config_full(uint8_t *out, uint16_t len) {
+static void usb_generate_setup_packet_get_config_full(uint8_t *out, uint16_t len) {
     memcpy(out, setup_packet_get_config, 8);
     out[6] = len & 0xFF;
     out[7] = (len >> 8) & 0xFF;
@@ -164,8 +164,8 @@ struct usb_host_driver usb_populate_host_driver(usb_host_driver_control_transfer
     return (struct usb_host_driver) { .control_transfer_func = ctrl_transfer, .bulk_transfer_func = bulk_transfer };
 }
 
-usb_endpoint_t usb_generate_endpoint(uint8_t addr, bool in, usb_endpoint_attr_t attrs, usb_interface_t *interface,
-                                     uint16_t max_packet_size) {
+static usb_endpoint_t usb_generate_endpoint(uint8_t addr, bool in, usb_endpoint_attr_t attrs,
+                                            usb_interface_t *interface, uint16_t max_packet_size) {
     usb_endpoint_t ep = { 0 };
 
     ep.address = addr & 0x7F;

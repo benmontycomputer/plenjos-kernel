@@ -90,7 +90,7 @@ typedef struct vfs_filesystem {
     uint64_t instance_data[4];
 } vfs_filesystem_t;
 
-void vfs_init();
+void vfs_init(void);
 
 int vfs_close(vfs_handle_t *f);
 

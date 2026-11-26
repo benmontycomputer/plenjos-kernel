@@ -49,7 +49,7 @@ struct kernelfs_node {
 
 kernelfs_node_t *kernelfs_get_node_from_handle(vfs_handle_t *handle);
 
-void kernelfs_init();
+void kernelfs_init(void);
 // ssize_t kernelfs_open(const char *path, uint64_t flags, uint64_t mode, proc_t *proc, kernelfs_node_t **out);
 int kernelfs_close(vfs_handle_t *f);
 int kernelfs_create_child(fscache_node_t *parent, const char *name, struct kstat stat, fscache_node_t *node);

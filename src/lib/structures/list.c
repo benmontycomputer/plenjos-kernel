@@ -39,7 +39,7 @@ static inline int _sll_data_get_node(ll_data_t *data, ssize_t idx, slnode_t **ou
     return 0;
 }
 
-int _sll_get(list_t *list, ssize_t idx, void **out) {
+static int _sll_get(list_t *list, ssize_t idx, void **out) {
     ll_data_t *data = (ll_data_t *)&list->data;
     mutex_lock(&data->lock);
 
@@ -54,7 +54,7 @@ int _sll_get(list_t *list, ssize_t idx, void **out) {
     return res;
 }
 
-int _sll_set(list_t *list, ssize_t idx, void *new, void **out_old) {
+static int _sll_set(list_t *list, ssize_t idx, void *new, void **out_old) {
     ll_data_t *data = (ll_data_t *)&list->data;
     mutex_lock(&data->lock);
 
@@ -70,7 +70,7 @@ int _sll_set(list_t *list, ssize_t idx, void *new, void **out_old) {
     return res;
 }
 
-int _sll_remove(list_t *list, ssize_t idx, void **out) {
+static int _sll_remove(list_t *list, ssize_t idx, void **out) {
     ll_data_t *data = (ll_data_t *)&list->data;
     mutex_lock(&data->lock);
 
@@ -117,7 +117,7 @@ cleanup:
     return res;
 }
 
-int _sll_insert(list_t *list, ssize_t idx, void *new) {
+static int _sll_insert(list_t *list, ssize_t idx, void *new) {
     ll_data_t *data = (ll_data_t *)&list->data;
     mutex_lock(&data->lock);
 
@@ -160,7 +160,7 @@ cleanup:
     return res;
 }
 
-int _sll_append(list_t *list, void *new) {
+static int _sll_append(list_t *list, void *new) {
     ll_data_t *data = (ll_data_t *)&list->data;
     mutex_lock(&data->lock);
 
@@ -183,7 +183,7 @@ int _sll_append(list_t *list, void *new) {
     return 0;
 }
 
-int _sll_append_or_replace(list_t *list, void *new, compare_func_t cmp, void *cmp_data, void **out_old) {
+static int _sll_append_or_replace(list_t *list, void *new, compare_func_t cmp, const void *cmp_data, void **out_old) {
     ll_data_t *data = (ll_data_t *)&list->data;
     mutex_lock(&data->lock);
     int res = 0;
@@ -223,7 +223,7 @@ cleanup:
     return res;
 }
 
-int _sll_get_by_key(list_t *list, const char *key, key_func_t key_func, void **out) {
+static int _sll_get_by_key(list_t *list, const char *key, key_func_t key_func, void **out) {
     ll_data_t *data = (ll_data_t *)&list->data;
     mutex_lock(&data->lock);
 
@@ -246,7 +246,7 @@ int _sll_get_by_key(list_t *list, const char *key, key_func_t key_func, void **o
     return res;
 }
 
-ssize_t _ll_count(list_t *list) {
+static ssize_t _ll_count(list_t *list) {
     ll_data_t *data = (ll_data_t *)&list->data;
     mutex_lock(&data->lock);
     ssize_t res = data->length;

@@ -16,8 +16,8 @@
 
 // TODO: align everything to 16 bytes by default for performance
 
-atomic_uintptr_t kheap_start = ATOMIC_VAR_INIT(0);
-atomic_uintptr_t kheap_end   = ATOMIC_VAR_INIT(0);
+atomic_uintptr_t kheap_start = 0;
+atomic_uintptr_t kheap_end   = 0;
 
 typedef struct heap_segment_info heap_segment_info_t;
 
@@ -32,7 +32,7 @@ struct heap_segment_info {
     bool free;
 } __attribute__((aligned(HEAP_GRANULARITY)));
 
-_Atomic(heap_segment_info_t *) kheap_last_segment = ATOMIC_VAR_INIT(NULL);
+_Atomic(heap_segment_info_t *) kheap_last_segment = NULL;
 
 static inline bool is_page_misaligned(uint64_t ptr) {
     return (ptr & (PAGE_LEN - 1)) != 0;
@@ -42,37 +42,23 @@ static inline bool is_page_misaligned(uint64_t ptr) {
 #define KHEAP_INIT_PAGES 160
 #define KHEAP_INIT_SIZE  (PAGE_LEN * KHEAP_INIT_PAGES)
 
-#define HEAP_ALLOC_MIN   0x10
+#define HEAP_ALLOC_MIN 0x10
 
 #define HEAP_HEADER_LEN sizeof(heap_segment_info_t)
 
 // bool kheap_locked = false;
 static atomic_flag kheap_locked_atomic = ATOMIC_FLAG_INIT;
 
-void lock_kheap() {
-    /* for (;;) {
-        if (!kheap_locked) {
-            kheap_locked = true;
-            return;
-        }
-    } */
+static void lock_kheap() {
     while (atomic_flag_test_and_set_explicit(&kheap_locked_atomic, __ATOMIC_ACQUIRE)) {
         // Wait
         __builtin_ia32_pause();
     }
 }
 
-void unlock_kheap() {
+static void unlock_kheap() {
     // kheap_locked = false;
     atomic_flag_clear_explicit(&kheap_locked_atomic, __ATOMIC_RELEASE);
-}
-
-uint64_t *alloc_before_kheap() {
-    uint64_t *frame = (uint64_t *)phys_to_virt(find_next_free_frame());
-
-    memset(frame, 0, PAGE_LEN);
-
-    return frame;
 }
 
 static heap_segment_info_t *kheap_add_segment(size_t len);
@@ -81,7 +67,7 @@ void init_kernel_heap() {
     uint64_t pos = KERNEL_HEAP_START_ADDR;
 
     int res;
-    if (res = vmalloc((void *)pos, 4 * PAGE_LEN, VMA_RW | VMALLOC_FIXED, NULL, kernel_mm)) {
+    if ((res = vmalloc((void *)pos, 4 * PAGE_LEN, VMA_RW | VMALLOC_FIXED, NULL, kernel_mm))) {
         panic("init_kernel_heap(): vmalloc failed with res %d!\n", res);
     }
 
@@ -231,7 +217,7 @@ void *kmalloc_heap(uint64_t size) {
     // return kmalloc_heap(size);
 }
 
-void kfree_heap(void *ptr) {
+void kfree_heap(const void *ptr) {
     if (ptr == NULL) {
         printf("WARNING: tried to free a NULL ptr\n");
         return;
@@ -262,34 +248,4 @@ void kfree_heap(void *ptr) {
     if (ints) {
         asm volatile("sti");
     }
-}
-
-void *kmalloc(uint64_t size) {
-    if (PHYS_MEM_HEAD + size >= PHYS_MEM_USEABLE_END) {
-        printf("kmalloc: out of physical memory.\n");
-        return NULL;
-    }
-
-    uint64_t ret   = PHYS_MEM_HEAD;
-    PHYS_MEM_HEAD += size;
-
-    return (void *)phys_to_virt(ret);
-}
-
-// page aligned (4KiB)
-void *kmalloc_a(uint64_t size, bool align) {
-    if (align && is_page_misaligned(PHYS_MEM_HEAD)) {
-        /* Align the physical memory head up to the next page. */
-        PHYS_MEM_HEAD = (PHYS_MEM_HEAD + PAGE_LEN - 1) & ~((uint64_t)(PAGE_LEN - 1));
-    }
-
-    if (PHYS_MEM_HEAD + size >= PHYS_MEM_USEABLE_END) {
-        printf("kmalloc_a: out of physical memory.\n");
-        return NULL;
-    }
-
-    uint64_t ret   = PHYS_MEM_HEAD;
-    PHYS_MEM_HEAD += size;
-
-    return (void *)phys_to_virt(ret);
 }

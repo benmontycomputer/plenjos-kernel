@@ -2,4 +2,4 @@
 
 #include <stdint.h>
 
-int hpet_init();
+int hpet_init(void);

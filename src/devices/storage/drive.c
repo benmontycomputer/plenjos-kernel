@@ -73,15 +73,16 @@ void populate_and_register_drive(DRIVE_t *drive, uint64_t numsectors, uint32_t l
 
     // TODO: sysfs: pass actual physical device here
     drive->endpoint = register_device_endpoint(name, &_drive_endpoint_driver, drive_no << DRIVE_NUM_SHIFT, NULL, drive);
-    
+
     uint8_t old_name_len = strlen(name);
 
-    int partition_no = 1;
+    int partition_no  = 1;
     partition_t *part = drive->first_partition;
     while (part) {
         memset(name + old_name_len, 0, sizeof(name) - old_name_len);
         populate_string_hexnum(name + old_name_len, sizeof(name) - old_name_len, ".", (uint32_t)partition_no);
-        part->endpoint = register_device_endpoint(name, &_drive_endpoint_driver, (drive_no << DRIVE_NUM_SHIFT) | (dev_t)partition_no, NULL, part);
+        part->endpoint = register_device_endpoint(name, &_drive_endpoint_driver,
+                                                  (drive_no << DRIVE_NUM_SHIFT) | (dev_t)partition_no, NULL, part);
 
         partition_no++;
         part = part->next;
@@ -467,9 +468,9 @@ int drive_mount_from_handle(vfs_handle_t *handle, const char *target) {
         kout(KERNEL_PANIC, "drive_mount_from_handle(): endpoint->dev != handle->backing_node->stat.rdev!\n");
     }
 
-    uint32_t part_no = _minor(rdev) & DRIVE_PART_MASK;
+    uint32_t part_no  = _minor(rdev) & DRIVE_PART_MASK;
     partition_t *part = endpoint->func_args;
-    DRIVE_t *drive = part->drive;
+    DRIVE_t *drive    = part->drive;
 
     res = mbr_mount(drive, part_no, 0, target);
 

@@ -9,7 +9,7 @@
 
 // This function reads FAT sectors, translating from FAT sector size to drive sector size
 // TODO: adapt this to a generic function for all filesystems
-int fat12_drive_read(struct filesystem_fat12 *fs, uint32_t fat_lba, uint32_t fat_sectors, void *buffer) {
+static int fat12_drive_read(struct filesystem_fat12 *fs, uint32_t fat_lba, uint32_t fat_sectors, void *buffer) {
     if (!fs || !buffer || fat_sectors == 0) {
         return -1;
     }
@@ -63,7 +63,7 @@ int fat12_drive_read(struct filesystem_fat12 *fs, uint32_t fat_lba, uint32_t fat
 }
 
 // Reads a cluster's worth of data into buffer
-int fat12_read_entry(struct filesystem_fat12 *fs, uint16_t cluster, void *buffer) {
+static int fat12_read_entry(struct filesystem_fat12 *fs, uint16_t cluster, void *buffer) {
     if (!fs || cluster < 2) {
         return -1; // EOC
     }
@@ -72,7 +72,7 @@ int fat12_read_entry(struct filesystem_fat12 *fs, uint16_t cluster, void *buffer
     return fat12_drive_read(fs, sector, fs->boot_sector.generic.sectors_per_cluster, buffer);
 }
 
-int fat12_next_cluster(struct filesystem_fat12 *fs, uint16_t cluster, uint16_t *next) {
+static int fat12_next_cluster(struct filesystem_fat12 *fs, uint16_t cluster, uint16_t *next) {
     if (!fs || !next || cluster < 2) {
         return -1; // EOC
     }
@@ -93,7 +93,7 @@ int fat12_next_cluster(struct filesystem_fat12 *fs, uint16_t cluster, uint16_t *
     }
 
     uint16_t entry;
-    if (offset_in_sector == fs->boot_sector.generic.bytes_per_sector - 1) {
+    if (offset_in_sector == fs->boot_sector.generic.bytes_per_sector - 1U) {
         // Need to read next byte from next sector
         entry = sector_buf[offset_in_sector];
         if (fat12_drive_read(fs, fat_sector + 1, 1, sector_buf) < 0) {
@@ -124,7 +124,8 @@ return_error:
     return -1;
 }
 
-int fat12_read_root_entry(struct filesystem_fat12 *fs, uint32_t entry_index, struct fat16_directory_entry *entry) {
+static int fat12_read_root_entry(struct filesystem_fat12 *fs, uint32_t entry_index,
+                                 struct fat16_directory_entry *entry) {
     if (!fs || !entry) {
         return -1;
     }
@@ -150,7 +151,7 @@ int fat12_read_root_entry(struct filesystem_fat12 *fs, uint32_t entry_index, str
     return 0;
 }
 
-int fat12_parse_root(struct filesystem_fat12 *fs) {
+static int fat12_parse_root(struct filesystem_fat12 *fs) {
     if (!fs) {
         return -1;
     }
@@ -192,10 +193,10 @@ int fat12_parse_root(struct filesystem_fat12 *fs) {
 }
 
 // TODO: optimize this function to use instance_data->current_cluster
-ssize_t fat12_file_read_func(vfs_handle_t *handle, void *buf, size_t len) {
+static ssize_t fat12_file_read_func(vfs_handle_t *handle, void *buf, size_t len) {
     vfs_fat12_handle_instance_data_t *instance_data = (vfs_fat12_handle_instance_data_t *)handle->instance_data;
 
-    if (!instance_data || !buf || len == 0 || !handle->backing_node || !handle->backing_node->internal_data) {
+    if (!instance_data || !buf || len == 0 || !handle->backing_node) {
         return -EIO;
     }
 
@@ -241,8 +242,8 @@ ssize_t fat12_file_read_func(vfs_handle_t *handle, void *buf, size_t len) {
         if (to_copy < bytes_per_cluster - offset_in_cluster) {
             // Stopped mid-cluster
             offset_in_cluster += to_copy;
-            remaining -= to_copy;
-            out_ptr   += to_copy;
+            remaining         -= to_copy;
+            out_ptr           += to_copy;
             break;
         } else {
             // Move to next cluster
@@ -280,38 +281,38 @@ ssize_t fat12_file_read_func(vfs_handle_t *handle, void *buf, size_t len) {
     return -EIO;
 }
 
-ssize_t fat12_dir_read_func(vfs_handle_t *handle, void *buf, size_t len) {
+static ssize_t fat12_dir_read_func(vfs_handle_t *handle, void *buf, size_t len) {
     // To be implemented
     return -EIO;
 }
 
-ssize_t fat12_file_write_func(vfs_handle_t *handle, const void *buf, size_t len) {
+static ssize_t fat12_file_write_func(vfs_handle_t *handle, const void *buf, size_t len) {
     // To be implemented
     return -EIO;
 }
 
-off_t fat12_file_seek_func(vfs_handle_t *handle, off_t offset, int whence) {
+static off_t fat12_file_seek_func(vfs_handle_t *handle, off_t offset, int whence) {
     // To be implemented
     return -EIO;
 }
 
-off_t fat12_dir_seek_func(vfs_handle_t *handle, off_t offset, int whence) {
+static off_t fat12_dir_seek_func(vfs_handle_t *handle, off_t offset, int whence) {
     // To be implemented
     return -EIO;
 }
 
-int fat12_create_child_func(fscache_node_t *parent, const char *name, uid_t uid, gid_t gid, mode_t mode,
-                            fscache_node_t *node) {
+static int fat12_create_child_func(fscache_node_t *parent, const char *name, uid_t uid, gid_t gid, mode_t mode,
+                                   fscache_node_t *node) {
     // To be implemented
     return -EIO;
 }
 
-int fat12_load_node_func(fscache_node_t *node, const char *name, fscache_node_t *out) {
+static int fat12_load_node_func(fscache_node_t *node, const char *name, fscache_node_t *out) {
     // To be implemented
     return -EIO;
 }
 
-bool fat12_vfs_mount_func(const char *device, fscache_node_t *mount_point) {
+static bool fat12_vfs_mount_func(const char *device, fscache_node_t *mount_point) {
     // To be implemented
     return false;
 }

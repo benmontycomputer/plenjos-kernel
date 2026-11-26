@@ -106,7 +106,7 @@ uint64_t ksleep_nonblocking_ms(uint64_t milliseconds, uint32_t priority) {
     }
 }
 
-void kthread_sleep_finish(struct timer_timeout *timeout) {
+static void kthread_sleep_finish(struct timer_timeout *timeout) {
     task_ready_safe((task_t *)timeout->data);
 }
 

@@ -61,7 +61,7 @@ int syscall_routine_fstat(int fd, uint64_t out_stat_ptr, task_t *task, mm_t *mm)
 int syscall_routine_lstat(const char *restrict path, uint64_t out_stat_ptr, task_t *task, mm_t *mm);
 
 // TODO: implement
-void syscall_routine_poll();
+void syscall_routine_poll(void);
 
 // Unlike read and write, lseek also works on directories
 off_t syscall_routine_lseek(int fd, off_t offset, int whence, task_t *task);
@@ -72,21 +72,21 @@ ssize_t syscall_routine_getdents(int fd, void *buf, size_t count, task_t *task, 
 
 int syscall_routine_mkdir(const char *restrict path, mode_t mode, task_t *task);
 int syscall_routine_rmdir(const char *restrict path, task_t *task);
-void syscall_routine_rename();
-void syscall_routine_chmod();
-void syscall_routine_fchmod();
-void syscall_routine_chown();
-void syscall_routine_fchown();
-void syscall_routine_lchown();
+void syscall_routine_rename(void);
+void syscall_routine_chmod(void);
+void syscall_routine_fchmod(void);
+void syscall_routine_chown(void);
+void syscall_routine_fchown(void);
+void syscall_routine_lchown(void);
 // TODO: modify file groups
 ssize_t syscall_routine_getcwd(uint64_t out_buf_ptr, ssize_t size, task_t *task, mm_t *mm);
 int syscall_routine_chdir(const char *restrict path, task_t *task);
-void syscall_routine_fchdir();
+void syscall_routine_fchdir(void);
 // Hard links CANNOT point to directories
-void syscall_routine_link();
+void syscall_routine_link(void);
 // This handles deletion of non-directories
-void syscall_routine_unlink();
+void syscall_routine_unlink(void);
 // TODO: if unlinkat() is implemented, it should have a flag to allow deletion of directories (but unlink() should not)
 
-void syscall_routine_symlink();
-void syscall_routine_readlink();
+void syscall_routine_symlink(void);
+void syscall_routine_readlink(void);

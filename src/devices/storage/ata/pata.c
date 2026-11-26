@@ -17,7 +17,7 @@
 /**
  * Read data from PATA device
  */
-void pata_read_data(struct ide_device *dev, void *buffer, size_t bytes) {
+static void pata_read_data(struct ide_device *dev, void *buffer, size_t bytes) {
     // Implementation to read data from PATA device
     if (bytes % 2) {
         kout(KERNEL_PANIC, "pata_read_data(): bytes is odd (should be impossible)!\n");
@@ -34,7 +34,7 @@ void pata_read_data(struct ide_device *dev, void *buffer, size_t bytes) {
 /**
  * Write data to PATA device
  */
-void pata_write_data(struct ide_device *dev, const void *buffer, size_t bytes) {
+static void pata_write_data(struct ide_device *dev, const void *buffer, size_t bytes) {
     // Implementation to write data to PATA device
     size_t word_count = bytes / 2;
 

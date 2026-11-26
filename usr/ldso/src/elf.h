@@ -162,7 +162,7 @@ struct elf_object {
     uint32_t nsyms;
 };
 
-void init_dso_base();
+void init_dso_base(void);
 
 // _apply_relocations is defined in lsdo.c so it can be used to self-relocate the linker itself; apply_relocations is a
 // wrapper for _apply_relocations and must also be defined in ldso.c.

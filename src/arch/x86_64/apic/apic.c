@@ -10,7 +10,6 @@
 #include "proc/scheduler.h"
 #include "timer/pit.h"
 
-#include <cpuid.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -19,25 +18,7 @@
 
 uint64_t LAPIC_BASE = 0x0; // = 0xFEE00000;
 
-/** returns a 'true' value if the CPU supports APIC
- *  and if the local APIC hasn't been disabled in MSRs
- *  note that this requires CPUID to be supported.
- */
-bool check_apic() {
-    uint32_t eax, edx = 0, unused;
-    __get_cpuid(1, &eax, &unused, &unused, &edx);
-    return edx & CPUID_FEAT_EDX_APIC;
-}
-
-/**
- * Get the physical address of the APIC registers page
- * make sure you map it to virtual memory ;)
- */
-uint64_t cpu_get_apic_base() {
-    return read_msr(IA32_APIC_BASE_MSR) & 0xFFFFF000;
-}
-
-void write_reg(uint32_t reg, uint32_t value) {
+static void write_reg(uint32_t reg, uint32_t value) {
     *((volatile uint32_t *)(LAPIC_BASE + (uint64_t)reg)) = value;
 }
 
@@ -45,7 +26,7 @@ void apic_send_eoi() {
     write_reg(APIC_EOI, 0);
 }
 
-uint32_t read_reg(uint32_t reg) {
+static uint32_t read_reg(uint32_t reg) {
     return *((volatile uint32_t *)(LAPIC_BASE + (uint64_t)reg));
 }
 
@@ -58,7 +39,7 @@ uint64_t apic_timer_tpms;
 
 static volatile uint64_t apic_timer_ticks[MAX_CORES] = { 0 };
 
-void apic_timer_irq_handler(registers_t *regs, void *data) {
+static void apic_timer_irq_handler(registers_t *regs, void *data) {
     apic_send_eoi();
 
     uint32_t curr_core = get_curr_core();
@@ -115,9 +96,6 @@ static inline void lapic_wait_for_idle(void) {
 void send_ipi(uint8_t apic_id, uint8_t vector) {
     lapic_wait_for_idle();
 
-    // release_console();
-    // kout(KERNEL_INFO, "Sending IPI to apic id %d with vector %d\n", apic_id, vector);
-
     // set destination
     write_reg(LAPIC_ICR_HIGH, ((uint32_t)apic_id) << 24);
 
@@ -136,18 +114,7 @@ void enable_apic() {
     /* Hardware enable the Local APIC if it wasn't enabled */
     if (!is_apic_enabled()) write_reg(IA32_APIC_BASE_MSR, LAPIC_BASE | IA32_APIC_BASE_MSR_ENABLE);
 
-    /* Set the Spurious Interrupt Vector Register bit 8 to start receiving interrupts */
-    // write_reg(0xF0, read_reg(0xF0) | 0x100);
-    // read_reg(0xF0);
-    // return;
-
     write_reg(0xF0, read_reg(0xF0) | 0x100);
-    // write_reg(0xF0, (read_reg(0xF0) & 0xFFFFFF00) | 0x100 | 0xFF);
 
     apic_send_eoi();
-
-    // enable_ioapic();
-
-    /* uint32_t bsp_flags = (0 << 8) | (0 << 13) | (0 << 15); // Flags for the BSP
-    ioapic_route_all_irq(get_curr_lapic_id(), bsp_flags); */
 }

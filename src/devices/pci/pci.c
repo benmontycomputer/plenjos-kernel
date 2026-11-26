@@ -42,7 +42,7 @@ int pci_clear_command_bits(uint8_t bus, uint8_t device, uint8_t function, uint16
     return 0;
 }
 
-uint8_t pci_get_header_type(uint8_t bus, uint8_t device, uint8_t function) {
+static uint8_t pci_get_header_type(uint8_t bus, uint8_t device, uint8_t function) {
     /* 0x0C is not the header_type reg; 0x0E is (is that why we do (>> 16)?) */
     uint32_t header_type_reg = pci_read(bus, device, function, 0x0C);
     return (header_type_reg >> 16) & 0xFF;
@@ -213,7 +213,7 @@ void pci_print_device_info(pci_device_t *dev) {
          dev->subclass_code, subclass_pretty, dev->prog_if);
 }
 
-pci_device_t pci_check_device(uint8_t bus, uint8_t device, uint8_t function) {
+static pci_device_t pci_check_device(uint8_t bus, uint8_t device, uint8_t function) {
     pci_device_t dev;
     dev.header_type   = 0;
     dev.domain        = 0; // Placeholder
@@ -351,7 +351,7 @@ pci_device_t pci_check_device(uint8_t bus, uint8_t device, uint8_t function) {
 }
 
 // Leaving this here for later when sysfs is implemented
-ssize_t pci_dev_file_read(vfs_handle_t *handle, void *buf, size_t len) {
+static ssize_t pci_dev_file_read(vfs_handle_t *handle, void *buf, size_t len) {
     kernelfs_node_t *node = kernelfs_get_node_from_handle(handle);
     if (!node || !node->func_args) {
         return -EIO;

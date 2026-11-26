@@ -63,11 +63,11 @@ extern void kcontext_block(uint64_t *saved_rsp, mutex *m);
 __attribute__((noreturn)) //
 extern void kcontext_resume(uint64_t saved_rsp);
 
-void lock_current() {
+static void lock_current() {
     mutex_lock(&current_lock);
 }
 
-void unlock_current() {
+static void unlock_current() {
     mutex_unlock(&current_lock);
 }
 
@@ -79,15 +79,15 @@ void unlock_rq() {
     mutex_unlock(&rq_lock);
 }
 
-void lock_ktask_rq() {
+static void lock_ktask_rq() {
     mutex_lock(&ktask_rq_lock);
 }
 
-void unlock_ktask_rq() {
+static void unlock_ktask_rq() {
     mutex_unlock(&ktask_rq_lock);
 }
 
-task_t *rq_pop() {
+static task_t *rq_pop() {
     if (!rq) {
         return NULL;
     }
@@ -100,7 +100,7 @@ task_t *rq_pop() {
     return res;
 }
 
-task_t *rq_remove(task_t *task) {
+static task_t *rq_remove(task_t *task) {
     if (!rq) {
         return NULL;
     }
@@ -123,7 +123,7 @@ task_t *rq_remove(task_t *task) {
     }
 }
 
-void rq_add(task_t *task) {
+static void rq_add(task_t *task) {
     task->q_next = NULL;
 
     task_t **link = &rq;
@@ -230,9 +230,9 @@ void syscall_dispatch(registers_t *regs) {
 
     task_t *task = current[curr_core];
     if (!task || task == &ktask) {
-        for (int i = 0; i < get_n_cores(); i++) {
-            printf("core %d: task=%p tid=%d state=%d\n", i, current[i], current[i] ? current[i]->tid : -1ULL,
-                   current[i] ? current[i]->state : -1);
+        for (uint32_t i = 0; i < get_n_cores(); i++) {
+            printf("core %d: task=%p tid=%d state=%d\n", i, current[i], current[i] ? (int)current[i]->tid : -1,
+                   current[i] ? (int)current[i]->state : -1);
         }
         panic("syscall_dispatch() core %u (lapic %u) no thread; rax=%lu rip=%p rsp=%p\n", curr_core,
               get_curr_lapic_id() /* or your lapic id read */, regs->rax, regs->iret_rip, regs->iret_rsp);
@@ -246,7 +246,7 @@ void syscall_dispatch(registers_t *regs) {
 }
 
 // TODO: more efficient way to wakeup than just sending to all cores
-void send_wakeup_ipi() {
+static void send_wakeup_ipi() {
     uint32_t curr_core = get_curr_core();
 
     for (size_t i = 0; i < get_n_cores(); i++) {

@@ -10,7 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-static mutex console_access = MUTEX_INIT;
+static mutex console_access    = MUTEX_INIT;
 static bool console_access_irq = 0;
 
 extern char *fb;
@@ -37,7 +37,7 @@ void release_console() {
     irq_restore(console_access_irq);
 }
 
-void scroll_console() {
+static void scroll_console() {
     // Scroll
 
     uint64_t offset = fb_scanline * FONT_H;
@@ -74,7 +74,7 @@ void console_seek_fb(uint64_t x, uint64_t y) {
     console_pos = x + CONSOLE_W() * y;
 }
 
-void printf_ch(char ch) {
+static void printf_ch(char ch) {
     if (debug_serial) {
         write_serial(ch);
     } else {
@@ -83,7 +83,7 @@ void printf_ch(char ch) {
     }
 }
 
-void printf_str(const char *str, uint16_t max_chars) {
+static void printf_str(const char *str, uint16_t max_chars) {
     while (*str && max_chars--) {
         printf_ch(*str);
 
@@ -93,7 +93,7 @@ void printf_str(const char *str, uint16_t max_chars) {
 
 static char hex_indices[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
 
-void printf_binary(uint64_t binary) {
+static void printf_binary(uint64_t binary) {
     char vals[64];
 
     int i = 0;
@@ -109,7 +109,7 @@ void printf_binary(uint64_t binary) {
 }
 
 // precision is minimum number of digits to print (pads with leading zeros)
-void printf_int(int num, uint16_t min_digits) {
+static void printf_int(int num, uint16_t min_digits) {
     uint32_t adj = 0;
 
     char vals[((8 * sizeof(int)) + 9) / 10] = { 0 };
@@ -139,7 +139,7 @@ void printf_int(int num, uint16_t min_digits) {
     }
 }
 
-void printf_uint(uint32_t num) {
+static void printf_uint(uint32_t num) {
     uint32_t adj = num;
 
     char vals[((8 * sizeof(uint32_t)) + 9) / 10] = { 0 };
@@ -156,7 +156,7 @@ void printf_uint(uint32_t num) {
     }
 }
 
-void printf_long(int64_t num, uint16_t min_digits) {
+static void printf_long(int64_t num, uint16_t min_digits) {
     uint64_t adj = 0;
 
     char vals[((8 * sizeof(int64_t)) + 9) / 10] = { 0 };
@@ -186,7 +186,7 @@ void printf_long(int64_t num, uint16_t min_digits) {
     }
 }
 
-void printf_ulong(uint64_t num) {
+static void printf_ulong(uint64_t num) {
     uint64_t adj = num;
 
     char vals[((8 * sizeof(uint64_t)) + 9) / 10] = { 0 };
@@ -203,7 +203,7 @@ void printf_ulong(uint64_t num) {
     }
 }
 
-void printf_hex(uint32_t hex, uint16_t pad_to) {
+static void printf_hex(uint32_t hex, uint16_t pad_to) {
     uint64_t adj = (uint64_t)hex;
 
     printf_str("0x", 2);
@@ -223,7 +223,7 @@ void printf_hex(uint32_t hex, uint16_t pad_to) {
     }
 }
 
-void printf_hex_long(uint64_t hex, uint16_t pad_to) {
+static void printf_hex_long(uint64_t hex, uint16_t pad_to) {
     uint64_t adj = hex;
 
     printf_str("0x", 2);
@@ -243,7 +243,7 @@ void printf_hex_long(uint64_t hex, uint16_t pad_to) {
     }
 }
 
-void printf_octal(uint32_t octal, uint16_t pad_to) {
+static void printf_octal(uint32_t octal, uint16_t pad_to) {
     uint32_t adj = octal;
 
     printf_str("0o", 2);
@@ -431,6 +431,7 @@ static inline void set_level(kernel_msg_level_t level) {
     }
     case KERNEL_EXTERNAL_FAULT: {
         printf_str(TEXT_MAGENTA, -1);
+        break;
     }
     case KERNEL_WARN: {
         printf_str(TEXT_YELLOW, -1);

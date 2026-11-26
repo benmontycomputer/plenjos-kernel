@@ -7,7 +7,7 @@
 #define _major(d) (((d) & 0xFFFFFF0000000000) >> 40)
 #define _minor(d) ((d) & 0x000000FFFFFFFFFF)
 
-#define full_dev(maj, min) ((((maj) & 0xFFFFFF) << 40) | ((min) & 0xFFFFFFFFFF))
+#define full_dev(maj, min) ((((uint64_t)(maj) & 0xFFFFFFULL) << 40) | ((min) & 0xFFFFFFFFFFULL))
 
 inline dirent_type_t mode_to_dt(mode_t mode) {
     switch (mode & S_IFMT) {

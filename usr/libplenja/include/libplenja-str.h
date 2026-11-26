@@ -13,7 +13,7 @@ typedef struct pstring {
 
 long utf8len(char *s);
 
-pstring pstr_new();
+pstring pstr_new(void);
 pstring pstr_new_from_chars(char *chars, long len);
 pstring pstr_insert_char(pstring pstr, char c, long pos);
 pstring pstr_remove_char(pstring pstr, long pos);

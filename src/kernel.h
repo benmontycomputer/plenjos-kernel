@@ -84,8 +84,8 @@ void *memmove(void *dest, const void *src, size_t n);
 
 int memcmp(const void *s1, const void *s2, size_t n);
 
-void hcf();
-_Noreturn void panic_nomsg();
+void hcf(void);
+_Noreturn void panic_nomsg(void);
 
 static inline size_t min(size_t a, size_t b) {
     return (a > b) ? b : a;
@@ -142,9 +142,9 @@ struct gsbase {
 } __attribute__((packed));
 typedef struct gsbase gsbase_t;
 
-typedef uint64_t (*hash64_func_t)(void *data);
-typedef const char *(*key_func_t)(void *data);
-typedef int (*compare_func_t)(void *a, void *b, void *data);
+typedef uint64_t (*hash64_func_t)(const void *data);
+typedef const char *(*key_func_t)(const void *data);
+typedef int (*compare_func_t)(void *a, void *b, const void *data);
 
 inline char hex_to_char(uint8_t val) {
     if (val > 15) return '?';
@@ -160,5 +160,6 @@ inline uint8_t char_to_hex(char c) {
 }
 
 void populate_string_hexnum(char *buf, size_t len, const char *str, uint32_t hex);
+void kmain(void);
 
 #endif

@@ -43,6 +43,6 @@ typedef struct {
     uint32_t    reserved;
 } __attribute__((packed)) gdt_tss_desc_t;
 
-void gdt_tss_init();
+void gdt_tss_init(void);
 
 #endif

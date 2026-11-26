@@ -124,8 +124,8 @@ endpoint_t *register_device_endpoint(char *name, endpoint_driver_t *driver, uint
     return endpoint;
 }
 
-const char *endpoint_key_func(void *data) {
-    endpoint_t *endpoint = (endpoint_t *)data;
+static const char *endpoint_key_func(const void *data) {
+    const endpoint_t *endpoint = (const endpoint_t *)data;
     return (const char *)endpoint->name;
 }
 
@@ -186,7 +186,7 @@ typedef struct devfs_root_read_each_func_args {
     uint64_t *handle_pos_ref;
 } devfs_root_read_each_func_args_t;
 
-void devfs_root_read_each_func(void *item, void *func_args) {
+static void devfs_root_read_each_func(void *item, void *func_args) {
     devfs_root_read_each_func_args_t *args = (devfs_root_read_each_func_args_t *)func_args;
 
     const char *key      = (const char *)item;

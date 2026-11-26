@@ -15,14 +15,14 @@ uint64_t IOAPIC_ADDR = 0xFEC00000;
 #define IOAPICARB       0x02
 #define IOAPICREDTBL(n) (0x10 + 2 * n) // lower-32bits (add +1 for upper 32-bits)
 
-void write_ioapic_register(const uint8_t offset, const uint32_t val) {
+static void write_ioapic_register(const uint8_t offset, const uint32_t val) {
     /* tell IOREGSEL where we want to write to */
     *(volatile uint32_t *)(IOAPIC_ADDR)        = offset;
     /* write the value to IOWIN */
     *(volatile uint32_t *)(IOAPIC_ADDR + 0x10) = val;
 }
 
-uint32_t read_ioapic_register(const uint8_t offset) {
+static uint32_t read_ioapic_register(const uint8_t offset) {
     /* tell IOREGSEL where we want to read from */
     *(volatile uint32_t *)(IOAPIC_ADDR) = offset;
     /* return the data from IOWIN */
@@ -100,7 +100,7 @@ void enable_ioapic() {
     // map_virtual_memory(IOAPIC_ADDR, 4096, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, kernel_pml4);
     IOAPIC_ADDR = phys_to_virt(IOAPIC_ADDR);
     int res;
-    if (res = vmmap(virt_to_phys(IOAPIC_ADDR), (void *)IOAPIC_ADDR, PAGE_LEN, VMA_RW, NULL, kernel_mm)) {
+    if ((res = vmmap(virt_to_phys(IOAPIC_ADDR), (void *)IOAPIC_ADDR, PAGE_LEN, VMA_RW, NULL, kernel_mm))) {
         panic("enable_ioapic(): vmmap failed with res %d!\n", res);
     }
 }

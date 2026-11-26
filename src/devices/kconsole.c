@@ -55,7 +55,7 @@ uint16_t *unicode;
 #define PIXEL uint32_t /* pixel pointer */
 
 // Uses PSF2 format
-void putcharbig(
+static void putcharbig(
     /* note that this is int, not char as it's a unicode character */
     unsigned short int c,
     /* cursor position on screen, in characters not in pixels */

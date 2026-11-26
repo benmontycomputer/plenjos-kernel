@@ -147,8 +147,7 @@ void hcf(void) {
 }
 
 _Noreturn void panic_nomsg() {
-    if (smp_loaded)
-        stop_scheduler();
+    if (smp_loaded) stop_scheduler();
     hcf();
 }
 
@@ -157,6 +156,7 @@ task_t *init_task;
 // The following will be our kernel's entry point.
 // If renaming kmain() to something else, make sure to change the
 // linker script accordingly.
+// Also, this must NOT be static.
 void kmain(void) {
     // Ensure the bootloader actually understands our base revision (see spec).
     if (LIMINE_BASE_REVISION_SUPPORTED == false) {

@@ -4,7 +4,7 @@
 
 extern uint64_t IOAPIC_ADDR;
 
-void enable_ioapic();
+void enable_ioapic(void);
 
 uint32_t ioapic_read(void *ioapicaddr, uint32_t reg);
 void ioapic_write(void *ioapicaddr, uint32_t reg, uint32_t value);

@@ -89,7 +89,7 @@ struct ide_device {
     struct DRIVE drive;
 };
 
-void ide_init();
+void ide_init(void);
 
 int ide_lock_bus(struct ide_device *dev);
 int ide_unlock_bus(struct ide_device *dev);

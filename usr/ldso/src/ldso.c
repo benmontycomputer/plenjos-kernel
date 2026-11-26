@@ -40,7 +40,8 @@ static ELF_addr_t _ldso_self_resolve_symbol(const char *name, ELF_sym_t *symtab,
     return 0;
 }
 
-static uint64_t _prereloc_syscall(uint64_t rax, uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t r10, uint64_t r8, uint64_t r9) {
+static uint64_t _prereloc_syscall(uint64_t rax, uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t r10, uint64_t r8,
+                                  uint64_t r9) {
     register uint64_t r_rdi asm("rdi") = rdi;
     register uint64_t r_rsi asm("rsi") = rsi;
     register uint64_t r_rdx asm("rdx") = rdx;

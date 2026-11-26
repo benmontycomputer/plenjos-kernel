@@ -38,3 +38,5 @@ struct fixed_size_allocator {
 
 void *fsa_alloc(fixed_size_allocator_t *fsa);
 void fsa_free(fixed_size_allocator_t *fsa, void *block);
+
+fixed_size_allocator_t *fixed_size_allocator_new(size_t item_size);

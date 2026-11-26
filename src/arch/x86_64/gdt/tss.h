@@ -29,9 +29,9 @@ struct tss { // 104 bytes is the minimum size of a TSS
 extern struct tss tss_obj[MAX_CORES];
 extern uint64_t sched_stack_top[MAX_CORES];
 
-void tss_init();
+void tss_init(void);
 
-uint64_t alloc_kstack();
+uint64_t alloc_kstack(void);
 void free_kstack(uint64_t stack);
 
 #endif

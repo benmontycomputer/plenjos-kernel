@@ -16,7 +16,7 @@ extern uint64_t gdt_entries[MAX_CORES][num_gdt_entries];
 struct tss tss_obj[MAX_CORES];
 uint64_t sched_stack_top[MAX_CORES];
 
-uint64_t create_descriptor(uint32_t base, uint32_t limit, uint8_t access, uint8_t gran) {
+static uint64_t create_descriptor(uint32_t base, uint32_t limit, uint8_t access, uint8_t gran) {
     uint64_t descriptor;
 
     // Create the high 32 bit segment
@@ -35,10 +35,6 @@ uint64_t create_descriptor(uint32_t base, uint32_t limit, uint8_t access, uint8_
     descriptor |= limit & 0x0000FFFF; // set limit bits 15:0
 
     return descriptor;
-}
-
-void tss_set_entry(int i, uint64_t base, uint32_t limit, uint8_t access, uint8_t gran) {
-    gdt_entries[get_curr_core()][i] = create_descriptor(base, limit, access, gran);
 }
 
 uint64_t alloc_kstack() {
@@ -76,8 +72,6 @@ void tss_init() {
 
     uint64_t tss_base  = (uint64_t)&tss_obj[curr_core];
     uint32_t tss_limit = (uint32_t)(sizeof(struct tss));
-
-    // tss_set_entry(5, tss_base, tss_limit, 0x89, 0x00);
 
     gdt_tss_desc_t *tss_seg = (gdt_tss_desc_t *)&gdt_entries[curr_core][5];
 

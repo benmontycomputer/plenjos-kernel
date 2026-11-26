@@ -56,8 +56,6 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
            (int)(phys_mem_useable_frames >> 20), (int)(phys_mem_total_frames >> 20), last_useable_phys_frame,
            (int)(phys_mem_frame_map_size >> 20));
 
-    // uint64_t page_table_mem_needed = (PAGE_LEN * (phys_mem_frame_map_size + PAGE_LEN - 1) / PAGE_LEN)
-
     for (size_t i = 0; i < memmap.mem_entry_count; i++) {
         uint64_t base   = memmap.mem_entries[i]->base;
         uint64_t length = memmap.mem_entries[i]->length;
@@ -65,9 +63,6 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
 
         if (type == LIMINE_MEMMAP_USABLE) {
             if (length >= (phys_mem_frame_map_size + PAGE_LEN)) {
-                /* map_virtual_memory_using_alloc(base, phys_to_virt(base), length, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,
-                                               test_alloc, kernel_pml4); */
-
                 phys_mem_frame_map = (phys_mem_free_frame_t *)phys_to_virt(base);
                 memset(phys_mem_frame_map, 0, phys_mem_frame_map_size);
 
@@ -91,7 +86,6 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
     }
 
     phys_mem_free_frame_t *prev_free_frame = NULL;
-    phys_mem_free_frame_t *frame           = NULL;
 
     for (size_t i = 0; i < memmap.mem_entry_count; i++) {
         uint64_t base   = memmap.mem_entries[i]->base;
@@ -99,10 +93,6 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
         uint64_t type   = memmap.mem_entries[i]->type;
 
         if (type == LIMINE_MEMMAP_USABLE) {
-            // if (base != virt_to_phys((uint64_t)phys_mem_frame_map))
-            /* map_virtual_memory_using_alloc(base, phys_to_virt(base), length, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,
-                                           test_alloc, kernel_pml4); */
-
             // TODO: why do we stop one short?
             phys_mem_free_frame_t *frame = phys_addr_to_frame_struct(base);
             phys_mem_free_frame_t *end   = phys_addr_to_frame_struct(base + length) - 1;
@@ -126,23 +116,6 @@ void parse_memmap_limine(struct limine_memmap_response *memmap_response) {
     }
 
     printf("Physical memory frame map linked list setup complete.\n");
-
-    /* for (size_t i = 0; i < memmap.mem_entry_count; i++) {
-        uint64_t base   = memmap.mem_entries[i]->base;
-        uint64_t length = memmap.mem_entries[i]->length;
-        uint64_t type   = memmap.mem_entries[i]->type;
-
-        if (type == LIMINE_MEMMAP_FRAMEBUFFER) {
-            map_virtual_memory_using_alloc(base, phys_to_virt(base), length, PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE,
-                                           test_alloc, kernel_pml4);
-        }
-    } */
-
-    // phys_mem_frame_map_next_free = (phys_mem_free_frame_t
-    // *)decode_struct_frame_ptr(phys_mem_frame_map_next_free->next_free);
-
-    // map_virtual_memory_using_alloc(frame_addr_to_phys_addr((uint64_t)phys_mem_frame_map_next_free), PAGE_LEN,
-    // PAGE_FLAG_PRESENT | PAGE_FLAG_WRITE, test_alloc, kernel_pml4);
 
     printf("Physical memory map setup complete. Last frame addr: %p; next free frame: %p, next free frame prev/next: "
            "%p %p\n",

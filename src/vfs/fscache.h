@@ -41,7 +41,7 @@ struct fscache_node {
 
     fscache_flags_t flags;
 
-    vfs_ops_block_t *fsops;
+    const vfs_ops_block_t *fsops;
 
     _Atomic(fscache_node_t *) parent_node;
     _Atomic(fscache_node_t *) first_child;
@@ -61,13 +61,18 @@ void _fscache_release_node_readable(fscache_node_t *node);
 void _fscache_wait_for_node_modifiable(fscache_node_t *node);
 void _fscache_release_node_modifiable(fscache_node_t *node);
 
+// This isn't a true upgrade; see rw_lock_upgrade_read_to_write for details. However, it does use ref_count to prevent
+// deletion.
+void _fscache_upgrade_node_to_modifiable(fscache_node_t *node);
+void _fscache_downgrade_node_to_readable(fscache_node_t *node);
+
 int fscache_node_ref(fscache_node_t *node);
 int fscache_node_unref(fscache_node_t *node);
 
 // This must be called after kernelfs_init()
-int fscache_init();
+int fscache_init(void);
 
-fscache_node_t *fscache_allocate_node();
+fscache_node_t *fscache_allocate_node(void);
 
 void fscache_node_populate(fscache_node_t *node, fscache_flags_t flags, const char *name, struct kstat stat,
-                           vfs_ops_block_t *fsops);
+                           const vfs_ops_block_t *fsops);

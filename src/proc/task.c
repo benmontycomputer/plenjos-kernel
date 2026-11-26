@@ -35,7 +35,7 @@ volatile pid_t next_tid = 1;
 
 static fixed_size_allocator_t _task_fsa = FSA_DEFAULT(sizeof(task_t));
 
-int tid_cmp(const rbnode_t *a, const rbnode_t *b) {
+static int tid_cmp(const rbnode_t *a, const rbnode_t *b) {
     task_t *ta = (task_t *)a;
     task_t *tb = (task_t *)b;
 
@@ -50,13 +50,13 @@ mutex tasklist_locked = MUTEX_INIT;
 bool tasklist_int     = false;
 
 // Lock and unlock tasklist DO handle saving/restoring IRQs
-void lock_tasklist() {
+static void lock_tasklist() {
     bool _i = irq_save();
     mutex_lock(&tasklist_locked);
     tasklist_int = _i;
 }
 
-void unlock_tasklist() {
+static void unlock_tasklist() {
     mutex_unlock(&tasklist_locked);
     irq_restore(tasklist_int);
 }
@@ -178,12 +178,12 @@ void task_exit(task_t *task) {
     task->status |= TASK_STATUS_EXITED;
     unlock_tasklist();
 
-    for (size_t i = 0; i < task->fds_max; i++) {
+    for (int i = 0; i < task->fds_max; i++) {
         if (task->fds[i]) {
             vfs_close(task->fds[i]);
         }
     }
-    kfree_heap((void *)task->fds);
+    kfree_heap(task->fds);
     task->fds = NULL;
 
     phys_mem_unref_frame(phys_addr_to_frame_struct(virt_to_phys((uint64_t)task->cwd)));
@@ -192,7 +192,7 @@ void task_exit(task_t *task) {
     wq_signal(&task->exit_wq, task->status |= TASK_STATUS_EXITED, true);
 }
 
-void task_reap_finish(task_t *task) {
+static void task_reap_finish(task_t *task) {
     lock_tasklist();
     task_t **link = task->parent ? &task->parent->children : NULL;
 
@@ -277,7 +277,7 @@ void task_free_fd(task_t *task, int fd) {
 void *linker_elf_buf   = NULL;
 size_t linker_elf_size = 0;
 
-void load_linker() {
+static void load_linker() {
     vfs_handle_t *ld_handle = NULL;
     int res                 = vfs_open("/lib/ld.so", SYSCALL_OPEN_FLAG_READ, 0, 0, &ld_handle);
     ssize_t linker_read_bytes;
@@ -303,7 +303,7 @@ void load_linker() {
     }
 }
 
-void stack_push_qword(uint64_t qword, uint64_t **rsp) {
+static void stack_push_qword(uint64_t qword, uint64_t **rsp) {
     *rsp  = (uint64_t *)((uint8_t *)(*rsp) - sizeof(uint64_t));
     **rsp = qword;
 }
@@ -399,8 +399,9 @@ int execute(const char *path, task_t *task) {
     task->thread_state.gs = USER_DS | 3;
 
     // TODO: user stack (must find an open address for it as well, because multiple tasks may share a page table)
+    // TODO: use an actual address for this??
     vm_area_t *user_stack = NULL;
-    if (res = vmalloc((void *)0x0000800000000000UL - 0x100000, 0x100000, VMA_USER | VMA_RW | VMALLOC_ZERO, &user_stack, task->mm)) {
+    if ((res = vmalloc((void *)(0x0000800000000000UL - 0x100000), 0x100000, VMA_USER | VMA_RW | VMALLOC_ZERO, &user_stack, task->mm))) {
         kout(KERNEL_WARN, "execute(): couldn't alloc user stack (res %d)!\n", res);
         return res;
     }
@@ -418,9 +419,9 @@ int execute(const char *path, task_t *task) {
 
     // First, setup the stack
     const char *argv0 = path;
-    const char *argv1 = NULL;
+    /* const char *argv1 = NULL;
 
-    const char *envp0 = NULL;
+    const char *envp0 = NULL; */
 
     const uint64_t argc = 1;
 

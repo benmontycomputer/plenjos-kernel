@@ -54,11 +54,11 @@ int putchar(int charc);
 int puts(const char *str);
 
 char *gets(char *str);
-int backs();
+int backs(void);
 int setcursor(bool curs);
-int clear();
+int clear(void);
 
-char getchar();
+char getchar(void);
 
 /* Files */
 

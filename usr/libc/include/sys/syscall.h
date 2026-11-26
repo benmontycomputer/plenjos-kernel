@@ -44,7 +44,7 @@ pid_t syscall_spawn(const char *path, char *const argv[], char *const envp[], si
 
 int syscall_waittid(pid_t tid);
 
-_Noreturn void syscall_exit();
-_Noreturn void syscall_exit_group();
+_Noreturn void syscall_exit(void);
+_Noreturn void syscall_exit_group(void);
 
 #endif /* _LIBC_SYSCALL_H */

@@ -23,7 +23,7 @@ uint64_t gdt_entries[MAX_CORES][num_gdt_entries];
 // granularity(8 Bit)=> Flags(Upper 4 Bit) | Up-Limit(Lower 4 Bit)
 // flags = (granularity & 0xF0) >> 4
 // up_limit = granularity & 0xF
-void gdt_set_entry(int i, uint32_t base, uint32_t limit, uint8_t access, uint8_t gran) {
+static void gdt_set_entry(int i, uint32_t base, uint32_t limit, uint8_t access, uint8_t gran) {
     gdt_entry_t *entry = ((gdt_entry_t *)&gdt_entries[get_curr_core()][i]);
     entry->limit_low     = (limit & 0xFFFF);        // Set lower 16 bit of limit
     entry->granularity   = (limit >> 16) & 0x0F;    // Set upper 4 bit of limit
@@ -38,7 +38,7 @@ void gdt_set_entry(int i, uint32_t base, uint32_t limit, uint8_t access, uint8_t
     
 }
 
-void gdt_fill() {
+static void gdt_fill() {
     //null descriptor, required to be here.
     gdt_entries[get_curr_core()][0] = 0;
 
@@ -79,8 +79,8 @@ void gdt_tss_init() {
 
     struct GDTR example_gdtr =
     {
-        limit: num_gdt_entries * sizeof(uint64_t) - 1,
-        address: (uint64_t)gdt_entries[get_curr_core()],
+        .limit = num_gdt_entries * sizeof(uint64_t) - 1,
+        .address = (uint64_t)gdt_entries[get_curr_core()],
     };
 
     asm volatile("lgdt %0" : : "m"(example_gdtr));

@@ -16,8 +16,8 @@
 #define ARG5(regs) (((registers_t *)regs)->r8)
 #define ARG6(regs) (((registers_t *)regs)->r9)
 
-int copy_to_user_buf(void *dest, void *src, size_t count, bool override_write_check, mm_t *mm);
-int copy_to_kernel_buf(void *dest, void *src, size_t count, mm_t *mm);
+int copy_to_user_buf(void *dest, const void *src, size_t count, bool override_write_check, mm_t *mm);
+int copy_to_kernel_buf(void *dest, const void *src, size_t count, mm_t *mm);
 
 // This must be freed!
 int handle_string_arg(uint64_t user_ptr, const char **out, mm_t *mm);

@@ -177,7 +177,7 @@ typedef struct {
     uint8_t             lint_no;
 } __attribute__((packed)) acpi_madt_record_nmi_t;
 
-void acpi_init();
+void acpi_init(void);
 void *find_acpi_table(const char *sig);
 
 extern XSDT_t *xsdt_global;

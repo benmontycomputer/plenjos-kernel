@@ -35,14 +35,14 @@ struct ide_channel legacy_ide_channels[2] = {
     { .cmd_base    = IDE_PRIMARY_CMD_BASE,
      .ctrl_base   = IDE_PRIMARY_CTRL_BASE,
      .irq_no      = 14,
-     .last_status = ATOMIC_VAR_INIT(0),
+     .last_status = 0,
      .lock        = MUTEX_INIT,
      .irq_done    = COMPLETION_INIT,
      .selected    = -1 },
     { .cmd_base    = IDE_SECONDARY_CMD_BASE,
      .ctrl_base   = IDE_SECONDARY_CTRL_BASE,
      .irq_no      = 15,
-     .last_status = ATOMIC_VAR_INIT(0),
+     .last_status = 0,
      .lock        = MUTEX_INIT,
      .irq_done    = COMPLETION_INIT,
      .selected    = -1 },
@@ -78,7 +78,7 @@ int ide_unlock_bus(struct ide_device *dev) {
     return 0;
 }
 
-enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive_no, struct ide_device *dev) {
+static enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive_no, struct ide_device *dev) {
     dev->flags = drive_no ? IDE_DEVICE_FLAG_SLAVE : 0;
 
     enum ata_device_type type;
@@ -248,7 +248,7 @@ enum ata_device_type ide_probe_device(struct ide_channel *channel, int drive_no,
     return type;
 }
 
-void ide_irq_routine(registers_t *regs, void *data) {
+static void ide_irq_routine(registers_t *regs, void *data) {
     struct ide_channel *channel = (struct ide_channel *)data;
 
     if (!mutex_is_locked(&channel->lock)) {

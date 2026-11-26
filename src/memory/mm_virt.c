@@ -143,7 +143,7 @@ static void _clear_pte_nolock(ptr_t v, mm_t *mm) {
 
 // Frees the frames mapped in [start, failed) and unmaps them. Caller must hold write on mm->lock. Pages were never used
 // so no TLB flush needed.
-void cleanup_frames(ptr_t start, ptr_t failed, mm_t *mm) {
+static void cleanup_frames(ptr_t start, ptr_t failed, mm_t *mm) {
     for (ptr_t v = start; v < failed; v += PAGE_LEN) {
         physptr_t phys = get_physaddr((uint64_t)v, mm);
         if (phys) {
@@ -314,8 +314,9 @@ static inline void flush_ipi_all() {
     if (!smp_loaded) return;
 
     uint32_t curr_core = get_curr_core();
+    uint32_t n_cores   = get_n_cores();
 
-    for (uint32_t i = 0; i < get_n_cores(); i++) {
+    for (uint32_t i = 0; i < n_cores; i++) {
         if (cpu_cores[i].online && i != curr_core) {
             send_ipi(cpu_cores[i].lapic_id, IPI_TLB_SHOOTDOWN_IRQ + 32); // IPI for tlb shootdown
         }
@@ -330,8 +331,6 @@ static inline void flush_tlb_all() {
 
     // Write the value of CR3 back to itself, which will flush the TLB
     asm volatile("mov %0, %%cr3" : : "r"(cr3) : "memory");
-
-    uint32_t curr_core = get_curr_core();
 
     flush_ipi_all();
 }
@@ -430,15 +429,15 @@ physptr_t get_physaddr(uint64_t virt, mm_t *mm) {
     dir_entry_t pdpt_entry = pdpt_table->entries[pdpt_index];
 
     if (!pdpt_entry.present) return 0;
-    if (*(uint64_t *)&pdpt_entry & PS_BIT) // 1 GiB page
-        return ((*(uint64_t *)&pdpt_entry) & 0x000FFFFFC0000000ULL) + (virt & 0x3FFFFFFFULL);
+    if (pdpt_entry.ps) // 1 GiB page
+        return (((uint64_t)pdpt_entry.base_addr << 12) & 0x000FFFFFC0000000ULL) + (virt & 0x3FFFFFFFULL);
 
     pd_t *pd_table       = (pd_t *)phys_to_virt(pdpt_entry.base_addr << 12);
     dir_entry_t pd_entry = pd_table->entries[pd_index];
 
     if (!pd_entry.present) return 0;
-    if (*(uint64_t *)&pd_entry & PS_BIT) // 2 MiB page
-        return ((*(uint64_t *)&pd_entry) & 0x000FFFFFFFE00000ULL) + (virt & 0x1FFFFFULL);
+    if (pd_entry.ps) // 2 MiB page
+        return (((uint64_t)pd_entry.base_addr << 12) & 0x000FFFFFFFE00000ULL) + (virt & 0x1FFFFFULL);
 
     pt_t *pt_table = (pt_t *)phys_to_virt(pd_entry.base_addr << 12);
     page_t page    = pt_table->pages[pt_index];

@@ -46,7 +46,7 @@ void syscall_handle_fs_call(registers_t *regs, task_t *task, mm_t *mm) {
         regs->rax        = handle_string_arg(ARG1(regs), &path, mm);
         if (path) {
             regs->rax = (uint64_t)syscall_routine_open(path, (syscall_open_flags_t)ARG2(regs), (mode_t)ARG3(regs), task);
-            kfree_heap((void *)path);
+            kfree_heap(path);
         }
         break;
     }
@@ -59,7 +59,7 @@ void syscall_handle_fs_call(registers_t *regs, task_t *task, mm_t *mm) {
         regs->rax        = handle_string_arg(ARG1(regs), &path, mm);
         if (path) {
             regs->rax = (uint64_t)syscall_routine_stat(path, ARG2(regs), task, mm);
-            kfree_heap((void *)path);
+            kfree_heap(path);
         }
         break;
     }
@@ -72,7 +72,7 @@ void syscall_handle_fs_call(registers_t *regs, task_t *task, mm_t *mm) {
         regs->rax        = handle_string_arg(ARG1(regs), &path, mm);
         if (path) {
             regs->rax = (uint64_t)syscall_routine_lstat(path, ARG2(regs), task, mm);
-            kfree_heap((void *)path);
+            kfree_heap(path);
         }
         break;
     }
@@ -91,7 +91,7 @@ void syscall_handle_fs_call(registers_t *regs, task_t *task, mm_t *mm) {
         regs->rax        = handle_string_arg(ARG1(regs), &path, mm);
         if (path) {
             regs->rax = (uint64_t)syscall_routine_mkdir(path, (mode_t)ARG2(regs), task);
-            kfree_heap((void *)path);
+            kfree_heap(path);
         }
         break;
     }
@@ -112,7 +112,7 @@ void syscall_handle_fs_call(registers_t *regs, task_t *task, mm_t *mm) {
         regs->rax        = handle_string_arg(ARG1(regs), &path, mm);
         if (path) {
             regs->rax = (uint64_t)syscall_routine_chdir(path, task);
-            kfree_heap((void *)path);
+            kfree_heap(path);
         }
         break;
     }
@@ -129,8 +129,8 @@ void syscall_handle_fs_call(registers_t *regs, task_t *task, mm_t *mm) {
             regs->rax = handle_string_arg(ARG2(regs), &target, mm);
             if (target) {
                 vfs_handle_t *dev_handle = NULL;
-                const char *dev_path     = kmalloc_heap(PATH_MAX);
-                const char *target_path  = kmalloc_heap(PATH_MAX);
+                char *dev_path     = kmalloc_heap(PATH_MAX);
+                char *target_path  = kmalloc_heap(PATH_MAX);
 
                 if (dev_path && target_path) {
                     regs->rax = (uint64_t)handle_relative_path(dev, task, dev_path);

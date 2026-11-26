@@ -3,12 +3,12 @@
 
 #include <stdint.h>
 
-#define SYSCALL_FS_FIRST 0
+#define SYSCALL_FS_FIRST 0x01
 #define SYSCALL_FS_LAST  0x3F
 
 typedef enum {
     // Filesystem
-    SYSCALL_READ,
+    SYSCALL_READ = 0x01,
     SYSCALL_WRITE,
     SYSCALL_OPEN,
     SYSCALL_CLOSE,

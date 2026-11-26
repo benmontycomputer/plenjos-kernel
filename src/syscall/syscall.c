@@ -22,8 +22,6 @@
 
 #include <stdint.h>
 
-static uint8_t fb_mapped = 0;
-
 extern void *linker_elf_buf;
 
 /* uint64_t syscall(uint64_t rax, uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t r10, uint64_t r8,
@@ -118,14 +116,10 @@ void syscall(registers_t *regs, task_t *task) {
             memset(out, 0, sizeof(fb_info_t));
 
             out->fb_bytes_per_pixel = fb_bytes_per_pixel;
-            // out->fb_height = fb_height / 4;
-            // out->fb_ptr = fb + (fb_mapped % 4) * (fb_height / 4) * fb_scanline;
             out->fb_ptr             = (char *)0x4000000000;
             out->fb_scanline        = fb_scanline;
             out->fb_width           = fb_width;
             out->fb_height          = fb_height;
-
-            // fb_mapped++;
 
             regs->rax = arg1;
         } else {
@@ -214,7 +208,7 @@ void syscall(registers_t *regs, task_t *task) {
 
         if (str_ptr) {
             printf("%s", str_ptr);
-            kfree_heap((void *)str_ptr);
+            kfree_heap(str_ptr);
             regs->rax = 0;
         }
         break;
@@ -256,7 +250,7 @@ void syscall(registers_t *regs, task_t *task) {
 
         task_t *spawn_task = create_task("spawn", task);
         if (!spawn_task) {
-            kfree_heap((void *)path);
+            kfree_heap(path);
             regs->rax = (uint64_t)(int64_t)-ENOMEM;
             break;
         }
@@ -273,7 +267,7 @@ void syscall(registers_t *regs, task_t *task) {
             pid_t child_tid = spawn_task->tid;
             res             = execute(path, spawn_task);
             if (!res) {
-                kfree_heap((void *)path);
+                kfree_heap(path);
                 regs->rax = (uint64_t)child_tid;
                 break;
             }
@@ -283,7 +277,7 @@ void syscall(registers_t *regs, task_t *task) {
 
         task_exit(spawn_task);
 
-        kfree_heap((void *)path);
+        kfree_heap(path);
         regs->rax = (uint64_t)(int64_t)res;
 
         break;

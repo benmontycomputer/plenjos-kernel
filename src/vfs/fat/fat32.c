@@ -12,26 +12,26 @@ static struct fat32_directory_entry _fat32_placeholder_root = {
     .attr = FAT_ATTR_DIRECTORY,
 };
 
-int fat32_load_func(fscache_node_t *node, const char *name, fscache_node_t *out);
-int fat32_unload_func(fscache_node_t *node);
-ssize_t fat32_directory_read_func(vfs_handle_t *handle, void *buf, size_t len);
-int fat32_create_child_func(fscache_node_t *parent, const char *name, struct kstat stat, fscache_node_t *node);
-ssize_t fat32_file_read_func(vfs_handle_t *handle, void *buf, size_t len);
+static int fat32_load_func(fscache_node_t *node, const char *name, fscache_node_t *out);
+static int fat32_unload_func(fscache_node_t *node);
+static ssize_t fat32_directory_read_func(vfs_handle_t *handle, void *buf, size_t len);
+static int fat32_create_child_func(fscache_node_t *parent, const char *name, struct kstat stat, fscache_node_t *node);
+static ssize_t fat32_file_read_func(vfs_handle_t *handle, void *buf, size_t len);
 
 // TODO: seek
-const vfs_ops_block_t fat32_file_fsops = {
+static const vfs_ops_block_t fat32_file_fsops = {
     .read        = fat32_file_read_func,
     .load_node   = fat32_load_func,
     .unload_node = fat32_unload_func,
 };
-const vfs_ops_block_t fat32_directory_fsops = {
+static const vfs_ops_block_t fat32_directory_fsops = {
     .read         = fat32_directory_read_func,
     .load_node    = fat32_load_func,
     .create_child = fat32_create_child_func,
     .unload_node  = fat32_unload_func,
 };
 
-int fat32_is_long_entry(void *entry) {
+static int fat32_is_long_entry(void *entry) {
     struct fat32_directory_entry *dir_entry = (struct fat32_directory_entry *)entry;
     return dir_entry->attr == FAT_ATTR_LONG_NAME;
 }
@@ -245,7 +245,7 @@ int fat32_next_cluster(struct filesystem_fat32 *fs, uint32_t cluster, uint32_t *
     uint32_t fat_sector       = fs->fat_start_lba + (fat_offset / fs->boot_sector.generic.bytes_per_sector);
     uint32_t offset_in_sector = fat_offset % fs->boot_sector.generic.bytes_per_sector;
 
-    if (offset_in_sector <= fs->boot_sector.generic.bytes_per_sector - 4) {
+    if (offset_in_sector <= fs->boot_sector.generic.bytes_per_sector - 4U) {
         if (fat32_drive_read(fs, fat_sector, 1, sector_buf, fs->boot_sector.generic.bytes_per_sector) < 0) {
             kfree_heap(sector_buf);
             return -1;
@@ -543,7 +543,7 @@ static int fat32_dir_iter_next(struct fat32_dir_iter *it, struct fat32_dir_item 
     return 0;
 }
 
-int fat32_load_func(fscache_node_t *node, const char *name, fscache_node_t *out) {
+static int fat32_load_func(fscache_node_t *node, const char *name, fscache_node_t *out) {
     vfs_fat32_cache_node_data_t *node_data = (vfs_fat32_cache_node_data_t *)node->internal_data;
 
     if (node_data->dir_entry->attr == FAT_ATTR_LONG_NAME) {
@@ -622,7 +622,7 @@ cleanup:
     return res;
 }
 
-int fat32_unload_func(fscache_node_t *node) {
+static int fat32_unload_func(fscache_node_t *node) {
     vfs_fat32_cache_node_data_t *node_data = (vfs_fat32_cache_node_data_t *)node->internal_data;
 
     if (node_data->dir_entry != &_fat32_placeholder_root) {
@@ -632,7 +632,7 @@ int fat32_unload_func(fscache_node_t *node) {
     return 0;
 }
 
-ssize_t fat32_directory_read_func(vfs_handle_t *handle, void *buf, size_t len) {
+static ssize_t fat32_directory_read_func(vfs_handle_t *handle, void *buf, size_t len) {
     vfs_fat32_cache_node_data_t *node_data        = (vfs_fat32_cache_node_data_t *)handle->backing_node->internal_data;
     vfs_fat32_handle_instance_data_t *handle_data = (vfs_fat32_handle_instance_data_t *)handle->instance_data;
 
@@ -705,11 +705,11 @@ cleanup:
     return res;
 }
 
-int fat32_create_child_func(fscache_node_t *parent, const char *name, struct kstat stat, fscache_node_t *node) {
+static int fat32_create_child_func(fscache_node_t *parent, const char *name, struct kstat stat, fscache_node_t *node) {
     return -ENOSYS;
 }
 
-ssize_t fat32_file_read_func(vfs_handle_t *handle, void *buf, size_t buf_len) {
+static ssize_t fat32_file_read_func(vfs_handle_t *handle, void *buf, size_t buf_len) {
     vfs_fat32_cache_node_data_t *node_data        = (vfs_fat32_cache_node_data_t *)handle->backing_node->internal_data;
     vfs_fat32_handle_instance_data_t *handle_data = (vfs_fat32_handle_instance_data_t *)handle->instance_data;
 
@@ -751,11 +751,11 @@ ssize_t fat32_file_read_func(vfs_handle_t *handle, void *buf, size_t buf_len) {
         return -ENOMEM;
     }
 
-    ssize_t res = 0;
+    size_t res = 0;
 
     // printf("FAT32 Directory (start cluster %u):\n", cluster);
 
-    while (cluster < 0x0FFFFFF8 && res < len) {
+    while (cluster < 0x0FFFFFF8U && res < len) {
         int read_res = fat32_read_entry(fs, cluster, cluster_buf, bytes_per_cluster);
 
         if (read_res < 0) {

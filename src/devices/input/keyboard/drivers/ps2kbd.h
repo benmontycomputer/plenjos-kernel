@@ -194,4 +194,4 @@ extern const uint8_t PS2_PAUSE_SEQ[8];
 #define PS2_INSERT    0x00000052 // Same as NUMPAD_0 without Num Lock
 #define PS2_DELETE    0x00000053 // Same as NUMPAD_PERIOD without Num Lock
 
-int init_ps2_keyboard();
+int init_ps2_keyboard(void);

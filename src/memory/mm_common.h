@@ -1,9 +1,9 @@
 #pragma once
 
 #include "kernel.h"
+#include "lib/structures/list.h"
 #include "lib/structures/rbtree.h"
 #include "lib/sync.h"
-#include "lib/structures/list.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -63,7 +63,9 @@ typedef struct dir_entry {    // 64 bit; pml4, pdpr and pd entry
     uint64_t pwt         : 1;
     uint64_t pcd         : 1;
     uint64_t accessed    : 1;
-    uint64_t reserved_1  : 3;  // all zeros
+    uint64_t reserved_1  : 1;  // all zeros
+    uint64_t ps          : 1;
+    uint64_t reserved_2  : 1;  // all zeros
     uint64_t available_1 : 3;  // zero
     uint64_t base_addr   : 40; // Table base address
     uint64_t available_2 : 11; // zero

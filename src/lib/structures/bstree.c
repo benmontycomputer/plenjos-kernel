@@ -2,7 +2,7 @@
 
 #include "lib/stdio.h"
 
-void _bstree_arg_validate(bstree_t *tree, bstnode_t *node, const char *func) {
+static void _bstree_arg_validate(bstree_t *tree, bstnode_t *node, const char *func) {
     if (!tree) {
         kout(KERNEL_PANIC, "%s(): tree is NULL!\n", func);
     }
@@ -12,7 +12,7 @@ void _bstree_arg_validate(bstree_t *tree, bstnode_t *node, const char *func) {
     }
 }
 
-void _bstree_short_arg_validate(bstree_t *tree, const char *func) {
+static void _bstree_short_arg_validate(bstree_t *tree, const char *func) {
     if (!tree) {
         kout(KERNEL_PANIC, "%s(): tree is NULL!\n", func);
     }

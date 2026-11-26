@@ -52,7 +52,8 @@ int atapi_send_packet_command(struct ide_device *dev, const uint8_t *packet, siz
     }
 
     if (atomic_load_explicit(&dev->channel->irq_done.cnt, memory_order_acquire) != 0) {
-        kout(KERNEL_SEVERE_FAULT, "Kernel Programming Error: ATAPI send_packet_command called while IRQ processing is ongoing\n");
+        kout(KERNEL_SEVERE_FAULT,
+             "Kernel Programming Error: ATAPI send_packet_command called while IRQ processing is ongoing\n");
         res = -1;
         goto cleanup;
     }
@@ -90,7 +91,7 @@ int atapi_send_packet_command(struct ide_device *dev, const uint8_t *packet, siz
         return -1;
     } */
 
-    uint8_t status;
+    int status;
 
     if ((status = ata_wait_bsy_read_status(dev->channel->cmd_base)) < 0) {
         kout(KERNEL_EXTERNAL_FAULT, "Error: ATAPI device did not clear BSY after PACKET command\n");
@@ -262,7 +263,8 @@ int atapi_ready_device(struct ide_device *dev) {
         kout(KERNEL_INFO, "  Max LBA: %u\n", max_lba);
         kout(KERNEL_INFO, "  Block Size: %u bytes\n", block_size);
         // TODO: re-enable size in GB when SSE is enabled
-        // kout(KERNEL_INFO, "  Total Size: %llu bytes (%.2f GB)\n", disk_size, (double)disk_size / (1024.0 * 1024.0 * 1024.0));
+        // kout(KERNEL_INFO, "  Total Size: %llu bytes (%.2f GB)\n", disk_size, (double)disk_size / (1024.0 * 1024.0 *
+        // 1024.0));
         kout(KERNEL_INFO, "  Total Size: %p bytes\n", disk_size);
 
         dev->logical_sector_size  = block_size;
@@ -323,8 +325,9 @@ ssize_t atapi_read_sectors_func(struct DRIVE *drive, uint64_t lba, size_t sector
     ide_unlock_bus(dev);
 
     if (res != 0) {
-        kout(KERNEL_EXTERNAL_FAULT, "Error: READ(10) command failed for ATAPI device (reading from lba %p, %lu sectors)\n", (void *)lba,
-               sectors);
+        kout(KERNEL_EXTERNAL_FAULT,
+             "Error: READ(10) command failed for ATAPI device (reading from lba %p, %lu sectors)\n", (void *)lba,
+             sectors);
         return -1;
     }
 

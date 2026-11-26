@@ -96,7 +96,7 @@ int uhci_insert_qh(uhci_controller_t *controller, struct uhci_qh *qh) {
 
 # define UHCI_WAIT_PRIO 1000
 
-int uhci_wait_td(volatile struct uhci_td *td, uint32_t timeout_ms) {
+static int uhci_wait_td(volatile struct uhci_td *td, uint32_t timeout_ms) {
     uint32_t elapsed = 0;
 
     /* TODO: use IRQs instead of polling */
@@ -122,7 +122,7 @@ int uhci_wait_td(volatile struct uhci_td *td, uint32_t timeout_ms) {
  * might cause this function to take a decent amount of time as it has to wait for the timeout for each incomplete TD.
  * This function does NOT free the QH or TDs.
  */
-int uhci_remove_qh(uhci_controller_t *controller, struct uhci_qh *qh) {
+static int uhci_remove_qh(uhci_controller_t *controller, struct uhci_qh *qh) {
     /* Protect QH from other kernel processes */
     int ints = are_interrupts_enabled();
     if (ints) {
@@ -208,9 +208,9 @@ static void uhci_free_dev_address(uhci_controller_t *controller, uint8_t addr) {
     }
 }
 
-int uhci_control_transfer(uhci_controller_t *controller, uint8_t device_address, uint8_t ep0_max_packet,
-                          const uint8_t *setup_data /* 8 bytes; physaddr must be sub-4G */, uint8_t *data_buffer,
-                          size_t data_length, bool data_in, uint32_t timeout_ms) {
+static int uhci_control_transfer(uhci_controller_t *controller, uint8_t device_address, uint8_t ep0_max_packet,
+                                 const uint8_t *setup_data /* 8 bytes; physaddr must be sub-4G */, uint8_t *data_buffer,
+                                 size_t data_length, bool data_in, uint32_t timeout_ms) {
     int res = 0;
 
     if (timeout_ms == 0) timeout_ms = UHCI_DEFAULT_CONTROL_TIMEOUT;
@@ -335,7 +335,7 @@ cleanup:
 }
 
 /* Only call this through usb_bulk_transfer()! This relies on the NULL checks from that function. */
-int uhci_bulk_transfer(usb_endpoint_t *endpoint, uint8_t *buffer, size_t length, uint32_t timeout_ms) {
+static int uhci_bulk_transfer(usb_endpoint_t *endpoint, uint8_t *buffer, size_t length, uint32_t timeout_ms) {
     int res = 0;
 
     /* Split the buffer into chunks */
@@ -448,7 +448,7 @@ struct uhci_dev_status_poll_args {
     void *callback_data;
 };
 
-void uhci_dev_status_poll_callback(struct timer_timeout *data) {
+static void uhci_dev_status_poll_callback(struct timer_timeout *data) {
     struct uhci_dev_status_poll_args *args = (struct uhci_dev_status_poll_args *)data->data;
 
     uint16_t port_status = uhci_read_register(args->controller, UHCI_IO_PORTSC1 + (args->port_num * 2));
@@ -486,7 +486,7 @@ static int uhci_host_driver_control_transfer_func(usb_device_t *dev, const uint8
                                  data_buffer, data_length, data_in, timeout_ms);
 }
 
-void uhci_device_connected_callback_func(void *data) {
+static void uhci_device_connected_callback_func(void *data) {
     struct uhci_dev_status_poll_args *args = (struct uhci_dev_status_poll_args *)data;
     const uint16_t reg_offset              = UHCI_IO_PORTSC1 + (args->port_num * 2);
 
@@ -555,7 +555,7 @@ void uhci_device_connected_callback_func(void *data) {
     }
 }
 
-void uhci_irq_routine(registers_t *regs, void *data) {
+static void uhci_irq_routine(registers_t *regs, void *data) {
     uhci_controller_t *controller = (uhci_controller_t *)data;
 
     uint16_t status = uhci_read_register(controller, UHCI_IO_USBSTS);

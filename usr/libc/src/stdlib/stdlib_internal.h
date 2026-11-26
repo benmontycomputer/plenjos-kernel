@@ -1,3 +1,3 @@
 #pragma once
 
-void init_heap();
+void init_heap(void);

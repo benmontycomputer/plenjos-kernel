@@ -26,4 +26,4 @@ struct tty {
 };
 
 extern struct tty tty_main;
-int setup_main_tty();
+int setup_main_tty(void);

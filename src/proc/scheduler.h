@@ -19,18 +19,22 @@ void task_ready(task_t *task);
 // This DOES acquire the lock, as well as disabling interrupts
 void task_ready_safe(task_t *task);
 
-void lock_rq();
-void unlock_rq();
+void lock_rq(void);
+void unlock_rq(void);
 
 __attribute__((noreturn)) //
-extern void cpu_scheduler_task();
+extern void cpu_scheduler_task(void);
+
+// DO NOT call this! It should only be called from assembly.
+void cpu_scheduler_task_c(uint32_t curr_core);
 
 // IMPORTANT: interrupts must remain DISABLED for the duration of this function, or its stack could get overwritten.
 int delegate_kernel_task(kernel_task_func_t func, void *arg);
 
 void populate_ktask(mm_t *mm);
-void start_scheduler();
-
-void stop_scheduler();
+void start_scheduler(void);
+void stop_scheduler(void);
 
 void block(wait_queue_t *wq, task_t *task);
+
+void syscall_dispatch(registers_t *regs);

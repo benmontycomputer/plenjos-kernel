@@ -60,6 +60,10 @@ ssize_t vfs_read(vfs_handle_t *f, void *buf, size_t len) {
         return -EIO;
     }
 
+    if (len > SSIZE_MAX) {
+        return -EINVAL;
+    }
+
     return f->backing_node->fsops->read(f, buf, len);
 }
 
@@ -85,6 +89,10 @@ ssize_t vfs_write(vfs_handle_t *f, const void *buf, size_t len) {
     if (f->backing_node->fsops->write == NULL) {
         printf("vfs_write: write function is NULL\n");
         return -EIO;
+    }
+
+    if (len > SSIZE_MAX) {
+        return -EINVAL;
     }
 
     return f->backing_node->fsops->write(f, buf, len);

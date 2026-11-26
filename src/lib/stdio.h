@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -84,10 +85,15 @@ _Noreturn void panic(const char *format, ...);
 
 char *gets(char *str);
 
-int backs();
+int backs(void);
 
 int setcursor(bool curs);
 
-int clear();
+int clear(void);
 
 void console_seek_fb(uint64_t x, uint64_t y);
+
+void request_console();
+void release_console();
+int _printf_internal(const char *format, va_list list);
+void printf_ch_fb(char ch);

@@ -7,12 +7,10 @@
 #include "lib/stdio.h"
 #include "stddef.h"
 
-extern void printf_ch_fb(char ch);
-
 static void tty_dump_unhandled_escape_sequence(struct tty *tty) {
     kout(KERNEL_INFO, "tty_default_write(): unhandled escape sequence 0x1b(ESC)");
 
-    for (int i = 1; i < sizeof(tty->out_buf); i++) {
+    for (size_t i = 1; i < sizeof(tty->out_buf); i++) {
         if (!tty->out_buf[i]) {
             break;
         }
@@ -21,7 +19,7 @@ static void tty_dump_unhandled_escape_sequence(struct tty *tty) {
     kout(KERNEL_INFO, "\n");
 }
 
-int tty_default_out(void *func_args) {
+static int tty_default_out(void *func_args) {
     struct tty *tty = func_args;
 #ifdef _KERNEL_EXTRA_CHECKS_FOR_NULL_ARGS
     if (!tty) {
@@ -29,9 +27,9 @@ int tty_default_out(void *func_args) {
     }
 #endif
 
-    int i   = 1;
-    int res = 0;
-    char ch = tty->out_buf[0];
+    unsigned i = 1;
+    int res    = 0;
+    char ch    = tty->out_buf[0];
     switch (ch) {
     case '\x1b':
         while (i < sizeof(tty->out_buf) && tty->out_buf[i]) {
@@ -71,7 +69,7 @@ int tty_default_out(void *func_args) {
 
                     bool on_y = false;
 
-                    for (int j = 2; j < i - 1; j++) {
+                    for (unsigned j = 2; j < i - 1; j++) {
                         char outch = tty->out_buf[j];
                         if (outch == ';') {
                             if (!on_y) {

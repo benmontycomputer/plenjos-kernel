@@ -4,7 +4,7 @@
 #ifndef _KERNEL_ARCH_COMMON_H
 #define _KERNEL_ARCH_COMMON_H
 
-bool are_interrupts_enabled();
+bool are_interrupts_enabled(void);
 
 static inline bool irq_save(void) {
     bool were_on = are_interrupts_enabled();
@@ -15,6 +15,6 @@ static inline void irq_restore(bool were_on) {
     if (were_on) asm volatile("sti");
 }
 
-void init_x86_64();
+void init_x86_64(void);
 
 #endif

@@ -61,7 +61,7 @@ static inline void usbkbd_boot_send_from_packet(kbd_buffer_state_t *buffer_state
     kbd_buffer_push(buffer_state, event);
 }
 
-void usbkbd_poll_timeout_func(struct timer_timeout *timeout) {
+static void usbkbd_poll_timeout_func(struct timer_timeout *timeout) {
     usb_interface_t *iface = (usb_interface_t *)timeout->data;
     struct usbhid_interface_driver_data *iface_driver_data
         = (struct usbhid_interface_driver_data *)iface->iface_driver_data;
@@ -136,7 +136,6 @@ void usbkbd_poll_timeout_func(struct timer_timeout *timeout) {
         if (pressed) usbkbd_boot_send_from_packet(buffer_state, code, true, mods_translated);
     }
 
-end:
     memcpy(prev, buf, 8);
     set_timeout(10, usbkbd_poll_timeout_func, iface);
 }

@@ -62,7 +62,7 @@ uint32_t pci_read(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset)
 int pci_set_command_bits(uint8_t bus, uint8_t device, uint8_t function, uint16_t bits);
 int pci_clear_command_bits(uint8_t bus, uint8_t device, uint8_t function, uint16_t bits);
 
-void pci_scan();
+void pci_scan(void);
 
 int pci_scan_process_serial_bus_controller(pci_device_t *dev);
 

@@ -75,7 +75,7 @@ ssize_t kbd_read(vfs_handle_t *handle, void *buf, size_t len) {
 
     endpoint_t *endpoint          = devfs_get_endpoint_from_handle(handle);
     kbd_buffer_state_t *buf_state = (kbd_buffer_state_t *)endpoint->func_args;
-    ssize_t res                   = 0;
+    size_t res                    = 0;
     while (res < len) {
         int pop_res = kbd_buffer_pop(buf_state, (kbd_event_t *)((uint8_t *)buf + res));
         if (pop_res) {
@@ -86,7 +86,7 @@ ssize_t kbd_read(vfs_handle_t *handle, void *buf, size_t len) {
     return res;
 }
 
-int kbd_console_in(void *func_args) {
+static int kbd_console_in(void *func_args) {
 #ifdef _KERNEL_EXTRA_CHECKS_FOR_NULL_ARGS
     if (!func_args) {
         kout(KERNEL_PANIC, "kbd_console_in(): func_args was NULL!\n");

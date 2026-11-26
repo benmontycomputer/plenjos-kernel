@@ -26,7 +26,7 @@
 #define ELF_USER_TOP 0x0000800000000000ULL
 
 // Copies count bytes from src into the (already mapped) user range starting at dest in the given address space.
-int elf_copy(void *dest, void *src, size_t count, mm_t *mm) {
+static int elf_copy(void *dest, void *src, size_t count, mm_t *mm) {
     uint64_t offs = 0;
 
     while (offs < count) {
@@ -230,7 +230,7 @@ int loadelf(void *elf_base, size_t elf_size, mm_t *mm, uint64_t *entry_out, uint
     if (!ehdr_mapped && !get_physaddr(voffs_if_pic, mm)) {
         // No segment covers the start of the file; the dynamic linker still needs to find the headers there.
         int res;
-        if (res = vmalloc((void *)voffs_if_pic, PAGE_LEN, VMA_USER | VMALLOC_FIXED | VMALLOC_ZERO, NULL, mm)) {
+        if ((res = vmalloc((void *)voffs_if_pic, PAGE_LEN, VMA_USER | VMALLOC_FIXED | VMALLOC_ZERO, NULL, mm))) {
             kout(KERNEL_WARN, "loadelf(): failed to allocate ehdr start (res %d)\n", res);
             return res;
         }

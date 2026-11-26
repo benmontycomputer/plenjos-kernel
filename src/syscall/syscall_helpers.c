@@ -14,7 +14,7 @@
 
 // TODO: any attempts to read/write from an out-of-bounds buffer should kill the process (segfault?)
 
-int copy_to_user_buf(void *dest, void *src, size_t count, bool override_write_check, mm_t *mm) {
+int copy_to_user_buf(void *dest, const void *src, size_t count, bool override_write_check, mm_t *mm) {
     size_t first_page_len = PAGE_LEN - ((uint64_t)dest % PAGE_LEN);
     size_t last_page_len  = ((uint64_t)dest + count) % PAGE_LEN;
 
@@ -47,15 +47,15 @@ int copy_to_user_buf(void *dest, void *src, size_t count, bool override_write_ch
         if (offs == 0) {
             // First page (or we only need 1 page); might not have to write a full page
             size_t to_copy = (count < first_page_len) ? count : first_page_len;
-            memcpy(dest, src + offs, to_copy);
+            memcpy(dest, (const uint8_t *)src + offs, to_copy);
             offs += to_copy;
         } else if (offs + PAGE_LEN > count) {
             // Last page; might not have to write a full page
-            memcpy(dest, src + offs, last_page_len);
+            memcpy(dest, (const uint8_t *)src + offs, last_page_len);
             offs += last_page_len;
         } else {
             // Full page
-            memcpy(dest, src + offs, PAGE_LEN);
+            memcpy(dest, (const uint8_t *)src + offs, PAGE_LEN);
             offs += PAGE_LEN;
         }
     }
@@ -63,7 +63,7 @@ int copy_to_user_buf(void *dest, void *src, size_t count, bool override_write_ch
     return 0;
 }
 
-int copy_to_kernel_buf(void *dest, void *src, size_t count, mm_t *mm) {
+int copy_to_kernel_buf(void *dest, const void *src, size_t count, mm_t *mm) {
     size_t first_page_len = PAGE_LEN - ((uint64_t)src % PAGE_LEN);
     size_t last_page_len  = ((uint64_t)src + count) % PAGE_LEN;
 
@@ -92,15 +92,15 @@ int copy_to_kernel_buf(void *dest, void *src, size_t count, mm_t *mm) {
         if (offs == 0) {
             // First page (or we only need 1 page); might not have to read a full page
             size_t to_copy = (count < first_page_len) ? count : first_page_len;
-            memcpy(dest + offs, src, to_copy);
+            memcpy((uint8_t *)dest + offs, src, to_copy);
             offs += to_copy;
         } else if (offs + PAGE_LEN > count) {
             // Last page; might not have to read a full page
-            memcpy(dest + offs, src, last_page_len);
+            memcpy((uint8_t *)dest + offs, src, last_page_len);
             offs += last_page_len;
         } else {
             // Full page
-            memcpy(dest + offs, src, PAGE_LEN);
+            memcpy((uint8_t *)dest + offs, src, PAGE_LEN);
             offs += PAGE_LEN;
         }
     }
