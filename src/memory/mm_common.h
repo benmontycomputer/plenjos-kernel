@@ -107,7 +107,7 @@ typedef uint8_t vma_flags_t;
 #define VMA_NON_ANON 0x20 // If this is set, don't unref the frame on vmfree()
 
 // For vmalloc() only
-#define VMALLOC_ZERO  0x40
+#define VMALLOC_ZERO  0x40 // Automatically set by memmap syscall
 #define VMALLOC_FIXED 0x80
 
 // Physical memory manager

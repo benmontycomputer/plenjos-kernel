@@ -43,8 +43,7 @@ void *syscall_routine_memmap_from_buffer(void *addr_req, size_t length, syscall_
     // We mapped these pages just now (otherwise the memmap routine would have errored), so we can override the write
     // check
     copy_to_user_buf(addr, buffer, to_copy, true, mm);
-
-    return 0;
+    return addr;
 }
 
 /* int syscall_routine_memprotect(void *addr, size_t length, syscall_memmap_flags_t flags, pml4_t *current_pml4) {

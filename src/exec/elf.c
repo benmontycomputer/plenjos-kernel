@@ -133,18 +133,6 @@ static int elf_build_ranges(size_t elf_size, const ELF_program_header_t *phdrs, 
     return merged;
 }
 
-// Zeroes an already-mapped user range through the direct map (so .bss and partial pages never expose stale frames).
-static int elf_zero(uint64_t addr, uint64_t len, mm_t *mm) {
-    for (uint64_t off = 0; off < len; off += PAGE_LEN) {
-        uint64_t paddr = get_physaddr(addr + off, mm);
-        if (!paddr) {
-            return -EFAULT;
-        }
-        memset((void *)phys_to_virt(paddr & ~(uint64_t)(PAGE_LEN - 1)), 0, PAGE_LEN);
-    }
-    return 0;
-}
-
 // Loads an ELF64 x86-64 executable / shared object into the address space pml4, at voffs_if_pic (which must be page
 // aligned; all of our binaries are position independent, so this is added to every address in the file).
 // elf_size is the size of the buffer at elf_base; nothing outside it is ever read.
@@ -198,24 +186,22 @@ int loadelf(void *elf_base, size_t elf_size, mm_t *mm, uint64_t *entry_out, uint
     }
     int nranges = elf_build_ranges(elf_size, phdrs, ehdr->ph_entries, voffs_if_pic, ranges);
     if (nranges < 0) {
+        kfree_heap(ranges);
         return nranges;
     }
 
     for (int i = 0; i < nranges; i++) {
-        int res = vmalloc((void *)ranges[i].lo, ranges[i].hi - ranges[i].lo, ranges[i].flags | VMALLOC_FIXED, NULL,
-                          mm);
+        int res = vmalloc((void *)ranges[i].lo, ranges[i].hi - ranges[i].lo,
+                          ranges[i].flags | VMALLOC_FIXED | VMALLOC_ZERO, NULL, mm);
         if (res) {
             kout(KERNEL_WARN, "loadelf(): couldn't map user range %p-%p, res %d\n", (void *)ranges[i].lo,
                  (void *)ranges[i].hi, res);
-            return res;
-        }
-
-        // vmalloc() doesn't zero the frames it hands out
-        res = elf_zero(ranges[i].lo, ranges[i].hi - ranges[i].lo, mm);
-        if (res) {
+            kfree_heap(ranges);
             return res;
         }
     }
+
+    kfree_heap(ranges);
 
     // Copy the file contents in. elf_copy() writes through the direct map, so read-only pages are fine.
     for (uint16_t i = 0; i < ehdr->ph_entries; i++) {
@@ -234,8 +220,8 @@ int loadelf(void *elf_base, size_t elf_size, mm_t *mm, uint64_t *entry_out, uint
         } else if (phdr->type == PT_DYNAMIC && phdr->memsz) {
             // Must lie inside a PT_LOAD (so it is already mapped); don't map it again.
             uint64_t dyn = phdr->vaddr + voffs_if_pic;
-            if (phdr->vaddr >= ELF_USER_TOP - voffs_if_pic || phdr->memsz > ELF_USER_TOP - dyn
-                || !get_physaddr(dyn, mm) || !get_physaddr(dyn + phdr->memsz - 1, mm)) {
+            if (phdr->vaddr >= ELF_USER_TOP - voffs_if_pic || phdr->memsz > ELF_USER_TOP - dyn || !get_physaddr(dyn, mm)
+                || !get_physaddr(dyn + phdr->memsz - 1, mm)) {
                 return -ENOEXEC;
             }
         }
@@ -244,7 +230,7 @@ int loadelf(void *elf_base, size_t elf_size, mm_t *mm, uint64_t *entry_out, uint
     if (!ehdr_mapped && !get_physaddr(voffs_if_pic, mm)) {
         // No segment covers the start of the file; the dynamic linker still needs to find the headers there.
         int res;
-        if (res = vmalloc((void *)voffs_if_pic, PAGE_LEN, VMA_USER, NULL, mm)) {
+        if (res = vmalloc((void *)voffs_if_pic, PAGE_LEN, VMA_USER | VMALLOC_FIXED | VMALLOC_ZERO, NULL, mm)) {
             kout(KERNEL_WARN, "loadelf(): failed to allocate ehdr start (res %d)\n", res);
             return res;
         }
