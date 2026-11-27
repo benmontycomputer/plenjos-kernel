@@ -5,7 +5,8 @@
             "includePath": [
                 "${workspaceFolder}/../../include",
                 "${workspaceFolder}/../libc/include",
-                "${workspaceFolder}/src"
+                "${workspaceFolder}/src",
+                "${workspaceFolder}/../libplenja/include"
             ],
             "defines": [],
             "cStandard": "gnu11",

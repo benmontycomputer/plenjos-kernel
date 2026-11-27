@@ -186,7 +186,7 @@ int load_library_from_disk(const char *path, uint64_t *out_index) {
     // TODO
 
     if (out_index) {
-        *out_index = dso_count;
+        *out_index = dso_count - 1;
     }
 
     return 0;
@@ -348,7 +348,7 @@ done_parsing:
                 syscall_print("parse_dynamic_section: loaded library ");
                 syscall_print(lib_path);
                 syscall_print(" at base ");
-                syscall_print_ptr(loaded_dsos[res].base);
+                syscall_print_ptr(loaded_dsos[lib_index].base);
                 syscall_print("\n");
             }
         }
@@ -394,6 +394,11 @@ ELF_addr_t resolve_symbol(const char *name) {
                 continue; // Empty name
             }
 
+            // Skip imports: an undefined symbol has no address in this object.
+            if (sym->st_shndx == 0 /* SHN_UNDEF */) {
+                continue;
+            }
+
             if (sym->st_name >= obj->strsz) {
                 syscall_print("ERROR: invalid st_name\n");
                 return 0; // Not technically a problem resolving the symbol, but this indicates a corrupt header or
@@ -410,5 +415,10 @@ ELF_addr_t resolve_symbol(const char *name) {
         }
     }
 
+    syscall_print("resolve_symbol: not found in ");
+    syscall_print_ptr(dso_count);
+    syscall_print(" loaded objects: ");
+    syscall_print(name);
+    syscall_print("\n");
     return 0;
 }
