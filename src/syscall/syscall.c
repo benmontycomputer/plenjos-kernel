@@ -49,6 +49,9 @@ extern void *linker_elf_buf;
 extern char *fb;
 extern int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
 
+// Max number of argv (or envp) entries accepted by SYSCALL_SPAWN
+#define SPAWN_MAX_ARGS 256
+
 // TODO: how do we handle the string being a non-contiguous set of pages?
 /* bool _syscall_helper_check_str_ptr_perms(pml4_t *current_pml4, uint64_t user_ptr, char **out) {
     uint64_t str_ptr = phys_to_virt(get_physaddr(user_ptr, current_pml4));
@@ -246,10 +249,27 @@ void syscall(registers_t *regs, task_t *task) {
             break;
         }
 
-        // TODO: argc, argv, envp and envc
+        // libc: syscall_spawn(path, argv, envp, argc, envc)
+        const uint64_t uargc = ARG4(regs);
+        const uint64_t uenvc = ARG5(regs);
+        char **kargv         = NULL;
+        char **kenvp         = NULL;
+
+        int args_res = handle_string_array_arg(ARG2(regs), uargc, SPAWN_MAX_ARGS, &kargv, mm);
+        if (!args_res) {
+            args_res = handle_string_array_arg(ARG3(regs), uenvc, SPAWN_MAX_ARGS, &kenvp, mm);
+        }
+        if (args_res) {
+            free_string_array(kargv, uargc);
+            kfree_heap(path);
+            regs->rax = (uint64_t)(int64_t)args_res;
+            break;
+        }
 
         task_t *spawn_task = create_task("spawn", task);
         if (!spawn_task) {
+            free_string_array(kargv, uargc);
+            free_string_array(kenvp, uenvc);
             kfree_heap(path);
             regs->rax = (uint64_t)(int64_t)-ENOMEM;
             break;
@@ -265,7 +285,12 @@ void syscall(registers_t *regs, task_t *task) {
         if (!res) {
             // The child may run and exit before execute() returns, so don't touch spawn_task afterwards.
             pid_t child_tid = spawn_task->tid;
-            res             = execute(path, spawn_task);
+            // execute() copies argv/envp onto the new stack, so they can be freed as soon as it returns
+            res = execute(path, spawn_task, (int)uargc, kargv, (int)uenvc, kenvp);
+            free_string_array(kargv, uargc);
+            free_string_array(kenvp, uenvc);
+            kargv = NULL;
+            kenvp = NULL;
             if (!res) {
                 kfree_heap(path);
                 regs->rax = (uint64_t)child_tid;
@@ -277,6 +302,8 @@ void syscall(registers_t *regs, task_t *task) {
 
         task_exit(spawn_task);
 
+        free_string_array(kargv, uargc); // NULL (and a no-op) if execute() already consumed them
+        free_string_array(kenvp, uenvc);
         kfree_heap(path);
         regs->rax = (uint64_t)(int64_t)res;
 

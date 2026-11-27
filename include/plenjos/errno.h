@@ -13,6 +13,7 @@
 #define EILSEQ 84 // Illegal byte sequence
 
 // General errors
+#define E2BIG     7  // Argument list too long
 #define ENOMEM    12 // Out of memory
 #define EFAULT    14 // Bad address
 #define ENOEXEC   8  // Exec format error

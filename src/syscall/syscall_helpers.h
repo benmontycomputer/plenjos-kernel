@@ -22,6 +22,11 @@ int copy_to_kernel_buf(void *dest, const void *src, size_t count, mm_t *mm);
 // This must be freed!
 int handle_string_arg(uint64_t user_ptr, const char **out, mm_t *mm);
 
+// Copies a user array of (count) string pointers and strings into kernel memory. Don't forget to free with
+// free_string-array()
+int handle_string_array_arg(uint64_t user_arr, uint64_t count, uint64_t max, char ***out, mm_t *mm);
+void free_string_array(char **arr, uint64_t count);
+
 // Out must be at least PATH_MAX bytes
 int handle_relative_path(const char *rel, task_t *task, char *out);
 

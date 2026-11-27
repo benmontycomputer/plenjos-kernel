@@ -311,9 +311,49 @@ static void stack_push_qword(uint64_t qword, uint64_t **rsp) {
 
 extern void user_task_hook(void);
 
-int execute(const char *path, task_t *task) {
+#define EXEC_ALIGN8(x) (((x) + 7ULL) & ~7ULL)
+
+// Total bytes the arguments take on the (single-page) initial user stack, or 0 if they're invalid/don't fit.
+static size_t exec_args_stack_size(int argc, char *const *argv, int envc, char *const *envp) {
+    size_t strings = 0;
+
+    for (int i = 0; i < argc; i++) {
+        if (!argv[i]) return 0;
+        strings += EXEC_ALIGN8(strlen(argv[i]) + 1);
+    }
+    for (int i = 0; i < envc; i++) {
+        if (!envp[i]) return 0;
+        strings += EXEC_ALIGN8(strlen(envp[i]) + 1);
+    }
+
+    size_t qwords = 1 + (size_t)(argc + 1) + (size_t)(envc + 1);
+    qwords        = (qwords + 1) & ~1ULL; // keep the final rsp 16-byte aligned
+
+    return strings + qwords * sizeof(uint64_t) + 16;
+}
+
+int execute(const char *path, task_t *task, int argc, char *const *argv, int envc, char *const *envp) {
     if (!task || !path) {
         return -EINVAL;
+    }
+
+    char *const default_argv[1] = { (char *)path };
+    if (argc <= 0 || !argv) {
+        argc = 1;
+        argv = default_argv;
+    }
+    if (envc <= 0 || !envp) {
+        envc = 0;
+        envp = NULL;
+    }
+
+    // Everything is placed in the top page of the user stack; check that it fits before we touch the task
+    size_t args_size = exec_args_stack_size(argc, argv, envc, envp);
+    if (!args_size) {
+        return -EINVAL;
+    }
+    if (args_size > PAGE_LEN - 64) {
+        return -E2BIG;
     }
 
     // NOTE: this is ONLY for the vfs_open() call
@@ -416,35 +456,44 @@ int execute(const char *path, task_t *task) {
         return -ENOMEM;
     }
     uint64_t *rsp_og = (uint64_t *)(phys_to_virt(stack_top_phys) + 0x1000);
-    uint64_t *rsp    = rsp_og;
 
-    // First, setup the stack
-    const char *argv0 = path;
-    /* const char *argv1 = NULL;
+    // Initial user stack, SysV-style (what crt0/ld.so expect), lowest address first:
+    //   argc | argv[0..argc-1] | NULL | envp[0..envc-1] | NULL | (pad) | ...strings...
+    // The strings sit at the top of the page; the pointer array sits directly below them.
+    size_t strings_len = 0;
+    for (int i = 0; i < argc; i++) strings_len += EXEC_ALIGN8(strlen(argv[i]) + 1);
+    for (int i = 0; i < envc; i++) strings_len += EXEC_ALIGN8(strlen(envp[i]) + 1);
 
-    const char *envp0 = NULL; */
+    size_t qwords = 1 + (size_t)(argc + 1) + (size_t)(envc + 1);
+    qwords        = (qwords + 1) & ~1ULL; // even, so rsp is 16-byte aligned
 
-    const uint64_t argc = 1;
+    uint8_t *strings_base = (uint8_t *)(((uint64_t)rsp_og - strings_len) & ~0xFULL);
+    uint64_t *sp          = (uint64_t *)(strings_base - qwords * sizeof(uint64_t));
 
-    size_t argv0_len = strlen(argv0) + 1;
+#define EXEC_USER_ADDR(kptr) (ustack_top - ((uint64_t)rsp_og - (uint64_t)(kptr)))
 
-    // Push argv0 onto the stack (getting address aligned to 8 bytes)
-    uint64_t argv0_addr = ((uint64_t)(rsp)-argv0_len) & ~0x7ULL;
-    rsp                 = (uint64_t *)argv0_addr;
-    memcpy((void *)argv0_addr, argv0, argv0_len);
+    memset(sp, 0, qwords * sizeof(uint64_t)); // also provides the NULL terminators and padding
 
-    uint64_t str_usr_addr = ustack_top - ((uint64_t)rsp_og - argv0_addr);
+    sp[0] = (uint64_t)argc;
 
-    // Align the rsp to 16-bytes (we have even number of values left to push after this)
-    rsp = (uint64_t *)((uint64_t)(rsp) & ~0xF);
+    uint8_t *cursor = strings_base;
+    for (int i = 0; i < argc; i++) {
+        size_t len = strlen(argv[i]) + 1;
+        memcpy(cursor, argv[i], len);
+        sp[1 + i] = EXEC_USER_ADDR(cursor);
+        cursor += EXEC_ALIGN8(len);
+    }
+    // sp[1 + argc] is the argv NULL terminator
+    for (int i = 0; i < envc; i++) {
+        size_t len = strlen(envp[i]) + 1;
+        memcpy(cursor, envp[i], len);
+        sp[2 + argc + i] = EXEC_USER_ADDR(cursor);
+        cursor += EXEC_ALIGN8(len);
+    }
+    // sp[2 + argc + envc] is the envp NULL terminator
 
-    // Push envp0, argv1, argv0, argc onto the stack
-    stack_push_qword(0, &rsp);
-    stack_push_qword(0, &rsp);
-    stack_push_qword((uint64_t)str_usr_addr, &rsp);
-    stack_push_qword((uint64_t)argc, &rsp);
-
-    uint64_t user_rsp = ustack_top - ((uint64_t)rsp_og - (uint64_t)rsp);
+    uint64_t user_rsp = EXEC_USER_ADDR(sp);
+#undef EXEC_USER_ADDR
 
     stack_push_qword((uint64_t)USER_DS | 3, (uint64_t **)&task->thread_state.rsp);   // SS
     stack_push_qword(user_rsp, (uint64_t **)&task->thread_state.rsp);                // RSP

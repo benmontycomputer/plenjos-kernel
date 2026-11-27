@@ -175,6 +175,56 @@ int handle_string_arg(uint64_t user_ptr, const char **out, mm_t *mm) {
     return 0;
 }
 
+void free_string_array(char **arr, uint64_t count) {
+    if (!arr) return;
+
+    for (uint64_t i = 0; i < count; i++) {
+        if (arr[i]) kfree_heap(arr[i]);
+    }
+    kfree_heap(arr);
+}
+
+int handle_string_array_arg(uint64_t user_arr, uint64_t count, uint64_t max, char ***out, mm_t *mm) {
+    *out = NULL;
+
+    if (count == 0) {
+        return 0;
+    }
+    if (count > max) {
+        return -E2BIG;
+    }
+    if (user_arr == 0) {
+        return -EFAULT;
+    }
+
+    uint64_t *user_ptrs = kmalloc_heap(count * sizeof(uint64_t));
+    char **arr          = kmalloc_heap(count * sizeof(char *));
+    if (!user_ptrs || !arr) {
+        if (user_ptrs) kfree_heap(user_ptrs);
+        if (arr) kfree_heap(arr);
+        return -ENOMEM;
+    }
+    memset(arr, 0, count * sizeof(char *));
+
+    int res = copy_to_kernel_buf(user_ptrs, (void *)user_arr, count * sizeof(uint64_t), mm);
+
+    for (uint64_t i = 0; !res && i < count; i++) {
+        const char *str = NULL;
+        res             = handle_string_arg(user_ptrs[i], &str, mm);
+        arr[i]          = (char *)str;
+    }
+
+    kfree_heap(user_ptrs);
+
+    if (res) {
+        free_string_array(arr, count);
+        return res;
+    }
+
+    *out = arr;
+    return 0;
+}
+
 int handle_relative_path(const char *rel, task_t *task, char *out) {
     if (!rel || !task || !out) {
         return -EINVAL;

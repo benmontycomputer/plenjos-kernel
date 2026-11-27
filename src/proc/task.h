@@ -102,4 +102,7 @@ vfs_handle_t *task_get_fd(task_t *task, int fd);
 int task_alloc_fd(task_t *task, vfs_handle_t *handle);
 void task_free_fd(task_t *task, int fd);
 
-int execute(const char *path, task_t *task);
+/**
+ * If argc == 0 or argv == NULL, argv is just { path }.
+ */
+int execute(const char *path, task_t *task, int argc, char *const *argv, int envc, char *const *envp);

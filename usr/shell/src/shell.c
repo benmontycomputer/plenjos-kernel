@@ -181,8 +181,10 @@ static bool process_cmd(const char *cmd) {
         if (!f) {
             printf("Unknown command: %s\n", toks[0]);
         } else {
-            char **argv = malloc(toks_count + 1);
-            memcpy(argv, toks, toks_count * sizeof(char *));
+            char **argv = malloc((toks_count + 1) * sizeof(char *));
+            for (int i = 0; i < toks_count; i++) {
+                argv[i] = toks[i];
+            }
             argv[toks_count] = NULL;
             char *envp[] = { "LINES=24", "COLUMNS=80", NULL };
 
