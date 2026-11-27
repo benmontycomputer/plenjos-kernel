@@ -15,14 +15,14 @@ pci_device_t pci_devices[PCI_MAX_DEVICES];
 uint32_t pci_device_count = 0;
 
 void pci_write(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint32_t value) {
-    uint32_t address = (1 << 31) | (bus << 16) | (device << 11) | (function << 8) | (offset & 0xFC);
+    uint32_t address = (1u << 31) | (bus << 16) | (device << 11) | (function << 8) | (offset & 0xFC);
 
     outl(PCI_CONFIG_ADDRESS, address);
     outl(PCI_CONFIG_DATA, value);
 }
 
 uint32_t pci_read(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset) {
-    uint32_t address = (1 << 31) | (bus << 16) | (device << 11) | (function << 8) | (offset & 0xFC);
+    uint32_t address = (1u << 31) | (bus << 16) | (device << 11) | (function << 8) | (offset & 0xFC);
 
     outl(PCI_CONFIG_ADDRESS, address);
     return inl(PCI_CONFIG_DATA);

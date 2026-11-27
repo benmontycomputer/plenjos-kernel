@@ -281,15 +281,7 @@ finish_relocations:
     ld_main(stack, target_ehdr);
 }
 
-void jump_to_entry(uint64_t entry, uint64_t stack) {
-    // Jump to the entry point
-    asm volatile("mov %0, %%rsp\n"
-                 "push %1\n"
-                 "ret\n"
-                 :
-                 : "r"(stack), "r"(entry)
-                 : "%rsp");
-}
+__attribute__((noreturn)) extern void jump_to_entry(uint64_t entry, uint64_t stack);
 
 /**
  * Stack format:
@@ -318,7 +310,7 @@ void jump_to_entry(uint64_t entry, uint64_t stack) {
  */
 
 static int ld_main(uint64_t stack, uint64_t target_ehdr) {
-    uint64_t argc = *((uint64_t *)stack);
+    /* uint64_t argc = *((uint64_t *)stack);
     char **argv   = (char **)((uint8_t *)stack + 8);
     char **envp   = (char **)((uint8_t *)argv + (argc + 1) * 8);
 
@@ -326,7 +318,7 @@ static int ld_main(uint64_t stack, uint64_t target_ehdr) {
         // No executable specified
         syscall_print("ldso: No executable specified in argv[0]\n");
         return -1;
-    }
+    } */
 
     struct elf_object main_obj = { 0 };
     // loadelf(argv[0], &main_obj);
@@ -368,8 +360,4 @@ static int ld_main(uint64_t stack, uint64_t target_ehdr) {
     syscall_print("\n");
 
     jump_to_entry(entry, stack);
-
-    while (1);
-
-    return 0;
 }
