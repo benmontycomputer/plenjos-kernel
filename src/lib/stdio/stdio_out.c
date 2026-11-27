@@ -537,6 +537,24 @@ int backs() {
     return 0;
 }
 
+int console_clear_to_eol(void) {
+    request_console();
+
+    uint64_t w = CONSOLE_W();
+    if (w) {
+        for (uint64_t x = GET_CONSOLE_X(console_pos); x < w; x++) {
+            kputchar(' ', x, GET_CONSOLE_Y(console_pos), 0xFFFFFF, 0x000000);
+        }
+
+        // Redraw the cursor
+        if (cursor) kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0x000000, 0xFFFFFF);
+    }
+
+    release_console();
+
+    return 0;
+}
+
 int setcursor(bool curs) {
     request_console();
 

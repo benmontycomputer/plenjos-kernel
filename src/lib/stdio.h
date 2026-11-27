@@ -91,6 +91,8 @@ int setcursor(bool curs);
 
 int clear(void);
 
+int console_clear_to_eol(void);
+
 void console_seek_fb(uint64_t x, uint64_t y);
 
 void request_console();

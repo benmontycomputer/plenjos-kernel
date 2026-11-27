@@ -102,6 +102,10 @@ bstnode_t *bstree_find_max(bstree_t *tree) {
 int bstree_insert_node(bstree_t *tree, bstnode_t *node) {
     _bstree_arg_validate(tree, node, __func__);
 
+    node->left = NULL;
+    node->right = NULL;
+    node->parent = NULL;
+
     bstnode_t *curr = tree->root;
     int cmp         = 0;
 

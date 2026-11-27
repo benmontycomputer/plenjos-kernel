@@ -52,11 +52,22 @@ static int tty_default_out(void *func_args) {
                 // Clear
                 clear();
             } else if (i == 6 && !memcmp(tty->out_buf, "\x1b[?12h", i)) {
-                // Enable cursor
+                // Enable blinking
+                // TODO: blinking
                 setcursor(true);
             } else if (i == 6 && !memcmp(tty->out_buf, "\x1b[?12l", i)) {
+                // Disable blinking
+                // TODO: blinking
+                setcursor(false);
+            } else if (i == 6 && !memcmp(tty->out_buf, "\x1b[?25h", i)) {
+                // Enable cursor
+                setcursor(true);
+            } else if (i == 6 && !memcmp(tty->out_buf, "\x1b[?25l", i)) {
                 // Disable cursor
                 setcursor(false);
+            } else if ((i == 3 && !memcmp(tty->out_buf, "\x1b[K", i)) || (i == 4 && !memcmp(tty->out_buf, "\x1b[0K", i))) {
+                // Clear from cursor (inclusive) to end of line
+                console_clear_to_eol();
             } else if (tty->out_buf[i - 1] == 'H' || tty->out_buf[i - 1] == 'f') {
                 // Move cursor
                 if (i == 2) {
@@ -64,36 +75,36 @@ static int tty_default_out(void *func_args) {
                         console_seek_fb(0, 0);
                     }
                 } else if (i > 2 && tty->out_buf[1] == '[') {
-                    uint64_t x = 0;
-                    uint64_t y = 0;
+                    uint64_t row = 0;
+                    uint64_t col = 0;
 
-                    bool on_y = false;
+                    bool on_col = false;
 
                     for (unsigned j = 2; j < i - 1; j++) {
                         char outch = tty->out_buf[j];
                         if (outch == ';') {
-                            if (!on_y) {
-                                on_y = true;
+                            if (!on_col) {
+                                on_col = true;
                                 continue;
                             }
                         } else if (outch >= '0' && outch <= '9') {
-                            if (on_y) {
-                                y *= 10;
-                                y += outch - '0';
+                            if (on_col) {
+                                col *= 10;
+                                col += outch - '0';
                             } else {
-                                x *= 10;
-                                x += outch - '0';
+                                row *= 10;
+                                row += outch - '0';
                             }
                             continue;
                         }
 
-                        on_y = false;
+                        on_col = false;
                         break;
                     }
 
                     // TODO: check x and y's max bounds
-                    if (on_y && x > 0 && y > 0) {
-                        console_seek_fb(x - 1, y - 1);
+                    if (on_col && row > 0 && col > 0) {
+                        console_seek_fb(col - 1, row - 1);
                     } else {
                         tty_dump_unhandled_escape_sequence(tty);
                     }

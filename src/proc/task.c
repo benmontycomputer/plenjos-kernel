@@ -42,7 +42,6 @@ static int tid_cmp(const rbnode_t *a, const rbnode_t *b) {
     return (ta->tid > tb->tid) - (ta->tid < tb->tid);
 }
 
-mutex tid_tree_lock      = MUTEX_INIT;
 static rbtree_t tid_tree = (rbtree_t) { 0 };
 
 // TODO: convert this to rwlock
@@ -206,6 +205,8 @@ static void task_reap_finish(task_t *task) {
     } else {
         *link = task->sibling;
     }
+
+    rbtree_remove(&tid_tree, &task->rbnode);
     unlock_tasklist();
 
     fsa_free(&_task_fsa, task);

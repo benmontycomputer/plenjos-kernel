@@ -4,27 +4,32 @@
 
 .global _start
 _start:
-	# Set up end of the stack frame linked list.
-	movq $0, %rbp
-	pushq %rbp # rip=0
-	pushq %rbp # rbp=0
-	movq %rsp, %rbp
+	# ld.so (and the kernel) enter here with rsp pointing at argc, SysV-style:
+	#   (rsp) = argc, 8(rsp) = argv[0] ... NULL, then envp[0] ... NULL
+	# No argument registers are set up, so read everything off the stack.
+	xorq %rbp, %rbp          # end of the frame pointer chain
+	movq (%rsp), %rdi        # argc
+	leaq 8(%rsp), %rsi       # argv
+	leaq 16(%rsp,%rdi,8), %rdx # envp = argv + argc + 1
+	andq $-16, %rsp          # keep the stack 16-byte aligned for calls
 
-	# We need those in a moment when we call main.
-	pushq %rsi
-	pushq %rdi
+	# Keep them in callee-saved registers across the init calls.
+	movq %rdi, %r12
+	movq %rsi, %r13
+	movq %rdx, %r14
 
-	# Prepare signals, memory allocation, stdio and such.
+	# initialize_standard_library(argc, argv, envc, envp)
+	xorl %edx, %edx          # envc (unused)
+	movq %r14, %rcx
 	call initialize_standard_library
 
 	# Run the global constructors.
 	call _init
 
-	# Restore argc and argv.
-	popq %rdi
-	popq %rsi
-
-	# Run main
+	# main(argc, argv, envp)
+	movq %r12, %rdi
+	movq %r13, %rsi
+	movq %r14, %rdx
 	call main
 
 	# Terminate the process with the exit code.

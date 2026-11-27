@@ -4,6 +4,7 @@
 #include "plenjos/dev/kbd.h"
 #include "stddef.h"
 #include "stdio.h"
+#include "stdlib.h"
 #include "string.h"
 #include "sys/syscall.h"
 #include "uconsole.h"
@@ -120,14 +121,9 @@ static bool process_cmd(const char *cmd) {
         printf("Available commands:\n");
         printf("  echo [args...] - Print arguments to the console\n");
         printf("  clear          - Clear the console screen\n");
-        printf("  tetris         - Start the Tetris game\n");
         printf("  print [string] - Print a string to the kernel debug console using syscall_print\n");
         printf("  help           - Show this help message\n");
         printf("  exit           - Exit the shell\n");
-    } else if (!strcmp(toks[0], "tetris")) {
-        char *argv[] = {"/bin/tetris", NULL};
-        syscall_spawn("/bin/tetris", argv, NULL, 1, 0);
-        clear();
     } else if (!strcmp(toks[0], "exit")) {
         printf("Exiting shell...\n");
         setcursor(false);
@@ -185,8 +181,16 @@ static bool process_cmd(const char *cmd) {
         if (!f) {
             printf("Unknown command: %s\n", toks[0]);
         } else {
+            char **argv = malloc(toks_count + 1);
+            memcpy(argv, toks, toks_count * sizeof(char *));
+            argv[toks_count] = NULL;
+            char *envp[] = { "LINES=24", "COLUMNS=80", NULL };
+
+            // TODO: actual LINES and columns values
+
             fclose(f);
-            pid_t tid = syscall_spawn(toks[0], NULL, NULL, 0, 0);
+            pid_t tid = syscall_spawn(toks[0], argv, envp, toks_count, 2);
+            free(argv);
             syscall_waittid(tid);
         }
     }
@@ -245,12 +249,12 @@ void main(int argc, char **argv) {
             break;
         case '\x1b':
             // ANSI escape
-            char full[6] = {0};
-            full[0] = ch;
+            char full[6] = { 0 };
+            full[0]      = ch;
 
             int i = 1;
             while (i < 6) {
-                ch = getchar();
+                ch      = getchar();
                 full[i] = ch;
                 i++;
 

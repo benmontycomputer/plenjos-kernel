@@ -5,7 +5,16 @@
 /* Search functions */
 
 void *memchr(const void *s, int c, size_t n);
-char *strchr(const char *s, int c);
+char *strchr(const char *s, int c) {
+    char ch = (char)c;
+
+    while (*s != ch) {
+        if (*s == '\0') return NULL;
+        s++;
+    }
+
+    return (char *)s;
+}
 size_t strcspn(const char *s, const char *accept);
 char *strpbrk(const char *s, const char *accept);
 char *strrchr(const char *s, int c);

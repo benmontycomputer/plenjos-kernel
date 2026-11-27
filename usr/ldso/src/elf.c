@@ -117,11 +117,18 @@ int load_library_from_disk(const char *path, uint64_t *out_index) {
 
         if (p->type != PT_LOAD) continue;
 
+        // Segments may not start on a page boundary, so map whole pages but make sure to copy to offset
+        uint64_t seg_delta = p->vaddr % PAGE_LEN;
+        if (p->offset < seg_delta) {
+            syscall_print("load_library_from_disk: PT_LOAD offset/vaddr not congruent mod page size\n");
+            return -EIO;
+        }
+
         // Map with full permissions; we will adjust later if needed
         void *res
-            = syscall_memmap_from_buffer((void *)(base + p->vaddr), (size_t)p->memsz,
+            = syscall_memmap_from_buffer((void *)(base + p->vaddr - seg_delta), (size_t)(p->memsz + seg_delta),
                                          SYSCALL_MEMMAP_FLAG_WR | SYSCALL_MEMMAP_FLAG_EX | SYSCALL_MEMMAP_FLAG_FIXED,
-                                         (void *)(file_buf + p->offset), (size_t)p->filesz);
+                                         (void *)(file_buf + p->offset - seg_delta), (size_t)(p->filesz + seg_delta));
 
         if (!res) {
             syscall_print("load_library_from_disk: failed to map PT_LOAD segment from buffer\n");
@@ -168,9 +175,10 @@ int load_library_from_disk(const char *path, uint64_t *out_index) {
         if (p->type != PT_LOAD) continue;
 
         // Map with full permissions; we will adjust later if needed
-        int res = syscall_memprotect((void *)(base + p->vaddr), (size_t)p->memsz,
-                                     ((p->flags & ELF_PHDR_W) ? SYSCALL_MEMMAP_FLAG_WR : 0)
-                                         | ((p->flags & ELF_PHDR_EX) ? SYSCALL_MEMMAP_FLAG_EX : 0));
+        uint64_t seg_delta = p->vaddr % PAGE_LEN;
+        int res            = syscall_memprotect((void *)(base + p->vaddr - seg_delta), (size_t)(p->memsz + seg_delta),
+                                                ((p->flags & ELF_PHDR_W) ? SYSCALL_MEMMAP_FLAG_WR : 0)
+                                                    | ((p->flags & ELF_PHDR_EX) ? SYSCALL_MEMMAP_FLAG_EX : 0));
 
         if (res < 0) {
             syscall_print("load_library_from_disk: failed to apply permissions to PT_LOAD segment from buffer\n");
@@ -305,7 +313,7 @@ int parse_dynamic_section(struct elf_object *obj) {
         case DT_HASH: {
             // TODO: DT_GNU_HASH? Also, actually handle the hash table.
             uint32_t *hash   = (uint32_t *)(obj->base + d->d_un.d_ptr);
-            uint32_t nbucket = hash[0];
+            // uint32_t nbucket = hash[0];
             uint32_t nchain  = hash[1]; // Equal to number of syms
 
             obj->nsyms = nchain;
