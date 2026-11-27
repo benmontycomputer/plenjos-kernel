@@ -14,6 +14,9 @@
 #define TEXT_CYAN    "\e[0;36m"
 #define TEXT_RESET   "\e[0;0m"
 
+#define DEFAULT_FG 0xFFFFFF
+#define DEFAULT_BG 0x000000
+
 // Use in IRQ handlers in case a process has STDIO locked when interrupt happens
 int printf_nolock(const char *format, ...);
 
@@ -99,3 +102,7 @@ void request_console();
 void release_console();
 int _printf_internal(const char *format, va_list list);
 void printf_ch_fb(char ch);
+
+void get_color(uint32_t *outfg, uint32_t *outbg);
+void set_color(uint32_t newfg, uint32_t newbg);
+void set_invert(bool newinvert);

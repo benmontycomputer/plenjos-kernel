@@ -68,9 +68,16 @@ static int tty_default_out(void *func_args) {
             } else if ((i == 3 && !memcmp(tty->out_buf, "\x1b[K", i)) || (i == 4 && !memcmp(tty->out_buf, "\x1b[0K", i))) {
                 // Clear from cursor (inclusive) to end of line
                 console_clear_to_eol();
+            } else if (i == 4 && !memcmp(tty->out_buf, "\x1b[7m", i)) {
+                // Invert
+                set_invert(true);
+            } else if ((i == 3 && !memcmp(tty->out_buf, "\x1b[m", i)) || (i == 4 && !memcmp(tty->out_buf, "\x1b[0m", i))) {
+                // Reset
+                set_invert(false);
+                set_color(DEFAULT_FG, DEFAULT_BG);
             } else if (tty->out_buf[i - 1] == 'H' || tty->out_buf[i - 1] == 'f') {
                 // Move cursor
-                if (i == 2) {
+                if (i == 3) {
                     if (tty->out_buf[i - 1] == 'H') {
                         console_seek_fb(0, 0);
                     }

@@ -54,20 +54,27 @@ static void scroll_console() {
     console_pos -= CONSOLE_W();
 }
 
+static uint32_t fg = DEFAULT_FG;
+static uint32_t bg = DEFAULT_BG;
+static bool invert = false;
+
+#define realfg() (invert ? bg : fg)
+#define realbg() (invert ? fg : bg)
+
 void printf_ch_fb(char ch) {
     while ((int)GET_CONSOLE_Y(console_pos) >= CONSOLE_H()) scroll_console();
 
     if (ch == '\n') {
         // Remove the cursor (if any)
-        if (cursor) kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0xFFFFFF, 0x000000);
+        if (cursor) kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), realfg(), realbg());
         console_pos += (CONSOLE_W() - GET_CONSOLE_X(console_pos));
         while ((int)GET_CONSOLE_Y(console_pos) >= CONSOLE_H()) scroll_console();
     } else {
-        kputchar(ch, GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0xFFFFFF, 0x000000);
+        kputchar(ch, GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), realfg(), realbg());
         console_pos++;
     }
 
-    if (cursor) kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0x000000, 0xFFFFFF);
+    if (cursor) kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), realbg(), realfg());
 }
 
 void console_seek_fb(uint64_t x, uint64_t y) {
@@ -527,10 +534,10 @@ _Noreturn void panic(const char *format, ...) {
 int backs() {
     request_console();
 
-    kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0xFFFFFF, 0x000000);
+    kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), realfg(), realbg());
     console_pos--;
-    kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0xFFFFFF, 0x000000);
-    if (cursor) kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0x000000, 0xFFFFFF);
+    kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), realfg(), realbg());
+    if (cursor) kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), realbg(), realfg());
 
     release_console();
 
@@ -543,11 +550,11 @@ int console_clear_to_eol(void) {
     uint64_t w = CONSOLE_W();
     if (w) {
         for (uint64_t x = GET_CONSOLE_X(console_pos); x < w; x++) {
-            kputchar(' ', x, GET_CONSOLE_Y(console_pos), 0xFFFFFF, 0x000000);
+            kputchar(' ', x, GET_CONSOLE_Y(console_pos), realfg(), realbg());
         }
 
         // Redraw the cursor
-        if (cursor) kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0x000000, 0xFFFFFF);
+        if (cursor) kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), realbg(), realfg());
     }
 
     release_console();
@@ -560,11 +567,25 @@ int setcursor(bool curs) {
 
     cursor = curs;
 
-    kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), 0x000000, 0xFFFFFF);
+    kputchar(' ', GET_CONSOLE_X(console_pos), GET_CONSOLE_Y(console_pos), realbg(), realfg());
 
     release_console();
 
     return 0;
+}
+
+void get_color(uint32_t *outfg, uint32_t *outbg) {
+    if (outfg) *outfg = fg;
+    if (outbg) *outbg = bg;
+}
+
+void set_color(uint32_t newfg, uint32_t newbg) {
+    fg = newfg;
+    bg = newbg;
+}
+
+void set_invert(bool newinvert) {
+    invert = newinvert;
 }
 
 int clear() {
