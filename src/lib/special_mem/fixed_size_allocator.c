@@ -148,6 +148,7 @@ void *fsa_alloc(fixed_size_allocator_t *fsa) {
         _fsa_add_page(fsa);
         if (!fsa->first_free) {
             kout(KERNEL_WARN, "fsa_alloc(): _fsa_add_page() failed (OOM?)");
+            mutex_unlock(&fsa->mutex);
             return NULL;
         }
     }

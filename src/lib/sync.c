@@ -25,14 +25,13 @@ void wq_wake_locked(wait_queue_t *wq, bool all) {
         wq->waiting = t->q_next;
         t->q_next   = NULL;
 
-        // Skip tasks killed while waiting
-        if (t->state == BLOCKED) {
-            lock_rq();
-            task_ready(t);
-            unlock_rq();
-        }
+        // Skip tasks killed while waiting; check state under the rq lock so kill_task() can't race us
+        lock_rq();
+        bool wake = t->state == BLOCKED;
+        if (wake) task_ready(t);
+        unlock_rq();
 
-        if (!all) break;
+        if (wake && !all) break;
     }
 }
 
