@@ -13,7 +13,32 @@ void rbtree_init(rbtree_t *tree, int (*cmp)(const rbnode_t *a, const rbnode_t *b
 }
 
 void rbtree_destroy(rbtree_t *tree, void (*free_node)(rbnode_t *node)) {
-    // TODO
+    rbnode_t *node = tree->root;
+
+    // Post-order walk using the parent pointers
+    while (node) {
+        if (node->left) {
+            node = node->left;
+        } else if (node->right) {
+            node = node->right;
+        } else {
+            // Detach the leaf before freeing it
+            rbnode_t *parent = node->parent;
+            if (parent) {
+                if (parent->left == node) {
+                    parent->left = NULL;
+                } else {
+                    parent->right = NULL;
+                }
+            }
+
+            if (free_node) free_node(node);
+            node = parent;
+        }
+    }
+
+    tree->root = NULL;
+    tree->size = 0;
 }
 
 int rbtree_insert(rbtree_t *tree, rbnode_t *node) {
