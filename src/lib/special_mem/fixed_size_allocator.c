@@ -59,7 +59,7 @@ static void _fsa_add_page(fixed_size_allocator_t *fsa) {
 
     uint64_t phys = find_next_free_frame();
 
-    if (phys == NULL) {
+    if ((void *)phys == NULL) {
         kout(KERNEL_WARN, "_fsa_add_page(): no free frames!");
         return;
     }
@@ -262,7 +262,7 @@ fixed_size_allocator_t *fixed_size_allocator_new(size_t item_size) {
     memset(fsa, 0, sizeof(fixed_size_allocator_t));
     fsa->item_size      = item_size;
     fsa->items_per_page = ITEMS_PER_PAGE(item_size);
-    fsa->mutex          = MUTEX_INIT;
+    fsa->mutex          = (mutex)MUTEX_INIT;
 
     return fsa;
 }

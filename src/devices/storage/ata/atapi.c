@@ -16,6 +16,7 @@
 int atapi_parse_identify(struct ide_device *dev) {
     struct atapi_identify *atapi_id = &dev->atapi_identify;
 
+    (void)atapi_id;
     // Additional parsing can be done here as needed
 
     return atapi_ready_device(dev);

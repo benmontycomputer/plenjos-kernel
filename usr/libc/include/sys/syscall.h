@@ -25,7 +25,7 @@ uint64_t syscall_get_fb(fb_info_t *out_fb_info);
 
 void *syscall_memmap(void *hint, size_t length, syscall_memmap_flags_t flags);
 void *syscall_memmap_from_buffer(void *hint, size_t length, syscall_memmap_flags_t flags, void *buffer,
-                               size_t buffer_length);
+                                 size_t buffer_length);
 
 void syscall_sleep(uint32_t ms);
 
@@ -40,7 +40,8 @@ ssize_t syscall_getcwd(char *buf, ssize_t size);
 
 int syscall_mount(const char *dev, const char *target);
 
-pid_t syscall_spawn(const char *path, char *const argv[], char *const envp[], size_t argc, size_t envc);
+pid_t syscall_fork();
+pid_t syscall_exec(const char *path, char *const argv[], char *const envp[], size_t argc, size_t envc);
 
 int syscall_waittid(pid_t tid);
 

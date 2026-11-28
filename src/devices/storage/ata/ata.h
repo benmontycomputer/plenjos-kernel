@@ -5,10 +5,9 @@
 #include "kernel.h"
 #include "pata.h"
 
-#include <stddef.h>
 #include <stdint.h>
 
-extern struct ide_device;
+struct ide_device;
 
 /**
  * ATA registers (offsets from command block base)
@@ -134,10 +133,12 @@ struct ata_identify {
 
 struct ata_info {
     // ATA specific info can go here
+    void *just_to_stop_empty_struct_warning;
 };
 
 struct atapi_info {
     // ATAPI specific info can go here
+    void *just_to_stop_empty_struct_warning;
 };
 
 int ata_parse_identify(struct ide_device *dev);

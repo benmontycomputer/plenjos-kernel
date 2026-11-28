@@ -42,7 +42,7 @@ static int tid_cmp(const rbnode_t *a, const rbnode_t *b) {
     return (ta->tid > tb->tid) - (ta->tid < tb->tid);
 }
 
-static rbtree_t tid_tree = (rbtree_t) { 0 };
+static rbtree_t tid_tree = { 0 };
 
 // TODO: convert this to rwlock
 mutex tasklist_locked = MUTEX_INIT;
@@ -115,7 +115,7 @@ task_t *create_task(const char *name, task_t *parent, mm_t *mm, task_handles_t *
     }
 
     task->state   = BLOCKED;
-    task->exit_wq = WQ_INIT;
+    task->exit_wq = (wait_queue_t)WQ_INIT;
 
     task->tid = __atomic_fetch_add(&next_tid, 1, __ATOMIC_SEQ_CST);
 
@@ -517,4 +517,8 @@ int execute(const char *path, task_t *task, int argc, char *const *argv, int env
     irq_restore(_i);
 
     return 0;
+}
+
+void task_fork(task_t *task, registers_t *regs) {
+    
 }

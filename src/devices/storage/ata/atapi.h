@@ -3,7 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-extern struct ide_device;
+struct ide_device;
 
 /**
  * ATAPI command codes.

@@ -16,27 +16,6 @@ extern uint64_t gdt_entries[MAX_CORES][num_gdt_entries];
 struct tss tss_obj[MAX_CORES];
 uint64_t sched_stack_top[MAX_CORES];
 
-static uint64_t create_descriptor(uint32_t base, uint32_t limit, uint8_t access, uint8_t gran) {
-    uint64_t descriptor;
-
-    // Create the high 32 bit segment
-    descriptor  = limit & 0x000F0000; // set limit bits 19:16
-    // descriptor |= (flag <<  8) & 0x00F0FF00;         // set type, p, dpl, s, g, d/b, l and avl fields
-    descriptor |= (access << 8) & 0x0000FF00;
-    descriptor |= (gran << 16) & 0x00F00000;
-    descriptor |= (base >> 16) & 0x000000FF; // set base bits 23:16
-    descriptor |= base & 0xFF000000;         // set base bits 31:24
-
-    // Shift by 32 to allow for low part of segment
-    descriptor <<= 32;
-
-    // Create the low 32 bit segment
-    descriptor |= base << 16;         // set base bits 15:0
-    descriptor |= limit & 0x0000FFFF; // set limit bits 15:0
-
-    return descriptor;
-}
-
 uint64_t alloc_kstack() {
     uint64_t stack = atomic_fetch_add(&TSS_STACK_ADDR, PAGE_LEN * 4 + KERNEL_STACK_SIZE) + PAGE_LEN * 4;
 

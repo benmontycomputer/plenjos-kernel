@@ -17,14 +17,12 @@
 #include "vfs/vfs.h"
 
 #include <limine.h>
-#include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #if ARCH(X86_64)
 #include "arch/x86_64/common.h"
-#include "arch/x86_64/gdt/gdt.h"
 #include "arch/x86_64/gdt/tss.h"
 #endif
 
@@ -33,12 +31,16 @@ bool debug_serial = false;
 char *fb;
 int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
 
+// Give the semicolons something to terminate so clang-format doesn't see an incomplete tag and indent the lines after
+// it.
+#define LIMINE_END static_assert(1, "")
+
 // Set the base revision to 3, this is recommended as this is the latest
 // base revision described by the Limine boot protocol specification.
 // See specification for further info.
 
 __attribute__((used, section(".limine_requests"))) //
-static volatile LIMINE_BASE_REVISION(3);
+static volatile LIMINE_BASE_REVISION(3) LIMINE_END;
 
 // The Limine requests can be placed anywhere, but it is important that
 // the compiler does not optimise them away, so, usually, they should
@@ -76,10 +78,10 @@ uint64_t kernel_load_virt = 0;
 // These can also be moved anywhere, to any .c file, as seen fit.
 
 __attribute__((used, section(".limine_requests_start"))) //
-static volatile LIMINE_REQUESTS_START_MARKER;
+static volatile LIMINE_REQUESTS_START_MARKER LIMINE_END;
 
 __attribute__((used, section(".limine_requests_end"))) //
-static volatile LIMINE_REQUESTS_END_MARKER;
+static volatile LIMINE_REQUESTS_END_MARKER LIMINE_END;
 
 // GCC and Clang reserve the right to generate calls to the following
 // 4 functions even if they are not directly called.
@@ -224,7 +226,7 @@ void kmain(void) {
     clear();
 
     task_handles_t *init_handles = task_handles_new();
-    
+
     vfs_handle_t *handle;
     int res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_READ, 0, 0, &handle);
     if (res) {

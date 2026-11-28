@@ -9,7 +9,7 @@
 
 typedef struct fixed_size_allocator fixed_size_allocator_t;
 #define FSA_DEFAULT(contents_item_size)                         \
-    ((fixed_size_allocator_t) {                                 \
+    {                                                           \
         .item_size      = (contents_item_size),                 \
         .items_per_page = ITEMS_PER_PAGE((contents_item_size)), \
         .first_page     = NULL,                                 \
@@ -17,7 +17,7 @@ typedef struct fixed_size_allocator fixed_size_allocator_t;
         .first_free     = NULL,                                 \
         .last_free      = NULL,                                 \
         .mutex          = MUTEX_INIT,                           \
-    })
+    }
 
 typedef void *_fsa_free_slot_t;
 

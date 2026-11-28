@@ -228,6 +228,9 @@ ssize_t devfs_root_read(vfs_handle_t *handle, void *buf, size_t len) {
     };
 
     ssize_t res = fah_each(_devfs_fah, pos, cnt, devfs_root_read_each_func, &args);
+    if (res) {
+        return res;
+    }
 
     handle_data->pos += args.prev_dirents;
     return args.prev_dirents * sizeof(struct plenjos_dirent);

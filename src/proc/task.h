@@ -112,10 +112,13 @@ int task_handles_ref(task_handles_t *handles);
 int task_handles_unref(task_handles_t *handles);
 
 /**
- * If argc == 0 or argv == NULL, argv is just { path }.
+ * For these functions: if task is the current task, regs must be its saved user registers; on success they are
+ * rewritten so that returning from the syscall enters the new program. Otherwise, regs is ignored and task is made
+ * ready to run.
  *
- * If task is the current task, regs must be its saved user registers; on success they are rewritten so that returning
- * from the syscall enters the new program. Otherwise, regs is ignored and task is made ready to run.
+ * For execute: if argv is NULL and/or argc is 0, then a default (argv, argc) of ({ path }, 0) will be automatically
+ * generated.
  */
+void task_fork(task_t *task, registers_t *regs);
 int execute(const char *path, task_t *task, int argc, char *const *argv, int envc, char *const *envp,
             registers_t *regs);

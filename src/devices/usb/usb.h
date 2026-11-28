@@ -146,7 +146,9 @@ struct usb_host_driver {
     usb_host_driver_iso_transfer_func_t iso_transfer_func;
 };
 
-struct usb_interface_driver {};
+struct usb_interface_driver {
+    void *just_to_stop_empty_struct_warning;
+};
 
 struct usb_setup_packet {
     uint8_t bm_request_type;

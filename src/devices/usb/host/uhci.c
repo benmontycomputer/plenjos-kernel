@@ -477,7 +477,7 @@ static void uhci_dev_status_poll_callback(struct timer_timeout *data) {
 }
 
 static bool uhci_host_driver_populated         = false;
-static struct usb_host_driver uhci_host_driver = (struct usb_host_driver) { 0 };
+static struct usb_host_driver uhci_host_driver = { 0 };
 
 static int uhci_host_driver_control_transfer_func(usb_device_t *dev, const uint8_t *setup_packet, uint8_t *data_buffer,
                                                   size_t data_length, bool data_in, uint32_t timeout_ms) {

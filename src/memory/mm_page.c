@@ -96,14 +96,6 @@ void free_user_page_table(pml4_t *pml4_virt) {
                     continue;
                 } */
 
-                uint64_t *pt = (uint64_t *)phys_to_virt(PTE_ADDR(pde));
-                /* for (size_t pt_i = 0; pt_i < 512; pt_i++) {
-                    uint64_t pte = pt[pt_i];
-                    if (!(pte & PAGE_FLAG_PRESENT)) continue;
-
-                    phys_mem_unref_frame(phys_addr_to_frame_struct(PTE_ADDR(pte)));
-                    pt[pt_i] = 0;
-                } */
                 phys_mem_unref_frame(phys_addr_to_frame_struct(PTE_ADDR(pde))); // free page table
             }
             phys_mem_unref_frame(phys_addr_to_frame_struct(PTE_ADDR(pdpte))); // free page directory

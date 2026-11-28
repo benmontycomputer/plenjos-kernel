@@ -34,7 +34,7 @@
 
 /* Recommended: 100ms per TD, but 500ms total for a control transfer */
 /* TODO: implement some sort of adaptive timeout system (slow devices might need more time than this) */
-# define UHCI_DEFAULT_CONTROL_TIMEOUT 500U /* ms */
+# define UHCI_DEFAULT_CONTROL_TIMEOUT         500U /* ms */
 # define UHCI_DEFAULT_BULK_TIMEOUT_PER_PACKET 100U
 
 // https://wiki.osdev.org/Universal_Host_Controller_Interface
@@ -182,18 +182,19 @@ struct uhci_qh {
 # define UHCI_TD_IOC          1 << 24
 # define UHCI_TD_SPD          1 << 29
 
-# define UHCI_TD_ERR_MASK \
-     (UHCI_TD_BITSTUFF_ERR | UHCI_TD_CRCTO_ERR | UHCI_TD_NAK_ERR | UHCI_TD_BABBLE_ERR | UHCI_TD_BUF_ERR | UHCI_TD_STALLED)
+# define UHCI_TD_ERR_MASK                                                                               \
+     (UHCI_TD_BITSTUFF_ERR | UHCI_TD_CRCTO_ERR | UHCI_TD_NAK_ERR | UHCI_TD_BABBLE_ERR | UHCI_TD_BUF_ERR \
+      | UHCI_TD_STALLED)
 
 enum uhci_td_pid { UHCI_TD_PID_OUT = 0xE1, UHCI_TD_PID_IN = 0x69, UHCI_TD_PID_SETUP = 0x2D };
 
 struct uhci_td_packet_header {
     enum uhci_td_pid packet_type : 8; /* See UHCI_TD_PID_* */
-    uint8_t device_address       : 7; /* USB device address (0-127) */
-    uint8_t endpoint_number      : 4; /* Endpoint number (0-15) */
-    uint8_t data_toggle          : 1; /* Data toggle (0 or 1) */
-    uint16_t reserved            : 1;
-    uint16_t max_length          : 11; /* Maximum length of data to transfer (in bytes) */
+    uint32_t device_address  : 7;     /* USB device address (0-127) */
+    uint32_t endpoint_number : 4;     /* Endpoint number (0-15) */
+    uint32_t data_toggle     : 1;     /* Data toggle (0 or 1) */
+    uint32_t reserved        : 1;
+    uint32_t max_length      : 11; /* Maximum length of data to transfer (in bytes) */
 } __attribute__((packed));
 
 struct uhci_td_status {

@@ -191,7 +191,7 @@ static bool process_cmd(const char *cmd) {
             // TODO: actual LINES and columns values
 
             fclose(f);
-            pid_t tid = syscall_spawn(toks[0], argv, envp, toks_count, 2);
+            pid_t tid = syscall_exec(toks[0], argv, envp, toks_count, 2);
             free(argv);
             syscall_waittid(tid);
         }

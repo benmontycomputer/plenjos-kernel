@@ -9,9 +9,9 @@ typedef struct rwsem rwsem_t;
 
 typedef struct task task_t;
 
-#define WQ_INIT         ((wait_queue_t) { .lock = MUTEX_INIT, .waiting = NULL })
-#define EXCL_LOCK_INIT  ((excl_lock_t) { .wq = WQ_INIT, .held = false })
-#define COMPLETION_INIT ((completion_t) { .cnt = 0, .wq = WQ_INIT })
+#define WQ_INIT         { .lock = MUTEX_INIT, .waiting = NULL }
+#define EXCL_LOCK_INIT  { .wq = WQ_INIT, .held = false }
+#define COMPLETION_INIT { .cnt = 0, .wq = WQ_INIT }
 
 // ONLY call from kernel tasks; returns 0 on success or -ETIMEDOUT on timeout
 void wait_for_completion(completion_t *c);
@@ -93,7 +93,7 @@ struct rwsem {
     int writers_waiting;
 };
 
-#define RWSEM_INIT ((rwsem_t) { .readers = 0, .writer = false, .writers_waiting = 0, .wq = WQ_INIT })
+#define RWSEM_INIT { .readers = 0, .writer = false, .writers_waiting = 0, .wq = WQ_INIT }
 
 void rwsem_acquire_read(rwsem_t *rwsem);
 void rwsem_release_read(rwsem_t *rwsem);

@@ -50,33 +50,8 @@ extern void *linker_elf_buf;
 extern char *fb;
 extern int fb_scanline, fb_width, fb_height, fb_bytes_per_pixel;
 
-// Max number of argv (or envp) entries accepted by SYSCALL_SPAWN
-#define SPAWN_MAX_ARGS 256
-
-// TODO: how do we handle the string being a non-contiguous set of pages?
-/* bool _syscall_helper_check_str_ptr_perms(pml4_t *current_pml4, uint64_t user_ptr, char **out) {
-    uint64_t str_ptr = phys_to_virt(get_physaddr(user_ptr, current_pml4));
-    uint64_t end = user_ptr + strlen((char *)str_ptr) + 1;
-
-    for (uint64_t i = user_ptr; i < end; i += PAGE_LEN) {
-        // TODO: check that the addr is user-accessible (idk if the autocreate option on find_page works rn)
-        page_t *page = find_page(i, false, current_pml4);
-        if (!page || !(page->present)) {
-            printf("Failed at %p: page not mapped\n", i);
-            if (out) *out = NULL;
-            return false;
-        }
-        if (!page->user) {
-            printf("Failed at %p: permission denied (not user accessible)\n", i);
-            if (out) *out = NULL;
-            return false;
-        }
-    }
-
-    if (out) *out = (char *)str_ptr;
-
-    return true;
-} */
+// Max number of argv (or envp) entries accepted by SYSCALL_EXEC
+#define EXEC_MAX_ARGS 256
 
 void syscall(registers_t *regs, task_t *task) {
     uint64_t call = CALL(regs);
@@ -243,13 +218,12 @@ void syscall(registers_t *regs, task_t *task) {
         kthread_sleep_ms(ARG1(regs));
         break;
     }
-    case SYSCALL_SPAWN: {
-        // Legacy
-        regs->rax = -ENOSYS;
+    case SYSCALL_FORK: {
+        task_fork(task, regs);
         break;
     }
     case SYSCALL_EXEC: {
-        // exec(path, argv, envp, argc, envc)
+        // libc: syscall_exec(path, argv, envp, argc, envc)
         const char *path = NULL;
         regs->rax        = handle_string_arg(ARG1(regs), &path, mm);
 
@@ -257,15 +231,14 @@ void syscall(registers_t *regs, task_t *task) {
             break;
         }
 
-        // libc: syscall_spawn(path, argv, envp, argc, envc)
         const uint64_t uargc = ARG4(regs);
         const uint64_t uenvc = ARG5(regs);
         char **kargv         = NULL;
         char **kenvp         = NULL;
 
-        int args_res = handle_string_array_arg(ARG2(regs), uargc, SPAWN_MAX_ARGS, &kargv, mm);
+        int args_res = handle_string_array_arg(ARG2(regs), uargc, EXEC_MAX_ARGS, &kargv, mm);
         if (!args_res) {
-            args_res = handle_string_array_arg(ARG3(regs), uenvc, SPAWN_MAX_ARGS, &kenvp, mm);
+            args_res = handle_string_array_arg(ARG3(regs), uenvc, EXEC_MAX_ARGS, &kenvp, mm);
         }
         if (args_res) {
             free_string_array(kargv, uargc);

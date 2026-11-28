@@ -38,38 +38,9 @@ static void gdt_set_entry(int i, uint32_t base, uint32_t limit, uint8_t access, 
     
 }
 
-static void gdt_fill() {
-    //null descriptor, required to be here.
-    gdt_entries[get_curr_core()][0] = 0;
-
-    uint64_t kernel_code = 0;
-    kernel_code |= 0b1011 << 8; //type of selector
-    kernel_code |= 1 << 12; //not a system descriptor
-    kernel_code |= 0 << 13; //DPL field = 0
-    kernel_code |= 1 << 15; //present
-    kernel_code |= 1 << 21; //long-mode segment
-
-    uint64_t kernel_data = 0;
-    kernel_data |= 0b0011 << 8; //type of selector
-    kernel_data |= 1 << 12; //not a system descriptor
-    kernel_data |= 0 << 13; //DPL field = 0
-    kernel_data |= 1 << 15; //present
-    kernel_data |= 1 << 21; //long-mode segment
-    gdt_entries[get_curr_core()][2] = kernel_data << 32;
-
-    uint64_t user_code = kernel_code | (3 << 13);
-    gdt_entries[get_curr_core()][3] = user_code;
-
-    uint64_t user_data = kernel_data | (3 << 13);
-    gdt_entries[get_curr_core()][4] = user_data;
-
-    gdt_entries[get_curr_core()][1] = kernel_code << 32;
-}
-
 extern void tss_reload(uint16_t selector);
 
 void gdt_tss_init() {
-    // gdt_fill();
     gdt_set_entry(0, 0, 0, 0, 0);              // Null Descriptor
     gdt_set_entry(1, 0, 0xFFFFF, 0b10011010, 0xA0);   // Kernel Code Descriptor , Selector 0x08
     gdt_set_entry(2, 0, 0xFFFFF, 0b10010010, 0xC0);   // Kernel Data Descriptor , Selector 0x10

@@ -128,7 +128,7 @@ static int vfs_helper_create_handle(fscache_node_t *node, access_t access, vfs_h
     memset(handle, 0, sizeof(vfs_handle_t));
 
     handle->backing_node = node;
-    int oldval           = fscache_node_ref(node);
+    fscache_node_ref(node);
 
     handle->access = access;
 

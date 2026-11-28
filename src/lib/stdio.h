@@ -5,14 +5,14 @@
 #include <stdint.h>
 
 /* Color codes (for serial output; not currently supported for framebuffer rendering) */
-#define TEXT_BLACK   "\e[0;30m"
-#define TEXT_RED     "\e[0;31m"
-#define TEXT_GREEN   "\e[0;32m"
-#define TEXT_YELLOW  "\e[0;33m"
-#define TEXT_BLUE    "\e[0;34m"
-#define TEXT_MAGENTA "\e[0;35m"
-#define TEXT_CYAN    "\e[0;36m"
-#define TEXT_RESET   "\e[0;0m"
+#define TEXT_BLACK   "\x1b[0;30m"
+#define TEXT_RED     "\x1b[0;31m"
+#define TEXT_GREEN   "\x1b[0;32m"
+#define TEXT_YELLOW  "\x1b[0;33m"
+#define TEXT_BLUE    "\x1b[0;34m"
+#define TEXT_MAGENTA "\x1b[0;35m"
+#define TEXT_CYAN    "\x1b[0;36m"
+#define TEXT_RESET   "\x1b[0;0m"
 
 #define DEFAULT_FG 0xFFFFFF
 #define DEFAULT_BG 0x000000

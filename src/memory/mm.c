@@ -67,7 +67,7 @@ mm_t *mm_new() {
         return NULL;
     }
 
-    mm->lock = RWSEM_INIT;
+    mm->lock = (rwsem_t)RWSEM_INIT;
 
     mm->pml4 = (pml4_t *)alloc_paging_node();
     if (!mm->pml4) {

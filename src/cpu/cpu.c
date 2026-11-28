@@ -20,10 +20,8 @@
 
 // TODO: do we want to enable sse/sse2/avx instructions?
 
-__attribute__((used, section(".limine_requests"))) static volatile LIMINE_BASE_REVISION(0)
-
-    __attribute__((used, section(".limine_requests"))) //
-    static volatile struct limine_mp_request mp_request = { .id = LIMINE_MP_REQUEST, .revision = 3 };
+__attribute__((used, section(".limine_requests"))) //
+static volatile struct limine_mp_request mp_request = { .id = LIMINE_MP_REQUEST, .revision = 3 };
 
 volatile struct limine_mp_response *mp_response;
 

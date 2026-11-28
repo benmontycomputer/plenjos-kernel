@@ -6,7 +6,7 @@
 static fixed_size_allocator_t _fah_fsa = FSA_DEFAULT(sizeof(fixed_size_allocator_t));
 
 static int _fah_key_compare_func(void *a, void *b, const void *data) {
-    key_func_t key_func = (key_func_t)data;
+    key_func_t key_func = *(key_func_t *)data;
     return strncmp(key_func(a), key_func(b), (size_t)-1);
 }
 
@@ -37,7 +37,7 @@ int fah_insert(flex_array_hashmap_t *fah, void *data, void **out_old) {
 
     void *out_old_tmp = NULL;
 
-    int res = list_append_or_replace(*slot, data, _fah_key_compare_func, (const void *)fah->key_func, &out_old_tmp);
+    int res = list_append_or_replace(*slot, data, _fah_key_compare_func, &fah->key_func, &out_old_tmp);
     if (res != 0) {
         kout(KERNEL_WARN, "fah_insert(): list_append_or_replace with error %d%s\n", res,
              (res == -ENOMEM) ? "(OOM?)" : "");

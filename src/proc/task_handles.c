@@ -27,7 +27,7 @@ task_handles_t *task_handles_new(void) {
     memset(handles->fds, 0, fds_size);
 
     handles->ref_cnt = 0;
-    handles->lock    = RWSEM_INIT;
+    handles->lock    = (rwsem_t)RWSEM_INIT;
 
     return handles;
 }

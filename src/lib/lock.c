@@ -59,8 +59,6 @@ static inline void cpu_relax(void) {
 }
 
 void rw_lock_read_lock(rw_lock_t *lock) {
-    int v;
-
     for (;;) {
         if (_rw_lock_try_read_lock(lock)) {
             return;
@@ -74,8 +72,6 @@ void rw_lock_read_unlock(rw_lock_t *lock) {
 }
 
 void rw_lock_write_lock(rw_lock_t *lock) {
-    int expected;
-
     atomic_fetch_add_explicit(&lock->writers_waiting, 1, memory_order_release);
 
     for (;;) {
@@ -116,8 +112,6 @@ void rw_lock_upgrade_read_to_write(rw_lock_t *lock) {
 
     // First, release our read lock
     atomic_fetch_sub_explicit(&lock->state, 1, memory_order_release);
-
-    int expected;
 
     for (;;) {
         if (_rw_lock_try_write_lock(lock)) {

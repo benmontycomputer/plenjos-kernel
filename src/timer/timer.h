@@ -18,7 +18,7 @@ struct timer_timeout {
         void *data;
         uint64_t core_id;
     };
-} __attribute__((packed));
+};
 
 extern struct timer_timeout timer_timeouts[TIMER_MAX_TIMEOUTS];
 

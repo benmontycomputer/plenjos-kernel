@@ -12,9 +12,7 @@ extern volatile struct limine_executable_cmdline_request executable_cmdline_requ
 typedef struct DRIVE DRIVE_t;
 typedef struct partition partition_t;
 
-typedef enum mbr_partition_type mbr_partition_type_t;
-
-enum mbr_partition_type {
+typedef enum mbr_partition_type : uint8_t {
     MBR_PARTITION_TYPE_EMPTY        = 0x00,
     MBR_PARTITION_TYPE_FAT12        = 0x01,
     MBR_PARTITION_TYPE_FAT16_SMALL  = 0x04,
@@ -32,7 +30,7 @@ enum mbr_partition_type {
     MBR_PARTITION_TYPE_EFI_SYSTEM   = 0xEF,
     MBR_PARTITION_TYPE_BIOS_BOOT    = 0xEF, // Same as EFI System Partition
     MBR_PARTITION_TYPE_UNKNOWN      = 0xFF,
-};
+} mbr_partition_type_t;
 
 typedef ssize_t (*drive_read_sectors_func_t)(DRIVE_t *drive, uint64_t lba, size_t sectors, void *buffer);
 typedef ssize_t (*drive_write_sectors_func_t)(DRIVE_t *drive, uint64_t lba, size_t sectors, const void *buffer);

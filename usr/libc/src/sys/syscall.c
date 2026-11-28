@@ -86,9 +86,13 @@ int syscall_mount(const char *dev, const char *target) {
     return (int)syscall(SYSCALL_MOUNT, (uint64_t)dev, (uint64_t)target, 0, 0, 0, 0);
 }
 
-pid_t syscall_spawn(const char *path, char *const argv[], char *const envp[], size_t argc, size_t envc) {
-    return (pid_t)syscall(SYSCALL_SPAWN, (uint64_t)path, (uint64_t)argv, (uint64_t)envp, (uint64_t)argc, (uint64_t)envc,
+pid_t syscall_exec(const char *path, char *const argv[], char *const envp[], size_t argc, size_t envc) {
+    return (pid_t)syscall(SYSCALL_EXEC, (uint64_t)path, (uint64_t)argv, (uint64_t)envp, (uint64_t)argc, (uint64_t)envc,
                           0);
+}
+
+pid_t syscall_fork() {
+    return (pid_t)syscall(SYSCALL_FORK, 0, 0, 0, 0, 0, 0);
 }
 
 int syscall_waittid(pid_t tid) {

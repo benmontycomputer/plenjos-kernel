@@ -7,6 +7,9 @@
 #define PATH_MAX 4096
 
 #define SSIZE_MAX INT64_MAX
+
+#ifndef SIZE_MAX
 #define SIZE_MAX  UINT64_MAX
+#endif
 
 #endif /* _PLENJOS_LIMITS_H */

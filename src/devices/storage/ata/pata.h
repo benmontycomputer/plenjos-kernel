@@ -7,7 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-extern struct ide_device;
+struct ide_device;
 
 struct pata_identify {
     // Word 0
@@ -112,7 +112,3 @@ struct pata_identify {
     // Remaining words are reserved
     uint16_t reserved6[256 - 119];
 } __attribute__((packed));
-
-struct pata_info {
-    // PATA specific info can go here
-};
