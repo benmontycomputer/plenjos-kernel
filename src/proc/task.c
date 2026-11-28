@@ -284,8 +284,15 @@ static size_t exec_args_stack_size(int argc, char *const *argv, int envc, char *
     return strings + qwords * sizeof(uint64_t) + 16;
 }
 
-int execute(const char *path, task_t *task, int argc, char *const *argv, int envc, char *const *envp) {
+int execute(const char *path, task_t *task, int argc, char *const *argv, int envc, char *const *envp,
+            registers_t *regs) {
     if (!task || !path) {
+        return -EINVAL;
+    }
+
+    // If we are replacing the current task, we need regs in order to ensure it returns to the correct place
+    bool is_self = (task == current[get_curr_core()]);
+    if (is_self && !regs) {
         return -EINVAL;
     }
 
@@ -324,6 +331,7 @@ int execute(const char *path, task_t *task, int argc, char *const *argv, int env
     }
 
     if (strlen(path) > EXEC_MAX_PATH) {
+        kfree_heap(path_abs);
         return -EINVAL;
     }
 
@@ -333,11 +341,19 @@ int execute(const char *path, task_t *task, int argc, char *const *argv, int env
 
     vfs_handle_t *ld_handle = NULL;
 
-    res = vfs_open(path_abs, SYSCALL_OPEN_FLAG_READ, 0, 0, &ld_handle);
+    res = vfs_open(path_abs, SYSCALL_OPEN_FLAG_EX, 0, task->uid, &ld_handle);
     kfree_heap(path_abs);
     if (res != 0) {
         return res;
     }
+
+    if (!S_ISREG(ld_handle->backing_node->stat.mode)) {
+        vfs_close(ld_handle);
+        return -EACCES;
+    }
+
+    // User only needs execute perms, but kernel still needs to be able to read it
+    ld_handle->access |= ACCESS_READ;
 
     uint64_t file_size = ld_handle->backing_node->stat.size;
     if (file_size < sizeof(ELF_header_t) || file_size > EXEC_MAX_FILE_SIZE) {
@@ -444,14 +460,28 @@ int execute(const char *path, task_t *task, int argc, char *const *argv, int env
 #undef EXEC_USER_ADDR
 
     // Nothing can fail from here on, so switch the task over to the new image
-    bool irq         = irq_save();
-    mm_t *old_mm     = task->mm;
-    task->mm         = new_mm; // Takes over the reference from mm_new()
-    task->mm_to_use  = new_mm;
-    if (task == current[get_curr_core()]) switch_mm(new_mm);
+    bool irq        = irq_save();
+    mm_t *old_mm    = task->mm;
+    task->mm        = new_mm; // Takes over the reference from mm_new()
+    task->mm_to_use = new_mm;
+    if (is_self) switch_mm(new_mm);
     irq_restore(irq);
 
     if (old_mm) mm_unref(old_mm);
+
+    if (is_self) {
+        // We are running on this task's kernel stack and it is already scheduled, so only change where we return to
+        memset(regs, 0, sizeof(registers_t));
+        regs->iret_ss     = USER_DS | 3;
+        regs->iret_rsp    = user_rsp;
+        regs->iret_rflags = DEFAULT_FLAGS;
+        regs->iret_cs     = USER_CS | 3;
+        regs->iret_rip    = linker_entry;
+        regs->rdi         = user_rsp;
+        regs->rsi         = LINKER_OFFS;
+        regs->rdx         = 0x400000ULL; // binary base addr
+        return 0;
+    }
 
     task->thread_state.ds = USER_DS | 3;
     task->thread_state.es = USER_DS | 3;

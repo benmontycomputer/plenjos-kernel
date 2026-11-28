@@ -275,17 +275,15 @@ void syscall(registers_t *regs, task_t *task) {
         }
 
         // execute() copies argv/envp onto the new stack, so they can be freed as soon as it returns
-        int res = execute(path, task, (int)uargc, kargv, (int)uenvc, kenvp);
+        int res = execute(path, task, (int)uargc, kargv, (int)uenvc, kenvp, regs);
         free_string_array(kargv, uargc);
         free_string_array(kenvp, uenvc);
-        kargv = NULL;
-        kenvp = NULL;
+        kfree_heap(path);
+
+        // On success, regs now belong to the new program and must be left alone
         if (res) {
             regs->rax = res;
-            break;
         }
-
-        // Unreachable?
         break;
     }
     case SYSCALL_WAITTID: {

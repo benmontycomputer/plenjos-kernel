@@ -256,7 +256,7 @@ void kmain(void) {
 
     debug_serial = true;
 
-    execute("/bin/init", init_task, 0, NULL, 0, NULL);
+    execute("/bin/init", init_task, 0, NULL, 0, NULL, NULL);
 
     cpu_scheduler_task();
 }
