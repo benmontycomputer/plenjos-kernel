@@ -246,7 +246,7 @@ void kmain(void) {
     if (res) {
         kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stderr\n", res);
     }
-    if ((res = task_handles_alloc_fd(init_handles, handle) != 0)) {
+    if ((res = task_handles_alloc_fd(init_handles, handle) != 2)) {
         kout(KERNEL_PANIC, "Got res %d (should be 2) when allocating fd for init's stderr\n", res);
     }
 

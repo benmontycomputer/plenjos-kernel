@@ -140,6 +140,22 @@ task_t *create_task(const char *name, task_t *parent, mm_t *mm, task_handles_t *
     return task;
 }
 
+// Moves all of a task's children, regardless of status, to init
+static void reparent_children(task_t *task) {
+    lock_tasklist();
+
+    while (task->children) {
+        task_t *child  = task->children;
+        task->children = child->sibling;
+
+        child->parent       = init_task;
+        child->sibling      = init_task->children;
+        init_task->children = child;
+    }
+
+    unlock_tasklist();
+}
+
 void task_exit(task_t *task) {
     if (!task) return;
 
@@ -147,11 +163,7 @@ void task_exit(task_t *task) {
         kout(KERNEL_PANIC, "\n\n[ FATAL ERROR: task_exit called on tid %d! ]\n", (int)task->tid);
     }
 
-    // Kill all children; tasklist does NOT need to be locked
-    while (task->children) {
-        // TODO: reparent instead? (POSIX)
-        task_exit(task->children);
-    }
+    reparent_children(task);
 
     // This core's current[] entry can't change under us
     bool is_self = task == current[get_curr_core()];
@@ -213,49 +225,6 @@ int waittid(task_t *task, pid_t tid) {
 
     unlock_tasklist();
     return -ECHILD;
-}
-
-vfs_handle_t *task_get_fd(task_t *task, int fd) {
-    if (!task) {
-        return NULL;
-    }
-
-    if (fd < 0) {
-        printf("task_get_fd: fd %d out of range (negative) for task %s (tid %d)\n", fd, task->name, (int)task->tid);
-        return NULL;
-    }
-
-    if (fd >= task->fds_max) {
-        printf("task_get_fd: fd %d out of range (too high) for task %s (tid %d)\n", fd, task->name, (int)task->tid);
-        return NULL;
-    }
-
-    return task->fds[fd];
-}
-
-int task_alloc_fd(task_t *task, vfs_handle_t *handle) {
-    if (!handle) {
-        printf("task_alloc_fd: handle is NULL\n");
-        return -1;
-    }
-
-    for (int i = 0; i < task->fds_max; i++) {
-        if (task->fds[i] == NULL) {
-            task->fds[i] = handle;
-            return i;
-        }
-    }
-
-    return -1;
-}
-
-// WARNING: this does *not* free the underlying vfs_handle_t!
-void task_free_fd(task_t *task, int fd) {
-    if (fd >= task->fds_max) {
-        return;
-    }
-
-    task->fds[fd] = NULL;
 }
 
 void *linker_elf_buf   = NULL;

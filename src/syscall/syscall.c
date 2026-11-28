@@ -280,21 +280,12 @@ void syscall(registers_t *regs, task_t *task) {
         free_string_array(kenvp, uenvc);
         kargv = NULL;
         kenvp = NULL;
-        if (!res) {
-            kfree_heap(path);
-            regs->rax = (uint64_t)child_tid;
+        if (res) {
+            regs->rax = res;
             break;
         }
 
-        kout(KERNEL_WARN, "spawn: failed to start %s (%d)\n", path, res);
-
-        task_exit(spawn_task);
-
-        free_string_array(kargv, uargc); // NULL (and a no-op) if execute() already consumed them
-        free_string_array(kenvp, uenvc);
-        kfree_heap(path);
-        regs->rax = (uint64_t)(int64_t)res;
-
+        // Unreachable?
         break;
     }
     case SYSCALL_WAITTID: {
