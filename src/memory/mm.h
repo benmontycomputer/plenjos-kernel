@@ -58,6 +58,8 @@ vm_area_t *vmlookup(void *virt, mm_t *mm);
 int vmmap(physptr_t phys_start, void *virt_start, size_t len, vma_flags_t requested_flags, vm_area_t **out, mm_t *mm);
 int vmalloc(void *virt_hint, size_t size, vma_flags_t requested_flags, vm_area_t **out, mm_t *mm);
 void vmfree(vm_area_t *vma, mm_t *mm);
+// Only for use while destroying an mm
+void vm_destroy_area(vm_area_t *vma);
 
 void flush_tlb_range(ptr_t start, ptr_t end, mm_t *mm);
 

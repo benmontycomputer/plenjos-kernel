@@ -94,9 +94,7 @@ int mm_ref(mm_t *mm) {
 }
 
 static void mm_free_node(rbnode_t *node) {
-    vm_area_t *vma = (vm_area_t *)node;
-
-    // TODO: free the vmarea
+    vm_destroy_area((vm_area_t *)node);
 }
 
 int mm_unref(mm_t *mm) {
@@ -104,9 +102,11 @@ int mm_unref(mm_t *mm) {
 
     if (prev == 1) {
         // Free
-        rbtree_destroy(&mm->tree, NULL);
+        rbtree_destroy(&mm->tree, mm_free_node);
 
         free_user_page_table(mm->pml4);
+
+        fsa_free(&_mm_fsa, mm);
     }
 
     return prev;

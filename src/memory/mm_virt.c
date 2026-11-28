@@ -236,6 +236,20 @@ cleanup:
     return res;
 }
 
+// Releases a VMA's frames and the VMA itself. Only use when destroying an mm.
+void vm_destroy_area(vm_area_t *vma) {
+    if (!(vma->flags & VMA_NON_ANON)) {
+        for (ptr_t v = vma->start; v < vma->end; v += PAGE_LEN) {
+            physptr_t phys = get_physaddr((uint64_t)v, vma->mm);
+            if (phys) {
+                phys_mem_unref_frame(phys_addr_to_frame_struct(phys));
+            }
+        }
+    }
+
+    fsa_free(&_vma_fsa, vma);
+}
+
 static bool page_table_reap_if_empty(uint64_t *table) {
     for (int i = 0; i < 512; i++) {
         if (table[i] & PAGE_FLAG_PRESENT) return false;
