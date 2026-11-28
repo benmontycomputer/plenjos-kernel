@@ -60,7 +60,11 @@ static void unlock_tasklist() {
     irq_restore(tasklist_int);
 }
 
-task_t *create_task(const char *name, task_t *parent) {
+task_t *create_task(const char *name, task_t *parent, mm_t *mm, task_handles_t *handles) {
+    if (!mm || !handles) {
+        kout(KERNEL_PANIC, "create_task(): mm (%p) or handles (%p) was NULL!\n", mm, handles);
+    }
+
     if (!tid_tree.cmp) {
         rbtree_init(&tid_tree, tid_cmp);
     }
@@ -113,34 +117,12 @@ task_t *create_task(const char *name, task_t *parent) {
     task->state   = BLOCKED;
     task->exit_wq = WQ_INIT;
 
-    mm_t *mm = mm_new();
-    if (!mm) {
-        kout(KERNEL_WARN, "Error allocating memory manager for task %s (OOM?)\n", task->name);
-        phys_mem_unref_frame(phys_addr_to_frame_struct(cwd_frame));
-        fsa_free(&_task_fsa, task);
-        return NULL;
-    }
-
-    task->mm        = mm;
-    task->mm_to_use = mm;
-
-    task->fds_max = FDS_MAX;
-
-    size_t fds_size = sizeof(vfs_handle_t *) * task->fds_max;
-
-    task->fds = kmalloc_heap(fds_size);
-    if (!task->fds) {
-        kout(KERNEL_WARN, "Error allocating fd table for task %s (OOM?)\n", task->name);
-        mm_unref(task->mm);
-        phys_mem_unref_frame(phys_addr_to_frame_struct(cwd_frame));
-        fsa_free(&_task_fsa, task);
-        return NULL;
-    }
-    memset((void *)task->fds, 0, fds_size);
-
     task->tid = __atomic_fetch_add(&next_tid, 1, __ATOMIC_SEQ_CST);
 
     task->kstack_top = (void *)alloc_kstack();
+
+    task->mm      = mm;
+    task->handles = handles;
 
     lock_tasklist();
     if (parent) {
@@ -171,23 +153,24 @@ void task_exit(task_t *task) {
         task_exit(task->children);
     }
 
-    kill_task(task);
+    // This core's current[] entry can't change under us
+    bool is_self = task == current[get_curr_core()];
 
-    lock_tasklist();
-    task->status |= TASK_STATUS_EXITED;
-    unlock_tasklist();
-
-    for (int i = 0; i < task->fds_max; i++) {
-        if (task->fds[i]) {
-            vfs_close(task->fds[i]);
-        }
-    }
-    kfree_heap(task->fds);
-    task->fds = NULL;
+    // Stop the task if it is on another core
+    if (!is_self) kill_task(task);
 
     phys_mem_unref_frame(phys_addr_to_frame_struct(virt_to_phys((uint64_t)task->cwd)));
 
-    mm_unref(task->mm);
+    // Any core/task that still has this mm loaded holds its own reference
+    mm_t *mm = task->mm;
+    task->mm = NULL;
+    if (mm) mm_unref(mm);
+
+    task_handles_unref(task->handles);
+
+    // If the task was on this core, kill it at the very end
+    if (is_self) kill_task(task);
+
     wq_signal(&task->exit_wq, task->status |= TASK_STATUS_EXITED, true);
 }
 
@@ -409,50 +392,46 @@ int execute(const char *path, task_t *task, int argc, char *const *argv, int env
         return -EIO;
     }
 
-    // New mm
-    mm_unref(task->mm);
-    task->mm = mm_new();
-    if (!task->mm) {
+    // Build the new image in a separate mm; the task isn't touched until nothing else can fail
+    mm_t *new_mm = mm_new();
+    if (!new_mm) {
         kout(KERNEL_WARN, "execute(): OOM: couldn't allocate new mm!\n");
         kfree_heap(elf_buf);
         return -ENOMEM;
     }
-    task->mm_to_use = task->mm;
 
     // Load the linker first
     uint64_t linker_entry;
-    res = loadelf(linker_elf_buf, linker_elf_size, task->mm, &linker_entry, LINKER_OFFS);
+    res = loadelf(linker_elf_buf, linker_elf_size, new_mm, &linker_entry, LINKER_OFFS);
     if (res) {
         kfree_heap(elf_buf);
+        mm_unref(new_mm);
         return res;
     }
 
     uint64_t entry;
-    res = loadelf(elf_buf, file_size, task->mm, &entry, 0x400000ULL);
+    res = loadelf(elf_buf, file_size, new_mm, &entry, 0x400000ULL);
     kfree_heap(elf_buf);
     if (res) {
+        mm_unref(new_mm);
         return res;
     }
-
-    task->thread_state.ds = USER_DS | 3;
-    task->thread_state.es = USER_DS | 3;
-    task->thread_state.fs = USER_DS | 3;
-    task->thread_state.gs = USER_DS | 3;
 
     // TODO: user stack (must find an open address for it as well, because multiple tasks may share a page table)
     // TODO: use an actual address for this??
     vm_area_t *user_stack = NULL;
-    if ((res = vmalloc((void *)(0x0000800000000000UL - 0x100000), 0x100000, VMA_USER | VMA_RW | VMALLOC_ZERO, &user_stack, task->mm))) {
+    if ((res = vmalloc((void *)(0x0000800000000000UL - 0x100000), 0x100000, VMA_USER | VMA_RW | VMALLOC_ZERO,
+                       &user_stack, new_mm))) {
         kout(KERNEL_WARN, "execute(): couldn't alloc user stack (res %d)!\n", res);
+        mm_unref(new_mm);
         return res;
     }
     uint64_t ustack_top = (uint64_t)user_stack->end;
 
-    task->thread_state.rsp = (uint64_t)task->kstack_top;
-
     // Everything we are about to do fits in the top page of the stack.
-    uint64_t stack_top_phys = get_physaddr(ustack_top - PAGE_LEN, task->mm);
+    uint64_t stack_top_phys = get_physaddr(ustack_top - PAGE_LEN, new_mm);
     if (!stack_top_phys) {
+        mm_unref(new_mm);
         return -ENOMEM;
     }
     uint64_t *rsp_og = (uint64_t *)(phys_to_virt(stack_top_phys) + 0x1000);
@@ -480,20 +459,37 @@ int execute(const char *path, task_t *task, int argc, char *const *argv, int env
     for (int i = 0; i < argc; i++) {
         size_t len = strlen(argv[i]) + 1;
         memcpy(cursor, argv[i], len);
-        sp[1 + i] = EXEC_USER_ADDR(cursor);
-        cursor += EXEC_ALIGN8(len);
+        sp[1 + i]  = EXEC_USER_ADDR(cursor);
+        cursor    += EXEC_ALIGN8(len);
     }
     // sp[1 + argc] is the argv NULL terminator
     for (int i = 0; i < envc; i++) {
         size_t len = strlen(envp[i]) + 1;
         memcpy(cursor, envp[i], len);
-        sp[2 + argc + i] = EXEC_USER_ADDR(cursor);
-        cursor += EXEC_ALIGN8(len);
+        sp[2 + argc + i]  = EXEC_USER_ADDR(cursor);
+        cursor           += EXEC_ALIGN8(len);
     }
     // sp[2 + argc + envc] is the envp NULL terminator
 
     uint64_t user_rsp = EXEC_USER_ADDR(sp);
 #undef EXEC_USER_ADDR
+
+    // Nothing can fail from here on, so switch the task over to the new image
+    bool irq         = irq_save();
+    mm_t *old_mm     = task->mm;
+    task->mm         = new_mm; // Takes over the reference from mm_new()
+    task->mm_to_use  = new_mm;
+    if (task == current[get_curr_core()]) switch_mm(new_mm);
+    irq_restore(irq);
+
+    if (old_mm) mm_unref(old_mm);
+
+    task->thread_state.ds = USER_DS | 3;
+    task->thread_state.es = USER_DS | 3;
+    task->thread_state.fs = USER_DS | 3;
+    task->thread_state.gs = USER_DS | 3;
+
+    task->thread_state.rsp = (uint64_t)task->kstack_top;
 
     stack_push_qword((uint64_t)USER_DS | 3, (uint64_t **)&task->thread_state.rsp);   // SS
     stack_push_qword(user_rsp, (uint64_t **)&task->thread_state.rsp);                // RSP

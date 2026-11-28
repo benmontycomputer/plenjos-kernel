@@ -223,22 +223,36 @@ void kmain(void) {
 
     clear();
 
-    init_task = create_task("init", NULL);
-
-    int res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_READ, 0, 0, &init_task->fds[0]);
+    task_handles_t *init_handles = task_handles_new();
+    
+    vfs_handle_t *handle;
+    int res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_READ, 0, 0, &handle);
     if (res) {
         kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stdin\n", res);
     }
+    if ((res = task_handles_alloc_fd(init_handles, handle) != 0)) {
+        kout(KERNEL_PANIC, "Got res %d (should be 0) when allocating fd for init's stdin\n", res);
+    }
 
-    res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &init_task->fds[1]);
+    res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &handle);
     if (res) {
         kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stdout\n", res);
     }
+    if ((res = task_handles_alloc_fd(init_handles, handle) != 1)) {
+        kout(KERNEL_PANIC, "Got res %d (should be 1) when allocating fd for init's stdout\n", res);
+    }
 
-    res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &init_task->fds[2]);
+    res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &handle);
     if (res) {
         kout(KERNEL_PANIC, "Got res %d when opening /dev/tty0 for init's stderr\n", res);
     }
+    if ((res = task_handles_alloc_fd(init_handles, handle) != 0)) {
+        kout(KERNEL_PANIC, "Got res %d (should be 2) when allocating fd for init's stderr\n", res);
+    }
+
+    mm_t *init_mm = mm_new();
+
+    init_task = create_task("init", NULL, init_mm, init_handles);
 
     debug_serial = true;
 

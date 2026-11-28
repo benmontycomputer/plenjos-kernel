@@ -10,6 +10,9 @@ extern task_t *init_task;
 
 void kill_task(task_t *task);
 
+// Loads mm on this core. Interrupts must be disabled.
+void switch_mm(mm_t *mm);
+
 void ipi_kill_routine(registers_t *regs, void *data);
 void ipi_wakeup_routine(registers_t *regs, void *data);
 

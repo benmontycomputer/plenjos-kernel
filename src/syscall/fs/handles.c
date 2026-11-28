@@ -33,7 +33,7 @@ int syscall_routine_open(const char *restrict path, syscall_open_flags_t flags, 
 
     kfree_heap(path_abs);
 
-    int fd = task_alloc_fd(task, handle);
+    int fd = task_handles_alloc_fd(task->handles, handle);
     if (fd == -1) {
         printf("syscall_routine_open: no available fd for task %s (tid %p)\n", task->name, task->tid);
         vfs_close(handle);
@@ -44,13 +44,13 @@ int syscall_routine_open(const char *restrict path, syscall_open_flags_t flags, 
 }
 
 int syscall_routine_close(int fd, task_t *task) {
-    vfs_handle_t *handle = task_get_fd(task, fd);
+    vfs_handle_t *handle = task_handles_get_fd(task->handles, fd);
     if (!handle) {
         printf("syscall_routine_close: invalid fd %p for task %s (tid %p)\n", fd, task->name, task->tid);
         return -EINVAL;
     }
 
-    task_free_fd(task, fd);
+    task_handles_free_fd(task->handles, fd);
 
     vfs_close(handle);
     return 0;

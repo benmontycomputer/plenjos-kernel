@@ -9,8 +9,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define FDS_MAX 64
-
 #define TASK_STATUS_EXITED      0x100
 #define TASK_STATUS_MASK_RESULT 0xFF
 
@@ -25,6 +23,17 @@ typedef enum {
     RUNNING,
     DEAD,
 } task_state_t;
+
+// TODO: cloexec
+typedef struct task_handles {
+    rwsem_t lock;
+
+    // Make sure this is always less than SSIZE_MAX!
+    int fds_max;
+    vfs_handle_t **fds;
+
+    atomic_int ref_cnt;
+} task_handles_t;
 
 // These are page-aligned; remember to use phys_mem_unref_frame on both the process and its cwd when destroying a
 // process. kfree_heap() will NOT work and could break things!
@@ -50,7 +59,7 @@ struct task {
     void *kstack_base; // Points to BOTTOM
     void *kstack_top;
 
-    volatile task_state_t state;
+    volatile task_state_t state; // Scheduler use
 
     // For kernel-only tasks, this is NULL
     mm_t *mm;
@@ -59,11 +68,7 @@ struct task {
     // run in user mode, this is the same as mm.
     mm_t *mm_to_use;
 
-    // Make sure this is always less than SSIZE_MAX!
-    int fds_max;
-    vfs_handle_t **fds;
-
-    _Atomic(pid_t) next_thread_index;
+    task_handles_t *handles;
 
     uid_t uid;
     char *cwd; // Page-aligned; 4096 bytes
@@ -93,14 +98,18 @@ struct task {
     } thread_state;
 };
 
-task_t *create_task(const char *name, task_t *parent);
+task_t *create_task(const char *name, task_t *parent, mm_t *mm, task_handles_t *handles);
 void task_exit(task_t *task);
 
 int waittid(task_t *task, pid_t tid);
 
-vfs_handle_t *task_get_fd(task_t *task, int fd);
-int task_alloc_fd(task_t *task, vfs_handle_t *handle);
-void task_free_fd(task_t *task, int fd);
+/* task_handles.c */
+task_handles_t *task_handles_new();
+vfs_handle_t *task_handles_get_fd(task_handles_t *handles, int fd);
+int task_handles_alloc_fd(task_handles_t *handles, vfs_handle_t *handle);
+int task_handles_free_fd(task_handles_t *handles, int fd);
+int task_handles_ref(task_handles_t *handles);
+int task_handles_unref(task_handles_t *handles);
 
 /**
  * If argc == 0 or argv == NULL, argv is just { path }.

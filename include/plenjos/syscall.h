@@ -54,7 +54,8 @@ typedef enum {
     SYSCALL_EXIT,
     SYSCALL_EXIT_GROUP,
 
-    SYSCALL_SPAWN,
+    SYSCALL_SPAWN, // DO NOT USE
+    SYSCALL_EXEC,
     SYSCALL_WAITTID, // Waits for exit of specified child
 } syscalls_call;
 

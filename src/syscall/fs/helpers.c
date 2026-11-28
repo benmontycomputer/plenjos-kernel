@@ -1,7 +1,7 @@
 #include "syscall/fs/syscall_fs.h"
 
 int syscall_fs_helper_get_handle_and_check_backing_node(int fd, task_t *task, vfs_handle_t **out_handle) {
-    vfs_handle_t *handle = task_get_fd(task, fd);
+    vfs_handle_t *handle = task_handles_get_fd(task->handles, fd);
 
     if (!handle) {
         printf("syscall_fs_helper_get_handle_and_check_backing_node: invalid fd %p for task %s (tid %p)\n", fd, task->name, task->tid);

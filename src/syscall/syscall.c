@@ -1,5 +1,6 @@
 #include "syscall/syscall.h"
 
+#include "arch/x86_64/common.h"
 #include "arch/x86_64/cpuid/cpuid.h"
 #include "arch/x86_64/gdt/gdt.h"
 #include "devices/input/keyboard/keyboard.h"
@@ -92,7 +93,8 @@ void syscall(registers_t *regs, task_t *task) {
         // arg1: pointer to struct for framebuffer data
         // Map the framebuffer into the currently loaded page table
         // TODO: check if framebuffer is in use
-        int res = vmmap(virt_to_phys((uint64_t)fb), (void *)0x4000000000, (uint64_t)fb_scanline * (uint64_t)fb_height, VMA_USER | VMA_RW, NULL, mm);
+        int res = vmmap(virt_to_phys((uint64_t)fb), (void *)0x4000000000, (uint64_t)fb_scanline * (uint64_t)fb_height,
+                        VMA_USER | VMA_RW, NULL, mm);
         if (res) {
             printf("syscall_get_fb: vmmap failed (res %d)\n", res);
             regs->rax = (uint64_t)res;
@@ -242,6 +244,12 @@ void syscall(registers_t *regs, task_t *task) {
         break;
     }
     case SYSCALL_SPAWN: {
+        // Legacy
+        regs->rax = -ENOSYS;
+        break;
+    }
+    case SYSCALL_EXEC: {
+        // exec(path, argv, envp, argc, envc)
         const char *path = NULL;
         regs->rax        = handle_string_arg(ARG1(regs), &path, mm);
 
@@ -266,36 +274,16 @@ void syscall(registers_t *regs, task_t *task) {
             break;
         }
 
-        task_t *spawn_task = create_task("spawn", task);
-        if (!spawn_task) {
-            free_string_array(kargv, uargc);
-            free_string_array(kenvp, uenvc);
+        // execute() copies argv/envp onto the new stack, so they can be freed as soon as it returns
+        int res = execute(path, task, (int)uargc, kargv, (int)uenvc, kenvp);
+        free_string_array(kargv, uargc);
+        free_string_array(kenvp, uenvc);
+        kargv = NULL;
+        kenvp = NULL;
+        if (!res) {
             kfree_heap(path);
-            regs->rax = (uint64_t)(int64_t)-ENOMEM;
+            regs->rax = (uint64_t)child_tid;
             break;
-        }
-
-        int res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_READ, 0, 0, &spawn_task->fds[0]);
-        if (!res) {
-            res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &spawn_task->fds[1]);
-        }
-        if (!res) {
-            res = vfs_open("/dev/tty0", SYSCALL_OPEN_FLAG_WRITE, 0, 0, &spawn_task->fds[2]);
-        }
-        if (!res) {
-            // The child may run and exit before execute() returns, so don't touch spawn_task afterwards.
-            pid_t child_tid = spawn_task->tid;
-            // execute() copies argv/envp onto the new stack, so they can be freed as soon as it returns
-            res = execute(path, spawn_task, (int)uargc, kargv, (int)uenvc, kenvp);
-            free_string_array(kargv, uargc);
-            free_string_array(kenvp, uenvc);
-            kargv = NULL;
-            kenvp = NULL;
-            if (!res) {
-                kfree_heap(path);
-                regs->rax = (uint64_t)child_tid;
-                break;
-            }
         }
 
         kout(KERNEL_WARN, "spawn: failed to start %s (%d)\n", path, res);
