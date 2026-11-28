@@ -50,12 +50,15 @@ static mutex current_lock  = MUTEX_INIT;
 static mutex rq_lock       = MUTEX_INIT;
 static mutex ktask_rq_lock = MUTEX_INIT;
 
-// Set by kill_process_threads() for a remote core that is still running
+// Set by kill_task() for a remote core that is still running; cleared once the core leaves it
 static _Atomic bool kill_pending[MAX_CORES];
+
+// Primarily to stop excess cr3 writes
+static mm_t *loaded_mm[MAX_CORES];
 
 static uint64_t volatile scheduler_ticks;
 
-// How long kill_process_threads() waits for a remote core to acknowledge before giving up and warning
+// How long kill_task() waits for a remote core to acknowledge before giving up and warning
 #define KILL_ACK_SPIN_LIMIT 200000000ULL
 
 extern void kcontext_block(uint64_t *saved_rsp, mutex *m);
@@ -135,30 +138,65 @@ static void rq_add(task_t *task) {
     *link = task;
 }
 
-// NOTE: caller must still call cpu_scheduler_task(); this function does not IPI the current core as the IPI would be
-// received later on and interrupt something else.
-void kill_task(task_t *task) {
+// Cores hold references to stop mm's from being freed by an mm_unref() until they are completely done
+void switch_mm(mm_t *mm) {
     uint32_t curr_core = get_curr_core();
+    mm_t *old          = loaded_mm[curr_core];
+
+    if (old == mm) return;
+
+    // kernel_mm is never freed, so it isn't counted
+    if (mm != kernel_mm) mm_ref(mm);
+    loaded_mm[curr_core] = mm;
+    set_cr3_addr(mm->cr3);
+
+    if (old && old != kernel_mm) mm_unref(old);
+}
+
+// NOTE: caller must still call cpu_scheduler_task() if killing the current task; this function does not IPI the current
+// core as the IPI would be received later on and interrupt something else. If the task is running on another core, this
+// waits for that core to leave it, so don't call this while holding any locks.
+void kill_task(task_t *task) {
+    bool _i           = irq_save();
+    uint32_t curr_core = get_curr_core();
+    uint32_t target    = MAX_CORES; // None
 
     lock_current();
 
+    lock_rq();
+    if (task->state == READY) {
+        rq_remove(task);
+    }
     task->state = DEAD;
+    unlock_rq();
 
     for (uint32_t i = 0; i < get_n_cores(); i++) {
-        if (current[i] == task) {
-            if (i != curr_core) {
-                atomic_store_explicit(&kill_pending[curr_core], 1, __ATOMIC_RELEASE);
-                send_ipi((uint8_t)cpu_cores[i].lapic_id, IPI_KILL_IRQ + 32);
-                break;
-            }
+        if (current[i] == task && i != curr_core) {
+            target = i;
+            atomic_store_explicit(&kill_pending[i], true, __ATOMIC_RELEASE);
+            send_ipi((uint8_t)cpu_cores[i].lapic_id, IPI_KILL_IRQ + 32);
+            break;
         }
     }
 
     unlock_current();
+    irq_restore(_i);
+
+    if (target == MAX_CORES) return;
+
+    uint64_t spins = 0;
+    while (atomic_load_explicit(&kill_pending[target], __ATOMIC_ACQUIRE)) {
+        if (++spins == KILL_ACK_SPIN_LIMIT) {
+            kout(KERNEL_WARN, "kill_task(): core %d didn't acknowledge killing task %d\n", (int)target,
+                 (int)task->tid);
+            break;
+        }
+        asm volatile("pause");
+    }
 }
 
 // NOTE: this just forces a schedule call; it does NOT update thread state
-// It only does anything if kill_process_threads() flagged this core; otherwise it keeps running
+// It only does anything if kill_task() flagged this core; otherwise it keeps running
 void ipi_kill_routine(registers_t *regs, void *data) {
     // TODO: is this all corrent?
     uint32_t curr_core = get_curr_core();
@@ -171,6 +209,11 @@ void ipi_kill_routine(registers_t *regs, void *data) {
 
     if (!atomic_load_explicit(&kill_pending[curr_core], __ATOMIC_ACQUIRE)) {
         // irq_handler() sends the EOI when we return
+        return;
+    }
+
+    // Kernel code may hold locks so don't kill it; it'll remain flagged and thus won't go back to user mode.
+    if ((regs->iret_cs & 3) == 0) {
         return;
     }
 
@@ -243,6 +286,11 @@ void syscall_dispatch(registers_t *regs) {
     asm volatile("sti");
     syscall(regs, task);
     asm volatile("cli");
+
+    // Make sure we survived the syscall before returning to user mode
+    if (task->state == DEAD) {
+        cpu_scheduler_task();
+    }
 }
 
 // TODO: more efficient way to wakeup than just sending to all cores
@@ -300,7 +348,8 @@ void stop_scheduler() {
 void block(wait_queue_t *wq, task_t *task) {
     bool irq = irq_save();
     lock_current();
-    task->state              = BLOCKED;
+    // A task killed by another core must stay DEAD, or it could be woken and run again
+    if (task->state != DEAD) task->state = BLOCKED;
     task->blocked_by         = wq;
     current[get_curr_core()] = NULL;
     unlock_current();
@@ -313,8 +362,12 @@ void block(wait_queue_t *wq, task_t *task) {
 
 __attribute__((noreturn)) //
 void cpu_scheduler_task_c(uint32_t curr_core) {
-    // Clear the core's current process and tell kill_process_threads() that this core has left the old thread.
+    // Clear the core's current process and tell kill_task() that this core has left the old thread. Doing both under the
+    // lock means kill_task() can't flag this core for the old thread afterwards and hit whatever runs next.
+    lock_current();
+    current[curr_core] = NULL;
     atomic_store_explicit(&kill_pending[curr_core], false, __ATOMIC_RELEASE);
+    unlock_current();
 
     if (!cpu_cores[curr_core].online) {
         hcf();
@@ -353,8 +406,8 @@ void cpu_scheduler_task_c(uint32_t curr_core) {
     unlock_ktask_rq();
 
     // Pick the thread and mark it RUNNING under the lock, and keep using the local copy afterwards. Otherwise a
-    // concurrent kill_process_threads() could mark it DEAD and clear current[] between the unlock and our
-    // write, and we would overwrite DEAD with RUNNING and resume a thread that is being freed.
+    // concurrent kill_task() could mark it DEAD between the pop and our write, and we would overwrite DEAD with
+    // RUNNING and resume a thread that is being freed.
     lock_current();
     lock_rq();
     task_t *task       = rq_pop();
@@ -371,9 +424,7 @@ void cpu_scheduler_task_c(uint32_t curr_core) {
         // For interrupts/exceptions taken from user mode
         tss_obj[curr_core].rsp0                            = (uint64_t)task->kstack_top;
 
-        if (get_cr3_addr() != task->mm_to_use->cr3) {
-            set_cr3_addr(task->mm_to_use->cr3);
-        }
+        switch_mm(task->mm_to_use);
 
         kcontext_resume(task->thread_state.rsp);
     }
